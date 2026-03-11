@@ -104,7 +104,7 @@ svg.icon{display:block;flex-shrink:0}
 .log-tt{color:var(--fg);font-weight:500}.log-ct{color:var(--fg3);margin-top:2px;white-space:pre-wrap;word-break:break-word}
 
 /* editor */
-.ed{min-height:300px;background:var(--bg);border:1px solid var(--border);border-radius:var(--r);padding:16px;font-family:var(--serif);font-size:16px;line-height:2;color:var(--fg);white-space:pre-wrap;overflow-y:auto;max-height:60vh;width:100%}
+.ed{min-height:600px;background:var(--bg);border:1px solid var(--border);border-radius:var(--r);padding:16px;font-family:var(--serif);font-size:16px;line-height:2;color:var(--fg);white-space:pre-wrap;overflow-y:auto;max-height:120vh;width:100%}
 
 /* chat */
 .cht{display:flex;flex-direction:column;height:calc(100vh - 110px)}
@@ -177,7 +177,7 @@ svg.icon{display:block;flex-shrink:0}
   .split-l{border-right:none;border-bottom:1px solid var(--border);padding:14px;overflow-y:visible;flex:none}
   .split-r{width:100%;padding:12px;max-height:280px}
   .cht{height:calc(100dvh - 88px)}
-  .ed{max-height:40vh}
+  .ed{max-height:80vh}
   .top{padding:0 12px;gap:6px}
   .top-t{font-size:13px}
   .stats-g{grid-template-columns:repeat(3,1fr)}
@@ -213,6 +213,21 @@ svg.icon{display:block;flex-shrink:0}
 
 /* streaming cursor in write area */
 @keyframes write-cursor{0%,100%{opacity:1}50%{opacity:0}}
+
+/* right-click context menu */
+.ctx-menu{position:fixed;z-index:9999;background:var(--bg2);border:1px solid var(--border2);border-radius:8px;padding:4px;box-shadow:0 8px 24px rgba(0,0,0,.55);min-width:160px}
+.ctx-item{padding:8px 14px;font-size:13px;color:var(--fg);border-radius:5px;cursor:pointer;display:flex;align-items:center;gap:8px;transition:background .1s}
+.ctx-item:hover{background:var(--bg4)}
+.ctx-item.disabled{color:var(--fg3);cursor:default}
+.ctx-item.disabled:hover{background:none}
+.ctx-sep{height:1px;background:var(--border);margin:3px 0}
+.ctx-icon{font-size:14px;width:18px;text-align:center;flex-shrink:0}
+/* refine overlay */
+.refine-ov{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9990;display:flex;align-items:center;justify-content:center}
+.refine-box{background:var(--bg2);border:1px solid var(--border2);border-radius:10px;padding:20px;width:90%;max-width:480px}
+.refine-box h4{font-size:15px;font-weight:600;margin-bottom:12px}
+.refine-box textarea{width:100%;min-height:80px;resize:vertical;font-size:13px;padding:8px 10px;margin-bottom:12px;line-height:1.6}
+.refine-box .row{display:flex;gap:8px;justify-content:flex-end}
 
 /* ── Platform styles ── */
 .platform-page{min-height:100vh;background:var(--bg);padding:40px 40px 60px}
@@ -1126,6 +1141,14 @@ function Write({p, onRef, onUsage, user}) {
   const [wr, setWr] = useState(false);
   const [ins, setIns] = useState('');
   const [tab, setTab] = useState('write');
+  // context menu state
+  const [ctxMenu, setCtxMenu] = useState(null); // {x, y}
+  const [selRange, setSelRange] = useState(null); // {start, end, text}
+  const [refining, setRefining] = useState(false);
+  // custom prompt modal
+  const [customModal, setCustomModal] = useState(false);
+  const [customPrompt, setCustomPrompt] = useState('');
+  const taRef = React.useRef(null);
 
   const requireLogin = () => { if(!user) { alert('此操作需要登录，请先登录'); window.location.hash = '#/login'; return false; } return true; };
   const load = async (ch) => { setSel(ch); const d = await F(`${API}/novel/chapter/${ch.id}/`); setCd(d); };
@@ -1170,8 +1193,108 @@ function Write({p, onRef, onUsage, user}) {
 
   const doSave = async () => { if(!requireLogin()) return; if(!cd)return; await U(`${API}/novel/chapter/${cd.id}/`,{content:cd.content}); onRef(); };
 
+  // handle right-click on textarea
+  const handleContextMenu = (e) => {
+    const ta = taRef.current;
+    if(!ta) return;
+    const start = ta.selectionStart;
+    const end = ta.selectionEnd;
+    const text = ta.value.substring(start, end).trim();
+    if(!text) return; // only show menu when text is selected
+    e.preventDefault();
+    setSelRange({start, end, text});
+    setCtxMenu({x: e.clientX, y: e.clientY});
+  };
+
+  const closeCtxMenu = () => setCtxMenu(null);
+
+  // stream refine and replace selected text
+  const doRefine = async (mode, customInstruction='') => {
+    if(!requireLogin()) return;
+    if(!sel || !selRange) return;
+    closeCtxMenu();
+    setRefining(true);
+    try {
+      const token = localStorage.getItem('mf_token');
+      const hdrs = {'Content-Type':'application/json'};
+      if(token) hdrs['Authorization'] = `Token ${token}`;
+      const body = {selected_text: selRange.text, mode, custom_instruction: customInstruction};
+      const resp = await fetch(`${API}/novel/chapter/${sel.id}/refine-stream/`, {method:'POST', headers:hdrs, body:JSON.stringify(body)});
+      if(!resp.ok) throw new Error(`${resp.status}: ${await resp.text()}`);
+      const reader = resp.body.getReader(); const dec = new TextDecoder();
+      let buf=''; let acc='';
+      // snapshot content before streaming starts
+      const originalContent = cd?.content || '';
+      const before = originalContent.substring(0, selRange.start);
+      const after = originalContent.substring(selRange.end);
+      while(true) {
+        const {done,value} = await reader.read(); if(done) break;
+        buf += dec.decode(value,{stream:true});
+        const lns = buf.split('\n'); buf = lns.pop();
+        for(const ln of lns) {
+          if(!ln.startsWith('data: ')) continue;
+          let ev; try{ ev=JSON.parse(ln.slice(6)); }catch{ continue; }
+          if(ev.type==='chunk'){ acc+=ev.text; setCd(p=>({...p,content:before+acc+after})); }
+          else if(ev.type==='done'){ onUsage&&onUsage(); }
+          else if(ev.type==='error'){ throw new Error(ev.message); }
+        }
+      }
+      // update selRange to new selection end
+      setSelRange(null);
+    } catch(e){ alert(e.message); }
+    setRefining(false);
+  };
+
+  const openCustomModal = () => { setCtxMenu(null); setCustomPrompt(''); setCustomModal(true); };
+  const submitCustom = () => { setCustomModal(false); doRefine('custom', customPrompt); };
+
+  // close ctx menu on click outside
+  React.useEffect(() => {
+    if(!ctxMenu) return;
+    const handler = () => closeCtxMenu();
+    document.addEventListener('click', handler);
+    return () => document.removeEventListener('click', handler);
+  }, [ctxMenu]);
+
   return (
     <div className="split">
+      {/* Right-click Context Menu */}
+      {ctxMenu && (
+        <div className="ctx-menu" style={{left:ctxMenu.x, top:ctxMenu.y}} onClick={e=>e.stopPropagation()}>
+          <div className="ctx-item" onClick={()=>doRefine('expand')}>
+            <span className="ctx-icon">✦</span>扩写
+          </div>
+          <div className="ctx-item" onClick={()=>doRefine('condense')}>
+            <span className="ctx-icon">◈</span>精简
+          </div>
+          <div className="ctx-sep"/>
+          <div className="ctx-item" onClick={openCustomModal}>
+            <span className="ctx-icon">✎</span>输入AI提示词…
+          </div>
+        </div>
+      )}
+      {/* Custom Prompt Modal */}
+      {customModal && (
+        <div className="refine-ov" onClick={()=>setCustomModal(false)}>
+          <div className="refine-box" onClick={e=>e.stopPropagation()}>
+            <h4>AI润色提示词</h4>
+            <p style={{fontSize:12,color:'var(--fg3)',marginBottom:8}}>
+              选中文本：<em style={{color:'var(--gold)'}}>{selRange?.text?.slice(0,60)}{selRange?.text?.length>60?'…':''}</em>
+            </p>
+            <textarea
+              value={customPrompt}
+              onChange={e=>setCustomPrompt(e.target.value)}
+              placeholder="请输入AI润色指令，例如：改成更诗意的风格、增加紧张感、用古风文言…"
+              autoFocus
+              onKeyDown={e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey))submitCustom();}}
+            />
+            <div className="row">
+              <button className="btn btn-s btn-sm" onClick={()=>setCustomModal(false)}>取消</button>
+              <button className="btn btn-p" onClick={submitCustom} disabled={!customPrompt.trim()}>确认润色</button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="split-l">
         {!sel?<div>
           <h3 style={{fontFamily:'var(--serif)',fontSize:18,marginBottom:14}}>选择章节</h3>
@@ -1192,7 +1315,7 @@ function Write({p, onRef, onUsage, user}) {
           {tab==='write'&&<>
             <div style={{marginBottom:10,display:'flex',gap:8}}>
               <input value={ins} onChange={e=>setIns(e.target.value)} placeholder="给AI的指令（可选）..." style={{flex:1}}/>
-              <button className="btn btn-p" onClick={doWrite} disabled={wr}>
+              <button className="btn btn-p" onClick={doWrite} disabled={wr||refining}>
                 {wr ? '写作中...' : (
                   <span className="with-ic">
                     <Icon name="pen" size={14} />
@@ -1200,11 +1323,19 @@ function Write({p, onRef, onUsage, user}) {
                   </span>
                 )}
               </button>
-              <button className="btn btn-s" onClick={doCont} disabled={wr}>→ 续写</button>
+              <button className="btn btn-s" onClick={doCont} disabled={wr||refining}>→ 续写</button>
               <button className="btn btn-s btn-sm" onClick={doSave}>保存</button>
             </div>
             {wr&&<div className="load">正在检索记忆、分析演变历史，流式生成内容中...</div>}
-            <textarea className="ed" value={cd?.content||''} onChange={e=>setCd({...cd,content:e.target.value})} placeholder="章节内容将在此流式输出显示..."/>
+            {refining&&<div className="load">AI润色中，正在检索记忆与上下文...</div>}
+            <textarea
+              ref={taRef}
+              className="ed"
+              value={cd?.content||''}
+              onChange={e=>setCd({...cd,content:e.target.value})}
+              placeholder="章节内容将在此流式输出显示...&#10;&#10;提示：选中文本后右键可扩写、精简或自定义AI润色"
+              onContextMenu={handleContextMenu}
+            />
           </>}
           {tab==='outline'&&<div className="card"><p style={{fontSize:14,lineHeight:1.7,whiteSpace:'pre-wrap'}}>{cd?.outline||'暂无大纲'}</p></div>}
         </div>}

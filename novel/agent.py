@@ -388,3 +388,79 @@ def continue_writing_stream(project_id, chapter_id, user_instruction="", user_id
 
     _log(project_id, 'info', f'第{chapter.number}章续写完成(流式)', f'生成了 {len(content)} 字符')
     yield f"data: {json.dumps({'type': 'done', 'word_count': len(content), 'chapter_id': chapter_id})}\n\n"
+
+
+def refine_text_stream(project_id, chapter_id, selected_text, mode, custom_instruction="", user_id=None, config=None):
+    """流式润色/改写选中文本，生成器逐块 yield SSE 格式字符串。
+
+    mode: 'expand' | 'condense' | 'custom'
+    """
+    project = Project.objects.get(id=project_id)
+    chapter = Chapter.objects.get(id=chapter_id, project=project)
+
+    _log(project_id, 'think', f'润色选中文本 (模式: {mode})，第{chapter.number}章')
+
+    # 检索记忆上下文，使选中文本的修改保持与整体故事一致
+    query = f"{selected_text[:300]}"
+    if custom_instruction:
+        query = f"{custom_instruction}\n\n{selected_text[:200]}"
+
+    _log(project_id, 'action', '检索记忆上下文以保持文风和人物一致性')
+    memory_context = retrieve_context(project_id, query, max_tokens=40000)
+    evolution_context = retrieve_evolution_context(project_id, query)
+
+    system_prompt = _build_system_prompt(project)
+
+    # 章节当前内容作为上下文
+    chapter_context = ""
+    if chapter.content:
+        # 截取选中文本周围的部分内容作为上下文
+        idx = chapter.content.find(selected_text[:50])
+        if idx >= 0:
+            start = max(0, idx - 300)
+            end = min(len(chapter.content), idx + len(selected_text) + 300)
+            chapter_context = chapter.content[start:end]
+        else:
+            paragraphs = chapter.content.strip().split('\n\n')
+            chapter_context = "\n\n".join(paragraphs[-4:])
+
+    if mode == 'expand':
+        task_desc = "对以下选中文本进行【扩写】：增加细节描写、对话、内心独白或环境烘托，使内容更加丰富饱满，保持原有情节走向和人物性格不变。"
+    elif mode == 'condense':
+        task_desc = "对以下选中文本进行【精简】：去除冗余词句，保留核心情节和关键信息，使文字更加简洁有力，保持原意不变。"
+    else:
+        task_desc = f"根据以下指示对选中文本进行【润色改写】：{custom_instruction}\n保持人物性格和情节连贯性不变。"
+
+    prompt = f"""{task_desc}
+
+## 故事背景与记忆上下文
+{memory_context[:20000]}
+
+## 角色与情节演变
+{evolution_context[:3000]}
+
+## 章节上下文（选中文本的前后内容）
+{chapter_context}
+
+## 需要处理的选中文本
+{selected_text}
+
+## 输出要求
+只输出处理后的文本，不要添加任何解释、标题或前后缀。直接输出改写结果。"""
+
+    if config is None:
+        config = _llm_module._get_config()
+
+    _log(project_id, 'action', f'调用LLM进行文本{mode}处理')
+    full_content = []
+    for chunk in _llm_module.chat_stream(
+        [{"role": "user", "content": prompt}],
+        system=system_prompt, temperature=0.75, max_tokens=4096,
+        project_id=project_id, config=config, user_id=user_id,
+    ):
+        full_content.append(chunk)
+        yield f"data: {json.dumps({'type': 'chunk', 'text': chunk}, ensure_ascii=False)}\n\n"
+
+    content = ''.join(full_content)
+    _log(project_id, 'info', f'文本润色完成', f'输出 {len(content)} 字符')
+    yield f"data: {json.dumps({'type': 'done', 'word_count': len(content)})}\n\n"
