@@ -76,6 +76,8 @@ class ProjectDetailView(APIView):
                 'outline': c.outline, 'word_count': c.word_count,
                 'status': c.status, 'memory_node_id': c.memory_node_id,
             } for c in chapters],
+            'total_words': sum(c.word_count for c in chapters),
+            'chapter_count': len(chapters),
             'created_at': p.created_at.isoformat(),
         })
 
@@ -352,6 +354,57 @@ class ContinueWritingStreamView(View):
             try:
                 yield from agent.continue_writing_stream(
                     project_id, chapter_id, instruction,
+                    user_id=user_id, config=config,
+                )
+            except Exception as e:
+                yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+        resp = StreamingHttpResponse(generate(), content_type='text/event-stream')
+        resp['Cache-Control'] = 'no-cache'
+        resp['X-Accel-Buffering'] = 'no'
+        return resp
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class RefineTextStreamView(View):
+    """流式润色/改写选中文本，返回 text/event-stream。"""
+
+    def post(self, request, chapter_id):
+        user = _token_auth(request)
+        if not user:
+            return JsonResponse({"error": "需要认证"}, status=401)
+
+        data = json.loads(request.body or b'{}')
+        selected_text = data.get('selected_text', '').strip()
+        mode = data.get('mode', 'custom')  # 'expand' | 'condense' | 'custom'
+        custom_instruction = data.get('custom_instruction', '')
+
+        if not selected_text:
+            return JsonResponse({"error": "未提供选中文本"}, status=400)
+        if mode not in ('expand', 'condense', 'custom'):
+            return JsonResponse({"error": "无效的模式"}, status=400)
+
+        try:
+            chapter = Chapter.objects.get(id=chapter_id)
+        except Chapter.DoesNotExist:
+            return JsonResponse({"error": "未找到"}, status=404)
+        if chapter.project.user and chapter.project.user != user:
+            return JsonResponse({"error": "无权操作"}, status=403)
+
+        from core.llm import _get_config
+        try:
+            config = _get_config()
+        except ValueError as e:
+            return JsonResponse({"error": str(e)}, status=400)
+
+        user_id = user.id
+        project_id = chapter.project_id
+
+        def generate():
+            try:
+                yield from agent.refine_text_stream(
+                    project_id, chapter_id, selected_text, mode,
+                    custom_instruction=custom_instruction,
                     user_id=user_id, config=config,
                 )
             except Exception as e:

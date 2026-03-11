@@ -3,7 +3,7 @@ from novel.views import (
     ProjectListView, ProjectDetailView, ChapterDetailView, ChapterCreateView,
     WriteChapterView, ContinueWritingView, ChatView, GenerateOutlineView,
     ConsolidateProjectView, GenerateIdeaView,
-    WriteChapterStreamView, ContinueWritingStreamView,
+    WriteChapterStreamView, ContinueWritingStreamView, RefineTextStreamView,
 )
 
 urlpatterns = [
@@ -15,6 +15,7 @@ urlpatterns = [
     path('chapter/<int:chapter_id>/write-stream/', WriteChapterStreamView.as_view()),
     path('chapter/<int:chapter_id>/continue/', ContinueWritingView.as_view()),
     path('chapter/<int:chapter_id>/continue-stream/', ContinueWritingStreamView.as_view()),
+    path('chapter/<int:chapter_id>/refine-stream/', RefineTextStreamView.as_view()),
     path('project/<int:project_id>/chat/', ChatView.as_view()),
     path('project/<int:project_id>/outline/', GenerateOutlineView.as_view()),
     path('project/<int:project_id>/consolidate/', ConsolidateProjectView.as_view()),

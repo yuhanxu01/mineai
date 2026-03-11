@@ -1,5 +1,18 @@
 from django.conf import settings
 from django.db import models
+import re
+
+_CJK_RE = re.compile(r'[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff'
+                      r'\u2e80-\u2eff\u31c0-\u31ef\u3200-\u32ff'
+                      r'\uff00-\uffef]')
+_ASCII_WORD_RE = re.compile(r'[a-zA-Z0-9]+')
+
+
+def _count_words(text):
+    """中文字数统计：CJK字符数 + 英文单词数。"""
+    if not text:
+        return 0
+    return len(_CJK_RE.findall(text)) + len(_ASCII_WORD_RE.findall(text))
 
 
 class Project(models.Model):
@@ -46,5 +59,5 @@ class Chapter(models.Model):
         return f"Ch.{self.number}: {self.title}"
 
     def save(self, *args, **kwargs):
-        self.word_count = len(self.content.split()) if self.content else 0
+        self.word_count = _count_words(self.content)
         super().save(*args, **kwargs)
