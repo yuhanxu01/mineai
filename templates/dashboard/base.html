@@ -1,0 +1,107 @@
+{% load static %}<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}管理后台{% endblock %} — MemoryForge</title>
+  <link rel="stylesheet" href="{% static 'dashboard/admin.css' %}">
+</head>
+<body>
+
+<!-- ── Sidebar ── -->
+<aside class="sidebar">
+  <div class="sidebar-logo">
+    <div class="brand">
+      <div class="brand-icon">{% include 'dashboard/_icon.html' with name='bolt' size=18 %}</div>
+      <div>
+        <div>MemoryForge</div>
+        <div class="brand-sub">管理控制台</div>
+      </div>
+    </div>
+  </div>
+
+  <nav class="sidebar-nav">
+    <div class="sidebar-section">概览</div>
+    <a href="{% url 'dashboard:index' %}" class="nav-item {% if active_nav == 'index' %}active{% endif %}">
+      <span class="nav-icon">{% include 'dashboard/_icon.html' with name='home' size=16 %}</span> 首页概览
+    </a>
+
+    <div class="sidebar-section">用户与系统</div>
+    <a href="{% url 'dashboard:user_list' %}" class="nav-item {% if active_nav == 'users' %}active{% endif %}">
+      <span class="nav-icon">{% include 'dashboard/_icon.html' with name='user' size=16 %}</span> 用户管理
+    </a>
+    <a href="{% url 'dashboard:site_config' %}" class="nav-item {% if active_nav == 'config' %}active{% endif %}">
+      <span class="nav-icon">{% include 'dashboard/_icon.html' with name='settings' size=16 %}</span> 系统配置
+    </a>
+    <a href="{% url 'dashboard:verification_codes' %}" class="nav-item {% if active_nav == 'codes' %}active{% endif %}">
+      <span class="nav-icon">{% include 'dashboard/_icon.html' with name='lock' size=16 %}</span> 验证码记录
+    </a>
+
+    <div class="sidebar-divider"></div>
+    <div class="sidebar-section">创作工具</div>
+    <a href="{% url 'dashboard:project_list' %}" class="nav-item {% if active_nav == 'projects' %}active{% endif %}">
+      <span class="nav-icon">{% include 'dashboard/_icon.html' with name='pen' size=16 %}</span> 写作项目
+    </a>
+    <a href="{% url 'dashboard:novel_list' %}" class="nav-item {% if active_nav == 'novels' %}active{% endif %}">
+      <span class="nav-icon">{% include 'dashboard/_icon.html' with name='book' size=16 %}</span> 小说广场
+    </a>
+    <a href="{% url 'dashboard:comment_list' %}" class="nav-item {% if active_nav == 'comments' %}active{% endif %}">
+      <span class="nav-icon">{% include 'dashboard/_icon.html' with name='chat' size=16 %}</span> 评论管理
+    </a>
+    <a href="{% url 'dashboard:ocr_list' %}" class="nav-item {% if active_nav == 'ocr' %}active{% endif %}">
+      <span class="nav-icon">{% include 'dashboard/_icon.html' with name='search' size=16 %}</span> OCR 项目
+    </a>
+
+    <div class="sidebar-divider"></div>
+    <div class="sidebar-section">平台</div>
+    <a href="{% url 'dashboard:app_list' %}" class="nav-item {% if active_nav == 'apps' %}active{% endif %}">
+      <span class="nav-icon">{% include 'dashboard/_icon.html' with name='grid' size=16 %}</span> 应用管理
+    </a>
+    <a href="/admin/" class="nav-item" target="_blank">
+      <span class="nav-icon">{% include 'dashboard/_icon.html' with name='settings' size=16 %}</span> Django Admin
+    </a>
+  </nav>
+
+  <div class="sidebar-footer">
+    <a href="/admin/logout/">退出登录</a>
+    &nbsp;·&nbsp;
+    <span>{{ request.user.email }}</span>
+  </div>
+</aside>
+
+<!-- ── Main ── -->
+<div class="main-wrap">
+  <header class="topbar">
+    <div class="topbar-title">{% block page_title %}管理后台{% endblock %}</div>
+    <div class="topbar-right">
+      <div class="topbar-user">
+        <div class="avatar">{{ request.user.email|first|upper }}</div>
+        <span>{{ request.user.email }}</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="content">
+    {% if messages %}
+    <ul class="messages">
+      {% for msg in messages %}
+      <li class="{{ msg.tags }}">
+        {% if msg.tags == 'success' %}
+          {% include 'dashboard/_icon.html' with name='check' size=14 %}
+        {% elif msg.tags == 'error' %}
+          {% include 'dashboard/_icon.html' with name='error' size=14 %}
+        {% else %}
+          {% include 'dashboard/_icon.html' with name='info' size=14 %}
+        {% endif %}
+        {{ msg }}
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+
+    {% block content %}{% endblock %}
+  </main>
+</div>
+
+</body>
+</html>

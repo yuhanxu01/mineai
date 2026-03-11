@@ -1,0 +1,67 @@
+{% extends 'dashboard/base.html' %}
+{% block title %}OCR 项目{% endblock %}
+{% block page_title %}OCR 项目{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header-left">
+    <h1>OCR 项目</h1>
+    <p>查看所有 OCR 识别任务及其状态</p>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h2>项目列表</h2>
+    <form class="search-bar" method="get">
+      <div class="search-input">
+        <span class="search-icon">{% include 'dashboard/_icon.html' with name='search' size=14 %}</span>
+        <input class="form-control" name="q" value="{{ q }}" placeholder="搜索项目名称…">
+      </div>
+      <button class="btn btn-outline" type="submit">搜索</button>
+      {% if q %}<a href="{% url 'dashboard:ocr_list' %}" class="btn btn-outline">清除</a>{% endif %}
+    </form>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>项目ID</th><th>文件名</th><th>总页数</th><th>状态</th><th>所属用户</th><th>创建时间</th><th>操作</th></tr>
+      </thead>
+      <tbody>
+        {% for p in page_obj %}
+        <tr>
+          <td><code style="background:rgba(255,255,255,.05);padding:2px 6px;border-radius:4px;font-size:12px">{{ p.id }}</code></td>
+          <td><strong>{{ p.name }}</strong></td>
+          <td><span class="badge badge-info">{{ p.total_pages }} 页</span></td>
+          <td>
+            {% if p.status == 'done' %}<span class="badge badge-success">{% include 'dashboard/_icon.html' with name='check' size=12 %} 完成</span>
+            {% elif p.status == 'uploaded' %}<span class="badge badge-muted">上传中</span>
+            {% elif p.status == 'processing' %}<span class="badge badge-warning">处理中</span>
+            {% elif p.status == 'error' %}<span class="badge badge-danger">错误</span>
+            {% else %}<span class="badge badge-muted">{{ p.status }}</span>{% endif %}
+          </td>
+          <td class="td-muted">{{ p.user.email|default:"匿名" }}</td>
+          <td class="td-muted">{{ p.created_at|date:"Y-m-d H:i" }}</td>
+          <td>
+            <form method="post" action="{% url 'dashboard:ocr_delete' p.pk %}"
+                  onsubmit="return confirm('确定删除 OCR 项目 {{ p.name }}？')" style="display:inline">
+              {% csrf_token %}
+              <button class="btn btn-danger btn-xs" type="submit">删除</button>
+            </form>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="7"><div class="empty-state"><div class="empty-icon">{% include 'dashboard/_icon.html' with name='search' size=36 %}</div><p>暂无 OCR 项目</p></div></td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if page_obj.has_other_pages %}
+  <div class="pagination">
+    {% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}&q={{ q }}">上一页</a>{% endif %}
+    <span class="current">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
+    {% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}&q={{ q }}">下一页</a>{% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

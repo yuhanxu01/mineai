@@ -1,0 +1,70 @@
+{% extends 'dashboard/base.html' %}
+{% block title %}验证码记录{% endblock %}
+{% block page_title %}验证码记录{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header-left">
+    <h1>验证码记录</h1>
+    <p>查看所有邮箱验证码的发送与使用情况（只读）</p>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h2>发送记录</h2>
+    <form class="search-bar" method="get">
+      <div class="search-input">
+        <span class="search-icon">{% include 'dashboard/_icon.html' with name='search' size=14 %}</span>
+        <input class="form-control" name="q" value="{{ q }}" placeholder="搜索邮箱…">
+      </div>
+      <select class="form-control" name="status" style="width:120px">
+        <option value="" {% if not status %}selected{% endif %}>全部状态</option>
+        <option value="used" {% if status == 'used' %}selected{% endif %}>已使用</option>
+        <option value="unused" {% if status == 'unused' %}selected{% endif %}>未使用</option>
+      </select>
+      <button class="btn btn-outline" type="submit">筛选</button>
+      {% if q or status %}<a href="{% url 'dashboard:verification_codes' %}" class="btn btn-outline">清除</a>{% endif %}
+    </form>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>邮箱</th><th>验证码</th><th>状态</th><th>发送时间</th><th>操作</th></tr>
+      </thead>
+      <tbody>
+        {% for code in page_obj %}
+        <tr>
+          <td>{{ code.email }}</td>
+          <td style="font-family:monospace;letter-spacing:2px">{{ code.code|slice:":2" }}****</td>
+          <td>
+            {% if code.is_used %}
+              <span class="badge badge-success">{% include 'dashboard/_icon.html' with name='check' size=12 %} 已使用</span>
+            {% else %}
+              <span class="badge badge-warning">{% include 'dashboard/_icon.html' with name='info' size=12 %} 未使用</span>
+            {% endif %}
+          </td>
+          <td class="td-muted">{{ code.created_at|date:"Y-m-d H:i:s" }}</td>
+          <td>
+            <form method="post" action="{% url 'dashboard:code_delete' code.pk %}"
+                  onsubmit="return confirm('确定删除这条验证码记录？')" style="display:inline">
+              {% csrf_token %}
+              <button class="btn btn-danger btn-xs" type="submit">删除</button>
+            </form>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="5"><div class="empty-state"><div class="empty-icon">{% include 'dashboard/_icon.html' with name='lock' size=36 %}</div><p>暂无验证码记录</p></div></td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if page_obj.has_other_pages %}
+  <div class="pagination">
+    {% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}&q={{ q }}&status={{ status }}">上一页</a>{% endif %}
+    <span class="current">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
+    {% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}&q={{ q }}&status={{ status }}">下一页</a>{% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

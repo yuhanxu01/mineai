@@ -1,0 +1,103 @@
+{% extends 'dashboard/base.html' %}
+{% block title %}{{ action }}{% endblock %}
+{% block page_title %}{{ action }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header-left">
+    <h1>{{ action }}</h1>
+    {% if edit_user %}<p>邮箱：{{ edit_user.email }}</p>{% endif %}
+  </div>
+  <a href="{% url 'dashboard:user_list' %}" class="btn btn-outline">← 返回列表</a>
+</div>
+
+<div class="card">
+  <div class="card-header"><h2>用户信息</h2></div>
+  <div class="card-body">
+    <form method="post">
+      {% csrf_token %}
+      <div class="form-grid">
+        {% if not edit_user %}
+        <div class="form-group">
+          <label>邮箱地址</label>
+          <input class="form-control" type="email" name="email" required placeholder="user@example.com">
+        </div>
+        <div class="form-group">
+          <label>密码</label>
+          <input class="form-control" type="password" name="password" required placeholder="设置初始密码">
+        </div>
+        {% else %}
+        <div class="form-group">
+          <label>邮箱地址</label>
+          <input class="form-control" value="{{ edit_user.email }}" disabled>
+        </div>
+        <div class="form-group">
+          <label>重置密码（留空不修改）</label>
+          <input class="form-control" type="password" name="password" placeholder="输入新密码…">
+        </div>
+        {% endif %}
+      </div>
+
+      <div style="margin-top:20px">
+        <div class="form-check">
+          <input type="checkbox" name="is_active" id="is_active"
+            {% if not edit_user or edit_user.is_active %}checked{% endif %}>
+          <label for="is_active">账号激活</label>
+        </div>
+        <div class="form-check">
+          <input type="checkbox" name="is_staff" id="is_staff"
+            {% if edit_user and edit_user.is_staff %}checked{% endif %}>
+          <label for="is_staff">员工权限（可访问 /admin/）</label>
+        </div>
+        <div class="form-check">
+          <input type="checkbox" name="is_superuser" id="is_superuser"
+            {% if edit_user and edit_user.is_superuser %}checked{% endif %}>
+          <label for="is_superuser">超级管理员权限</label>
+        </div>
+      </div>
+
+      <div class="form-actions">
+        <button class="btn btn-primary" type="submit">
+          <span class="with-ic">{% include 'dashboard/_icon.html' with name='save' size=14 %}保存</span>
+        </button>
+        <a href="{% url 'dashboard:user_list' %}" class="btn btn-outline">取消</a>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% if token_usage %}
+<div class="card">
+  <div class="card-header">
+    <h2>
+      <span class="with-ic">{% include 'dashboard/_icon.html' with name='bolt' size=16 %}Token 用量</span>
+    </h2>
+  </div>
+  <div class="card-body">
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-icon">{% include 'dashboard/_icon.html' with name='mail' size=20 %}</div>
+        <div class="stat-value">{{ token_usage.prompt_count }}</div>
+        <div class="stat-label">总请求次数</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">{% include 'dashboard/_icon.html' with name='download' size=20 %}</div>
+        <div class="stat-value">{{ token_usage.input_tokens }}</div>
+        <div class="stat-label">输入 Token</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">{% include 'dashboard/_icon.html' with name='upload' size=20 %}</div>
+        <div class="stat-value">{{ token_usage.output_tokens }}</div>
+        <div class="stat-label">输出 Token</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">{% include 'dashboard/_icon.html' with name='hash' size=20 %}</div>
+        <div class="stat-value">{{ token_usage.total_tokens }}</div>
+        <div class="stat-label">总 Token</div>
+        <div class="stat-sub">更新于 {{ token_usage.updated_at|date:"m-d H:i" }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

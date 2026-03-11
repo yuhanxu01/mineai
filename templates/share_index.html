@@ -1,0 +1,766 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>记忆库书城 - 小说共享阅读平台</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700&family=Noto+Sans+SC:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Base Styles */
+* { margin:0; padding:0; box-sizing:border-box; }
+:root {
+  --bg-dark: #0f1115;
+  --bg-card: #1c1f26;
+  --text-main: #e8e8e8;
+  --text-muted: #8b92a5;
+  --accent: #d4a373;
+  --accent-hover: #faedcd;
+  --border: #2d313a;
+  --shadow: 0 8px 32px rgba(0,0,0,0.4);
+  --radius: 12px;
+  --sans: 'Noto Sans SC', system-ui, sans-serif;
+  --serif: 'Noto Serif SC', serif;
+}
+body { background: var(--bg-dark); color: var(--text-main); font-family: var(--sans); -webkit-font-smoothing: antialiased; }
+a { color: inherit; text-decoration: none; }
+button { font-family: inherit; cursor: pointer; border: none; outline: none; transition: 0.2s; }
+input, textarea, select { font-family: inherit; background: rgba(255,255,255,0.05); color: var(--text-main); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; outline: none; transition: 0.2s; }
+input:focus, textarea:focus { border-color: var(--accent); background: rgba(255,255,255,0.08); }
+
+/* Layout */
+.navbar { position: fixed; top: 0; left: 0; right: 0; height: 60px; background: rgba(15, 17, 21, 0.85); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; padding: 0 40px; z-index: 100; }
+.nav-brand { font-family: var(--serif); font-size: 22px; font-weight: 700; color: var(--accent); letter-spacing: 1px; cursor: pointer; display: flex; align-items: center; gap: 8px; }
+.nav-links { display: flex; gap: 20px; align-items: center; }
+.nav-item { font-size: 14px; color: var(--text-muted); cursor: pointer; transition: 0.2s; }
+.nav-item:hover, .nav-item.active { color: var(--text-main); }
+.main-content { min-height: 100vh; padding-top: 80px; padding-bottom: 60px; max-width: 1200px; margin: 0 auto; display: flex; flex-direction: column; }
+
+/* Components */
+.btn { padding: 8px 16px; border-radius: 8px; font-size: 14px; font-weight: 500; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.btn-primary { background: var(--accent); color: #1a1a1a; font-weight: 600; }
+.btn-primary:hover { background: var(--accent-hover); transform: translateY(-1px); }
+.btn-secondary { background: rgba(255,255,255,0.1); color: var(--text-main); }
+.btn-secondary:hover { background: rgba(255,255,255,0.15); }
+.badge { font-size: 12px; padding: 4px 8px; border-radius: 6px; background: rgba(255,255,255,0.1); color: var(--text-muted); }
+
+/* Home Page */
+.hero { text-align: center; padding: 60px 20px 80px; }
+.hero h1 { font-family: var(--serif); font-size: 42px; margin-bottom: 16px; background: linear-gradient(135deg, var(--accent-hover), var(--accent)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.hero p { font-size: 16px; color: var(--text-muted); max-width: 600px; margin: 0 auto; line-height: 1.6; }
+.novel-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 24px; padding: 0 20px; }
+.novel-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; cursor: pointer; transition: 0.3s; display: flex; flex-direction: column; }
+.novel-card:hover { transform: translateY(-4px); border-color: rgba(212, 163, 115, 0.4); box-shadow: var(--shadow); }
+.novel-cover { height: 160px; background: #2a2d36; position: relative; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.novel-cover img { width: 100%; height: 100%; object-fit: cover; }
+.novel-cover-placeholder { font-family: var(--serif); font-size: 24px; color: rgba(255,255,255,0.2); text-align: center; padding: 20px; }
+.novel-info { padding: 20px; flex: 1; display: flex; flex-direction: column; }
+.novel-title { font-family: var(--serif); font-size: 18px; font-weight: 600; margin-bottom: 8px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.novel-author { font-size: 13px; color: var(--accent); margin-bottom: 12px; }
+.novel-desc { font-size: 13px; color: var(--text-muted); line-height: 1.6; margin-bottom: 16px; flex: 1; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.novel-meta { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--text-muted); border-top: 1px solid var(--border); padding-top: 12px; }
+
+/* Detail Page */
+.detail-header { display: flex; gap: 40px; padding: 40px 20px; background: var(--bg-card); border-radius: var(--radius); border: 1px solid var(--border); margin: 0 20px 40px; }
+.detail-cover { width: 220px; height: 300px; border-radius: 8px; background: #2a2d36; box-shadow: var(--shadow); overflow: hidden; flex-shrink: 0; }
+.detail-cover img { width: 100%; height: 100%; object-fit: cover; }
+.detail-info { flex: 1; }
+.detail-title { font-family: var(--serif); font-size: 32px; margin-bottom: 12px; }
+.detail-author { font-size: 16px; color: var(--accent); margin-bottom: 24px; }
+.detail-stats { display: flex; gap: 24px; margin-bottom: 24px; }
+.stat-item { display: flex; flex-direction: column; gap: 4px; }
+.stat-val { font-size: 20px; font-weight: 600; font-family: monospace; }
+.stat-lbl { font-size: 12px; color: var(--text-muted); }
+.detail-desc { font-size: 15px; line-height: 1.8; color: #c4c8d4; margin-bottom: 32px; white-space: pre-wrap; }
+.detail-actions { display: flex; gap: 16px; }
+
+.section-title { font-family: var(--serif); font-size: 24px; margin: 0 20px 24px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+.chapter-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 16px; padding: 0 20px; margin-bottom: 60px; }
+.chapter-item { background: rgba(255,255,255,0.03); padding: 16px; border-radius: 8px; border: 1px solid transparent; cursor: pointer; transition: 0.2s; display: flex; flex-direction: column; gap: 8px; }
+.chapter-item:hover { background: rgba(255,255,255,0.06); border-color: var(--border); }
+.chapter-item-title { font-size: 15px; font-weight: 500; }
+.chapter-item-meta { font-size: 12px; color: var(--text-muted); }
+
+/* Reading Page */
+.reader-wrapper { position: fixed; inset: 0; z-index: 200; overflow-y: auto; transition: background 0.3s, color 0.3s; }
+.reader-nav { position: sticky; top: 0; padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; z-index: 201; opacity: 0; transition: opacity 0.3s; background: inherit; }
+.reader-wrapper:hover .reader-nav { opacity: 1; }
+.reader-content { max-width: 800px; margin: 0 auto; padding: 60px 40px 100px; transition: font-size 0.3s, font-family 0.3s; min-height: 100vh; }
+.reader-title { font-family: var(--serif); font-size: 32px; font-weight: 700; margin-bottom: 40px; text-align: center; }
+.reader-p { line-height: 2; margin-bottom: 20px; text-indent: 2em; position: relative; }
+.reader-p:hover .p-comment-btn { opacity: 1; }
+.p-comment-btn { position: absolute; right: -40px; top: 0; width: 30px; height: 30px; border-radius: 50%; background: rgba(0,0,0,0.1); color: inherit; display: flex; align-items: center; justify-content: center; opacity: 0; cursor: pointer; transition: 0.2s; font-size: 14px; }
+.p-comment-btn:hover { background: rgba(0,0,0,0.2); transform: scale(1.1); }
+.p-comment-btn.has-comments { opacity: 1; background: var(--accent); color: #000; font-weight: bold; }
+
+.reader-settings { position: fixed; right: 24px; bottom: 24px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; width: 260px; box-shadow: var(--shadow); z-index: 202; transform: translateY(150%); transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+.reader-settings.open { transform: translateY(0); }
+.settings-group { margin-bottom: 20px; }
+.settings-group:last-child { margin-bottom: 0; }
+.settings-label { font-size: 12px; color: var(--text-muted); margin-bottom: 10px; }
+.theme-options { display: flex; gap: 10px; }
+.theme-btn { width: 36px; height: 36px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; }
+.theme-btn.active { border-color: var(--accent); transform: scale(1.1); }
+.font-options { display: flex; flex-direction: column; gap: 8px; }
+
+/* Comments */
+.comments-section { padding: 0 20px 60px; }
+.comment-form { background: rgba(255,255,255,0.02); padding: 20px; border-radius: var(--radius); border: 1px solid var(--border); margin-bottom: 30px; }
+.comment-item { padding: 20px 0; border-bottom: 1px solid var(--border); }
+.comment-header { display: flex; justify-content: space-between; margin-bottom: 12px; }
+.comment-author { font-weight: 500; font-size: 14px; }
+.comment-time { font-size: 12px; color: var(--text-muted); }
+.comment-content { font-size: 14px; line-height: 1.6; color: var(--text-main); white-space: pre-wrap; }
+.comment-context { font-size: 12px; color: var(--accent); margin-bottom: 8px; padding-left: 10px; border-left: 2px solid var(--accent); }
+
+/* Paragraph Comment Drawer */
+.p-drawer { position: fixed; top: 0; right: 0; bottom: 0; width: 400px; background: var(--bg-card); border-left: 1px solid var(--border); box-shadow: -8px 0 30px rgba(0,0,0,0.5); z-index: 250; transform: translateX(100%); transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); display: flex; flex-direction: column; }
+.p-drawer.open { transform: translateX(0); }
+.p-drawer-header { padding: 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+.p-drawer-content { flex: 1; overflow-y: auto; padding: 20px; }
+.p-quote { font-size: 13px; line-height: 1.6; color: var(--text-muted); padding: 12px; background: rgba(0,0,0,0.2); border-radius: 8px; margin-bottom: 20px; font-style: italic; }
+
+/* Upload Form */
+.upload-container { max-width: 800px; margin: 0 auto; padding: 0 20px; }
+.form-group { margin-bottom: 24px; }
+.form-group label { display: block; font-size: 14px; font-weight: 500; margin-bottom: 8px; color: var(--text-muted); }
+.form-group input, .form-group textarea { width: 100%; }
+
+/* Loading */
+.spinner { width: 24px; height: 24px; border: 3px solid rgba(255,255,255,0.1); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; margin: 20px auto; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Login Modal */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.8); backdrop-filter: blur(4px); z-index: 500; display: flex; justify-content: center; align-items: center; }
+.modal-content { background: var(--bg-card); padding: 32px; border-radius: var(--radius); border: 1px solid var(--border); width: 100%; max-width: 400px; box-shadow: 0 20px 40px rgba(0,0,0,0.5); }
+.modal-title { font-family: var(--serif); font-size: 24px; text-align: center; margin-bottom: 24px; color: var(--accent); }
+
+/* Themes */
+.theme-dark { background: #0f1115; color: #e8e8e8; }
+.theme-light { background: #fdfaf6; color: #2c2e33; }
+.theme-sepia { background: #f4ecd8; color: #433422; }
+.theme-green { background: #e3f2e1; color: #2e4a2c; }
+
+@media (max-width: 768px) {
+  .navbar { padding: 0 16px; overflow-x: auto; overflow-y: hidden; flex-wrap: nowrap; height: 60px; -ms-overflow-style: none; scrollbar-width: none; }
+  .navbar::-webkit-scrollbar { display: none; }
+  .nav-brand { font-size: 18px; margin-right: 12px; flex-shrink: 0; }
+  .nav-brand span { font-size: 20px !important; }
+  .nav-links { gap: 12px; flex-shrink: 0; }
+  .nav-item { font-size: 13px; }
+  .main-content { padding-top: 60px; }
+
+  .hero { padding: 40px 16px 40px; }
+  .hero h1 { font-size: 28px; margin-bottom: 12px; }
+  .hero p { font-size: 14px; }
+  
+  .novel-grid { grid-template-columns: 1fr; gap: 16px; padding: 0 16px; }
+  .novel-cover { height: 180px; }
+  
+  .detail-header { flex-direction: column; align-items: center; text-align: center; margin: 0 16px 30px; padding: 24px 16px; }
+  .detail-cover { width: 160px; height: 220px; }
+  .detail-title { font-size: 24px; }
+  .detail-stats { flex-wrap: wrap; justify-content: center; gap: 12px; }
+  .detail-desc { font-size: 14px; text-align: left; }
+  .detail-actions { flex-direction: column; width: 100%; gap: 12px; }
+  .detail-actions .btn { width: 100%; justify-content: center; }
+  
+  .chapter-list { grid-template-columns: 1fr; padding: 0 16px; gap: 12px; }
+  
+  .reader-nav { padding: 12px; flex-wrap: wrap; gap: 8px; justify-content: space-between; opacity: 1; background: var(--bg-card); border-bottom: 1px solid var(--border); }
+  .reader-content { padding: 20px 16px 80px; }
+  .reader-title { font-size: 24px; margin-bottom: 24px; }
+  
+  .p-comment-btn { position: relative; right: auto; top: auto; display: inline-flex; margin-left: 8px; vertical-align: middle; opacity: 0.8; }
+  .reader-p:hover .p-comment-btn { opacity: 1; }
+  
+  .reader-settings { right: 0; left: 0; bottom: 0; width: 100%; border-radius: 16px 16px 0 0; }
+  
+  .p-drawer { width: 100%; }
+  
+  .comments-section { padding: 0 16px 40px; }
+  .comment-form { padding: 16px; }
+  
+  .modal-content { padding: 20px; width: 90%; }
+  
+  .upload-container { padding: 0 16px; }
+}
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+{% verbatim %}
+const { useState, useEffect, useRef, useMemo } = React;
+
+const API_BASE = '/api/share';
+const AUTH_BASE = '/api/auth';
+
+const THEMES = [
+  { id: 'dark', hex: '#0f1115', label: '夜间' },
+  { id: 'light', hex: '#fdfaf6', label: '护眼' },
+  { id: 'sepia', hex: '#f4ecd8', label: '羊皮纸' },
+  { id: 'green', hex: '#e3f2e1', label: '豆沙绿' }
+];
+
+const FONTS = [
+  { id: 'sans-serif', label: '系统黑体', css: 'var(--sans)' },
+  { id: 'serif', label: '宋体/明朝', css: 'var(--serif)' }
+];
+
+// Utility: fetch wrapper
+async function fetchApi(path, options = {}) {
+  const token = localStorage.getItem('mf_token');
+  const headers = { 'Content-Type': 'application/json', ...options.headers };
+  if (token) headers['Authorization'] = `Token ${token}`;
+  
+  const res = await fetch(`${path}`, { ...options, headers });
+  const isJson = res.headers.get('content-type')?.includes('application/json');
+  if (!res.ok) {
+    const errData = isJson ? await res.json() : await res.text();
+    throw new Error(errData.detail || errData.error || '请求失败');
+  }
+  return isJson ? res.json() : null;
+}
+
+// --------------------------------------------------------
+// Auth Modal
+// --------------------------------------------------------
+function AuthModal({ onClose, onLogin }) {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState('');
+
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setLoading(true); setErr('');
+    try {
+      const data = await fetchApi(`${AUTH_BASE}/login/`, { method: 'POST', body: JSON.stringify({email, password}) });
+      localStorage.setItem('mf_token', data.token);
+      onLogin(data.user);
+    } catch(err) { setErr(err.message); }
+    setLoading(false);
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content" onClick={e=>e.stopPropagation()}>
+        <h2 className="modal-title">读者登录</h2>
+        <form onSubmit={handleLogin}>
+          <div className="form-group">
+            <label>邮箱</label>
+            <input type="email" value={email} onChange={e=>setEmail(e.target.value)} required />
+          </div>
+          <div className="form-group">
+            <label>密码</label>
+            <input type="password" value={password} onChange={e=>setPassword(e.target.value)} required />
+          </div>
+          {err && <div style={{color:'#ff6b6b', fontSize:13, marginBottom:16}}>{err}</div>}
+          <button type="submit" className="btn btn-primary" style={{width:'100%'}} disabled={loading}>
+            {loading ? '登录中...' : '登录 / 注册'}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// --------------------------------------------------------
+// Reading Page
+// --------------------------------------------------------
+function Reader({ chapterId, novel, onClose, user, onLoginReq }) {
+  const [chapter, setChapter] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [showSettings, setShowSettings] = useState(false);
+  const [theme, setTheme] = useState(novel?.bg_color || 'dark');
+  const [font, setFont] = useState(novel?.font_family || 'sans-serif');
+  const [fontSize, setFontSize] = useState(18);
+  
+  // Comments state
+  const [comments, setComments] = useState([]);
+  const [pDrawerOpen, setPDrawerOpen] = useState(false);
+  const [activePIdx, setActivePIdx] = useState(null);
+  const [commentText, setCommentText] = useState('');
+
+  useEffect(() => {
+    const loadData = async () => {
+      setLoading(true);
+      try {
+        const [chData, commData] = await Promise.all([
+          fetchApi(`${API_BASE}/chapters/${chapterId}/`),
+          fetchApi(`${API_BASE}/novels/${novel.id}/comments/?chapter_id=${chapterId}`)
+        ]);
+        setChapter(chData);
+        setComments(commData);
+      } catch(err) { alert(err.message); onClose(); }
+      setLoading(false);
+    };
+    loadData();
+  }, [chapterId, novel.id]);
+
+  const paragraphs = useMemo(() => {
+    if (!chapter?.content) return [];
+    return chapter.content.split('\n').filter(p => p.trim());
+  }, [chapter]);
+
+  const commentsByP = useMemo(() => {
+    const map = {};
+    comments.forEach(c => {
+      if (c.paragraph_index !== null) {
+        if (!map[c.paragraph_index]) map[c.paragraph_index] = [];
+        map[c.paragraph_index].push(c);
+      }
+    });
+    return map;
+  }, [comments]);
+
+  const handlePostComment = async () => {
+    if (!user) return onLoginReq();
+    if (!commentText.trim()) return;
+    try {
+      const data = await fetchApi(`${API_BASE}/novels/${novel.id}/comments/`, {
+        method: 'POST',
+        body: JSON.stringify({ chapter_id: chapterId, paragraph_index: activePIdx, content: commentText })
+      });
+      setComments([data, ...comments]);
+      setCommentText('');
+    } catch(err) { alert(err.message); }
+  };
+
+  if (loading) return <div className="reader-wrapper theme-dark"><div className="spinner" style={{marginTop:'40vh'}}></div></div>;
+
+  return (
+    <div className={`reader-wrapper theme-${theme}`}>
+      <div className="reader-nav">
+        <button className="btn btn-secondary" onClick={onClose}>← 返回详情页面</button>
+        <span style={{fontSize:14, opacity:0.8}}>{chapter.title}</span>
+        <button className="btn btn-secondary" onClick={()=>setShowSettings(!showSettings)}>阅读设置</button>
+      </div>
+
+      <div className="reader-content" style={{fontFamily: FONTS.find(f=>f.id===font)?.css, fontSize: `${fontSize}px`}}>
+        <h1 className="reader-title">{chapter.title}</h1>
+        
+        {paragraphs.map((p, idx) => {
+          const pComments = commentsByP[idx] || [];
+          return (
+            <div key={idx} className="reader-p">
+              {p}
+              <div 
+                className={`p-comment-btn ${pComments.length ? 'has-comments' : ''}`}
+                onClick={() => { setActivePIdx(idx); setPDrawerOpen(true); }}
+                title="段落评论"
+              >
+                {pComments.length ? pComments.length : '+'}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className={`reader-settings ${showSettings ? 'open' : ''}`}>
+        <div className="settings-group">
+          <div className="settings-label">背景主题</div>
+          <div className="theme-options">
+            {THEMES.map(t => (
+              <div key={t.id} className={`theme-btn ${theme===t.id?'active':''}`} 
+                   style={{background: t.hex}} onClick={()=>setTheme(t.id)} title={t.label} />
+            ))}
+          </div>
+        </div>
+        <div className="settings-group">
+          <div className="settings-label">字体</div>
+          <div className="font-options">
+            {FONTS.map(f => (
+              <button key={f.id} className={`btn ${font===f.id?'btn-primary':'btn-secondary'}`} 
+                      onClick={()=>setFont(f.id)}>{f.label}</button>
+            ))}
+          </div>
+        </div>
+        <div className="settings-group">
+          <div className="settings-label">字号 ({fontSize}px)</div>
+          <div style={{display:'flex', gap:10}}>
+            <button className="btn btn-secondary" style={{flex:1}} onClick={()=>setFontSize(s=>Math.max(14,s-2))}>A-</button>
+            <button className="btn btn-secondary" style={{flex:1}} onClick={()=>setFontSize(s=>Math.min(32,s+2))}>A+</button>
+          </div>
+        </div>
+      </div>
+
+      <div className={`p-drawer ${pDrawerOpen ? 'open' : ''}`}>
+        <div className="p-drawer-header">
+          <h3>段落评论</h3>
+          <button className="btn btn-secondary" style={{padding:'4px 8px'}} onClick={()=>setPDrawerOpen(false)}>✕</button>
+        </div>
+        <div className="p-drawer-content">
+          {activePIdx !== null && <div className="p-quote">"{paragraphs[activePIdx]?.substring(0,60)}..."</div>}
+          
+          <div className="comment-form" style={{padding:0, border:'none', background:'none'}}>
+            <textarea value={commentText} onChange={e=>setCommentText(e.target.value)} 
+                      placeholder="写下你的想法..." rows={3} style={{marginBottom:10}} />
+            <button className="btn btn-primary" onClick={handlePostComment}>发布段评</button>
+          </div>
+
+          <div>
+             {commentsByP[activePIdx]?.map(c => (
+              <div key={c.id} className="comment-item">
+                <div className="comment-header">
+                  <span className="comment-author">{c.user.email.split('@')[0]}</span>
+                  <span className="comment-time">{new Date(c.created_at).toLocaleString()}</span>
+                </div>
+                <div className="comment-content">{c.content}</div>
+              </div>
+            )) || <div style={{textAlign:'center', color:'var(--text-muted)', margin:'40px 0'}}>暂无评论，来做第一个发言的人吧！</div>}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// --------------------------------------------------------
+// Detail Page
+// --------------------------------------------------------
+function NovelDetail({ novelId, onBack, onReadChapter, user, onLoginReq }) {
+  const [novel, setNovel] = useState(null);
+  const [comments, setComments] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [favStatus, setFavStatus] = useState(false);
+  
+  const [commentText, setCommentText] = useState('');
+  const [rating, setRating] = useState(5);
+
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const [nData, cData] = await Promise.all([
+        fetchApi(`${API_BASE}/novels/${novelId}/`),
+        fetchApi(`${API_BASE}/novels/${novelId}/comments/?chapter_id=`) // Only doc-level comments
+      ]);
+      setNovel(nData);
+      setComments(cData);
+      setFavStatus(nData.is_favorited);
+    } catch(err) { alert(err.message); onBack(); }
+    setLoading(false);
+  };
+
+  useEffect(() => { loadData(); }, [novelId, user]);
+
+  const toggleFav = async () => {
+    if (!user) return onLoginReq();
+    try {
+      const res = await fetchApi(`${API_BASE}/novels/${novelId}/favorite/`, {method:'POST'});
+      setFavStatus(res.status === 'favorited');
+    } catch(err) { alert(err.message); }
+  };
+
+  const handleComment = async () => {
+    if (!user) return onLoginReq();
+    if (!commentText.trim()) return;
+    try {
+      await fetchApi(`${API_BASE}/novels/${novelId}/comments/`, {
+        method: 'POST',
+        body: JSON.stringify({ content: commentText, rating: parseInt(rating) })
+      });
+      setCommentText(''); setRating(5);
+      loadData(); // reload to get updated ratings & comments
+    } catch(err) { alert(err.message); }
+  };
+
+  if (loading || !novel) return <div className="spinner"></div>;
+
+  return (
+    <div>
+      <div style={{padding:'0 20px', marginBottom:20}}>
+        <button className="btn btn-secondary" onClick={onBack}>← 返回书城</button>
+      </div>
+
+      <div className="detail-header">
+        <div className="detail-cover">
+          {novel.cover ? <img src={novel.cover} /> : <div className="novel-cover-placeholder">{novel.title.charAt(0)}</div>}
+        </div>
+        <div className="detail-info">
+          <h1 className="detail-title">{novel.title}</h1>
+          <div className="detail-author">作者：{novel.author.email.split('@')[0]}</div>
+          <div className="detail-stats">
+            <div className="stat-item"><span className="stat-val">{novel.chapter_count}</span><span className="stat-lbl">章节数</span></div>
+            <div className="stat-item"><span className="stat-val">{(novel.total_words/10000).toFixed(1)}万</span><span className="stat-lbl">字数</span></div>
+            <div className="stat-item"><span className="stat-val" style={{color:'var(--accent)'}}>{novel.rating_avg.toFixed(1)}</span><span className="stat-lbl">评分</span></div>
+            <div className="stat-item"><span className="stat-val">{novel.status==='published'?'连载中':'草稿'}</span><span className="stat-lbl">状态</span></div>
+          </div>
+          <div className="detail-desc">{novel.synopsis || '暂无简介'}</div>
+          <div className="detail-actions">
+            <button className="btn btn-primary" onClick={() => novel.chapters.length && onReadChapter(novel, novel.chapters[0].id)}>
+              {novel.chapters.length ? '开始阅读' : '暂无章节'}
+            </button>
+            <button className="btn btn-secondary" onClick={toggleFav}>
+              {favStatus ? '♥ 已在书架' : '♡ 加入书架'}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <h2 className="section-title">目录 ({novel.chapter_count}章)</h2>
+      <div className="chapter-list">
+        {novel.chapters.map(ch => (
+          <div key={ch.id} className="chapter-item" onClick={()=>onReadChapter(novel, ch.id)}>
+            <div className="chapter-item-title">第{ch.number}章 {ch.title}</div>
+            <div className="chapter-item-meta">{new Date(ch.created_at).toLocaleDateString()} · {ch.word_count}字</div>
+          </div>
+        ))}
+        {!novel.chapters.length && <div style={{padding:'20px', color:'var(--text-muted)'}}>作者还在努力码字中...</div>}
+      </div>
+
+      <h2 className="section-title">作品书评</h2>
+      <div className="comments-section">
+        <div className="comment-form">
+          <h3 style={{fontSize:16, marginBottom:16}}>发表书评</h3>
+          <div style={{display:'flex', gap:16, marginBottom:16, alignItems:'center'}}>
+            <label style={{fontSize:14, color:'var(--text-muted)'}}>打个分吧：</label>
+            <select value={rating} onChange={e=>setRating(e.target.value)} style={{width:80}}>
+              <option value="5">5星</option><option value="4">4星</option><option value="3">3星</option>
+              <option value="2">2星</option><option value="1">1星</option>
+            </select>
+          </div>
+          <textarea value={commentText} onChange={e=>setCommentText(e.target.value)} 
+                    placeholder="这部小说怎么样？有什么期待？" rows={4} style={{width:'100%', marginBottom:16}} />
+          <div style={{textAlign:'right'}}><button className="btn btn-primary" onClick={handleComment}>发布书评</button></div>
+        </div>
+
+        <div>
+          {comments.map(c => (
+            <div key={c.id} className="comment-item">
+              <div className="comment-header">
+                <div>
+                  <span className="comment-author">{c.user.email.split('@')[0]}</span>
+                  {c.rating && <span style={{marginLeft:8, color:'var(--accent)', fontSize:12}}>评分: {c.rating}星</span>}
+                </div>
+                <span className="comment-time">{new Date(c.created_at).toLocaleString()}</span>
+              </div>
+              <div className="comment-content">{c.content}</div>
+            </div>
+          ))}
+          {!comments.length && <div style={{textAlign:'center', color:'var(--text-muted)', padding:'40px 0'}}>还没有人评价，去抢沙发吧！</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// --------------------------------------------------------
+// Upload UI
+// --------------------------------------------------------
+function UploadPanel({ user, onBack, onComplete }) {
+  const [title, setTitle] = useState('');
+  const [synopsis, setSynopsis] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setSubmitting(true);
+    try {
+      const res = await fetchApi(`${API_BASE}/novels/`, {
+        method:'POST', body: JSON.stringify({title, synopsis, status:'published'})
+      });
+      alert('创建成功！后续请在创作者后台添加章节(API可用)。本页面主要展示阅读体验。');
+      onComplete(res.id);
+    } catch(err) { alert(err.message); }
+    setSubmitting(false);
+  };
+
+  return (
+    <div className="upload-container">
+      <div style={{marginBottom:30}}>
+        <button className="btn btn-secondary" onClick={onBack}>← 返回书城</button>
+      </div>
+      <h2 style={{fontFamily:'var(--serif)', fontSize:32, marginBottom:32}}>发布新作</h2>
+      <form onSubmit={handleSubmit}>
+        <div className="form-group">
+          <label>作品名称</label>
+          <input value={title} onChange={e=>setTitle(e.target.value)} required placeholder="吸引人的标题..."/>
+        </div>
+        <div className="form-group">
+          <label>作品简介</label>
+          <textarea value={synopsis} onChange={e=>setSynopsis(e.target.value)} rows={6} required placeholder="一段引人入胜的故事简介..."/>
+        </div>
+        <button type="submit" className="btn btn-primary" disabled={submitting}>
+          {submitting ? '发布中...' : '提交作品'}
+        </button>
+      </form>
+    </div>
+  );
+}
+
+// --------------------------------------------------------
+// Library (My Favorites)
+// --------------------------------------------------------
+function Library({ onSelectNovel }) {
+  const [favs, setFavs] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchApi(`${API_BASE}/my-favorites/`).then(res => {
+      setFavs(res); setLoading(false);
+    }).catch(e => { alert(e.message); setLoading(false); });
+  }, []);
+
+  if (loading) return <div className="spinner"></div>;
+
+  if (favs.length === 0) return (
+    <div style={{textAlign:'center', padding:'100px 20px', color:'var(--text-muted)'}}>
+      <h2 style={{fontFamily:'var(--serif)', fontSize:24, marginBottom:16}}>书架空空如也</h2>
+      <p>去发现一些精彩的故事吧</p>
+    </div>
+  );
+
+  return (
+    <div>
+      <h2 className="section-title">我的书架</h2>
+      <div className="novel-grid">
+        {favs.map(f => {
+          const novel = f.novel;
+          return (
+          <div key={f.id} className="novel-card" onClick={()=>onSelectNovel(novel.id)}>
+            <div className="novel-cover">
+              {novel.cover ? <img src={novel.cover} /> : <div className="novel-cover-placeholder">{novel.title.charAt(0)}</div>}
+            </div>
+            <div className="novel-info">
+              <div className="novel-title">{novel.title}</div>
+              <div className="novel-author">{novel.author.email.split('@')[0]}</div>
+              <div className="novel-meta">
+                <span>更新至 {novel.chapter_count} 章</span>
+                <span>{new Date(novel.updated_at).toLocaleDateString()} 更新</span>
+              </div>
+            </div>
+          </div>
+        )})}
+      </div>
+    </div>
+  );
+}
+
+// --------------------------------------------------------
+// Main App Component
+// --------------------------------------------------------
+function App() {
+  const [view, setView] = useState('home'); // home, detail, read, upload, library
+  const [activeNovelId, setActiveNovelId] = useState(null);
+  const [activeChapterId, setActiveChapterId] = useState(null);
+  const [novelCtx, setNovelCtx] = useState(null); // Used when reading
+  
+  const [novels, setNovels] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState(null);
+  const [showAuth, setShowAuth] = useState(false);
+
+  // Check auth
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const res = await fetchApi(`${AUTH_BASE}/me/`);
+        if (res.authenticated) setUser({email: res.email, id: res.id});
+      } catch(e) { /* unauth */ }
+    };
+    if (localStorage.getItem('mf_token')) checkAuth();
+  }, []);
+
+  const loadNovels = async () => {
+    setLoading(true);
+    try { setNovels(await fetchApi(`${API_BASE}/novels/`)); } 
+    catch(err) { alert(err.message); }
+    setLoading(false);
+  };
+
+  useEffect(() => { if (view === 'home') loadNovels(); }, [view]);
+
+  // Navigation Helpers
+  const goHome = () => setView('home');
+  const goDetail = (id) => { setActiveNovelId(id); setView('detail'); };
+  const goRead = (novelObj, chapterId) => { setNovelCtx(novelObj); setActiveChapterId(chapterId); setView('read'); };
+  const goUpload = () => { if(!user) setShowAuth(true); else setView('upload'); };
+  const goLibrary = () => { if(!user) setShowAuth(true); else setView('library'); };
+  
+  const handleLogout = () => {
+    localStorage.removeItem('mf_token');
+    setUser(null);
+    goHome();
+  };
+
+  return (
+    <>
+      <nav className="navbar">
+        <div className="nav-brand" onClick={goHome}>
+          <span style={{fontSize:24}}>♦</span> 记忆库书城
+        </div>
+        <div className="nav-links">
+          <div className={`nav-item ${view==='home'?'active':''}`} onClick={goHome}>发现</div>
+          <div className={`nav-item ${view==='library'?'active':''}`} onClick={goLibrary}>书架</div>
+          <div className="nav-item" onClick={goUpload}>作家专区</div>
+          
+          <div style={{width: 1, height: 20, background: 'var(--border)', margin: '0 10px'}}></div>
+          
+          {user ? (
+            <div style={{display:'flex', alignItems:'center', gap:16}}>
+              <span style={{fontSize:13, color:'var(--text-muted)'}}>{user.email.split('@')[0]}</span>
+              <button className="btn btn-secondary" style={{padding:'4px 10px', fontSize:12}} onClick={handleLogout}>退出</button>
+            </div>
+          ) : (
+             <button className="btn btn-primary" onClick={()=>setShowAuth(true)}>登录 / 注册</button>
+          )}
+        </div>
+      </nav>
+
+      <div className="main-content">
+        {view === 'home' && (
+          <div>
+            <div className="hero">
+              <h1>探索无限潜能的故事宇宙</h1>
+              <p>在这个由记忆引擎驱动的创作平台上，发现新锐作家的惊艳之作。沉浸式阅读，全方位互动，每一段文字都可以是思想的碰撞。</p>
+            </div>
+            
+            {loading ? <div className="spinner" /> : (
+              <div className="novel-grid">
+                {novels.map(n => (
+                  <div key={n.id} className="novel-card" onClick={()=>goDetail(n.id)}>
+                    <div className="novel-cover">
+                      {n.cover ? <img src={n.cover} /> : <div className="novel-cover-placeholder">{n.title.charAt(0)}</div>}
+                    </div>
+                    <div className="novel-info">
+                      <div className="novel-title">{n.title}</div>
+                      <div className="novel-author">{n.author.email.split('@')[0]}</div>
+                      <div className="novel-desc">{n.synopsis}</div>
+                      <div className="novel-meta">
+                        <span>{n.chapter_count} 章 · {(n.total_words/10000).toFixed(1)}万字</span>
+                        <span>{n.rating_avg.toFixed(1)} 分</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                {!novels.length && <div style={{textAlign:'center', gridColumn:'1/-1', color:'var(--text-muted)', padding:'60px 0'}}>暂无已发布的书籍</div>}
+              </div>
+            )}
+          </div>
+        )}
+
+        {view === 'detail' && <NovelDetail novelId={activeNovelId} onBack={goHome} onReadChapter={goRead} user={user} onLoginReq={()=>setShowAuth(true)} />}
+        
+        {view === 'read' && <Reader chapterId={activeChapterId} novel={novelCtx} onClose={()=>goDetail(novelCtx.id)} user={user} onLoginReq={()=>setShowAuth(true)} />}
+        
+        {view === 'upload' && <UploadPanel user={user} onBack={goHome} onComplete={(id)=>goDetail(id)} />}
+        
+        {view === 'library' && <Library onSelectNovel={goDetail} />}
+      </div>
+
+      {showAuth && <AuthModal onClose={()=>setShowAuth(false)} onLogin={(u)=>{setUser({email:u.email, id:u.id}); setShowAuth(false);}} />}
+    </>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<App />);
+{% endverbatim %}
+</script>
+</body>
+</html>

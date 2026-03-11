@@ -1,0 +1,146 @@
+{% extends 'dashboard/base.html' %}
+{% block title %}首页概览{% endblock %}
+{% block page_title %}首页概览{% endblock %}
+
+{% block content %}
+<!-- 统计卡片 -->
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-icon">{% include 'dashboard/_icon.html' with name='user' size=20 %}</div>
+    <div class="stat-value">{{ stats.user_count }}</div>
+    <div class="stat-label">注册用户</div>
+    <div class="stat-sub">{{ stats.active_user_count }} 个活跃</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon">{% include 'dashboard/_icon.html' with name='pen' size=20 %}</div>
+    <div class="stat-value">{{ stats.project_count }}</div>
+    <div class="stat-label">写作项目</div>
+    <div class="stat-sub">共 {{ stats.chapter_count }} 章节</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon">{% include 'dashboard/_icon.html' with name='book' size=20 %}</div>
+    <div class="stat-value">{{ stats.novel_count }}</div>
+    <div class="stat-label">共享小说</div>
+    <div class="stat-sub">{{ stats.published_novel_count }} 已发布</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon">{% include 'dashboard/_icon.html' with name='chat' size=20 %}</div>
+    <div class="stat-value">{{ stats.comment_count }}</div>
+    <div class="stat-label">评论总数</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon">{% include 'dashboard/_icon.html' with name='search' size=20 %}</div>
+    <div class="stat-value">{{ stats.ocr_count }}</div>
+    <div class="stat-label">OCR 项目</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon">{% include 'dashboard/_icon.html' with name='layers' size=20 %}</div>
+    <div class="stat-value">{{ stats.memory_node_count }}</div>
+    <div class="stat-label">记忆节点</div>
+    <div class="stat-sub">{{ stats.character_count }} 个角色</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon">{% include 'dashboard/_icon.html' with name='bolt' size=20 %}</div>
+    <div class="stat-value">{{ stats.total_tokens|default:0 }}</div>
+    <div class="stat-label">总 Token 用量</div>
+    <div class="stat-sub">共 {{ stats.total_prompts|default:0 }} 次请求</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon">{% include 'dashboard/_icon.html' with name='lock' size=20 %}</div>
+    <div class="stat-value">{{ stats.code_count }}</div>
+    <div class="stat-label">验证码记录</div>
+  </div>
+</div>
+
+<div class="two-col">
+  <!-- 最近用户 -->
+  <div class="card">
+    <div class="card-header">
+      <h2><span class="with-ic">{% include 'dashboard/_icon.html' with name='spark' size=16 %}最近注册用户</span></h2>
+      <a href="{% url 'dashboard:user_list' %}" class="btn btn-outline btn-sm">查看全部</a>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>邮箱</th><th>状态</th><th>权限</th></tr>
+        </thead>
+        <tbody>
+          {% for u in recent_users %}
+          <tr>
+            <td><a href="{% url 'dashboard:user_edit' u.pk %}">{{ u.email }}</a></td>
+            <td>
+              {% if u.is_active %}<span class="badge badge-success">正常</span>
+              {% else %}<span class="badge badge-danger">禁用</span>{% endif %}
+            </td>
+            <td>
+              {% if u.is_superuser %}<span class="badge badge-accent">超管</span>
+              {% elif u.is_staff %}<span class="badge badge-info">员工</span>
+              {% else %}<span class="badge badge-muted">普通</span>{% endif %}
+            </td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="3" class="td-muted" style="text-align:center;padding:20px">暂无用户</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- 最近小说 -->
+  <div class="card">
+    <div class="card-header">
+      <h2><span class="with-ic">{% include 'dashboard/_icon.html' with name='book' size=16 %}最新共享小说</span></h2>
+      <a href="{% url 'dashboard:novel_list' %}" class="btn btn-outline btn-sm">查看全部</a>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>书名</th><th>作者</th><th>状态</th></tr>
+        </thead>
+        <tbody>
+          {% for novel in recent_novels %}
+          <tr>
+            <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ novel.title }}</td>
+            <td class="td-muted">{{ novel.author.email }}</td>
+            <td>
+              {% if novel.status == 'published' %}<span class="badge badge-success">已发布</span>
+              {% else %}<span class="badge badge-muted">草稿</span>{% endif %}
+            </td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="3" class="td-muted" style="text-align:center;padding:20px">暂无小说</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- 最近评论 -->
+<div class="card">
+  <div class="card-header">
+    <h2><span class="with-ic">{% include 'dashboard/_icon.html' with name='chat' size=16 %}最新评论</span></h2>
+    <a href="{% url 'dashboard:comment_list' %}" class="btn btn-outline btn-sm">查看全部</a>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>用户</th><th>小说</th><th>内容摘要</th><th>评分</th><th>时间</th></tr>
+      </thead>
+      <tbody>
+        {% for c in recent_comments %}
+        <tr>
+          <td>{{ c.user.email }}</td>
+          <td>{{ c.novel.title }}</td>
+          <td class="td-muted" style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ c.content|truncatechars:60 }}</td>
+          <td>{% if c.rating %}{% include 'dashboard/_icon.html' with name='star' size=12 %} {{ c.rating }}{% else %}<span class="td-muted">—</span>{% endif %}</td>
+          <td class="td-muted">{{ c.created_at|date:"m-d H:i" }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="5" class="td-muted" style="text-align:center;padding:20px">暂无评论</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

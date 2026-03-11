@@ -1,0 +1,83 @@
+{% extends 'dashboard/base.html' %}
+{% block title %}小说广场{% endblock %}
+{% block page_title %}小说广场{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header-left">
+    <h1>小说广场</h1>
+    <p>管理共享平台上的所有小说</p>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h2>小说列表</h2>
+    <form class="search-bar" method="get">
+      <div class="search-input">
+        <span class="search-icon">{% include 'dashboard/_icon.html' with name='search' size=14 %}</span>
+        <input class="form-control" name="q" value="{{ q }}" placeholder="搜索书名或作者…">
+      </div>
+      <select class="form-control" name="status" style="width:120px">
+        <option value="" {% if not status_filter %}selected{% endif %}>全部状态</option>
+        <option value="published" {% if status_filter == 'published' %}selected{% endif %}>已发布</option>
+        <option value="draft" {% if status_filter == 'draft' %}selected{% endif %}>草稿</option>
+      </select>
+      <button class="btn btn-outline" type="submit">筛选</button>
+      {% if q or status_filter %}<a href="{% url 'dashboard:novel_list' %}" class="btn btn-outline">清除</a>{% endif %}
+    </form>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>书名</th><th>作者</th><th>状态</th><th>章节</th><th>评论</th><th>收藏</th><th>更新时间</th><th>操作</th></tr>
+      </thead>
+      <tbody>
+        {% for novel in page_obj %}
+        <tr>
+          <td><strong>{{ novel.title }}</strong></td>
+          <td class="td-muted">{{ novel.author.email }}</td>
+          <td>
+            {% if novel.status == 'published' %}
+              <span class="badge badge-success">已发布</span>
+            {% else %}
+              <span class="badge badge-muted">草稿</span>
+            {% endif %}
+          </td>
+          <td><span class="badge badge-info">{{ novel.chapter_count }}</span></td>
+          <td><span class="badge badge-accent">{{ novel.comment_count }}</span></td>
+          <td><span class="badge badge-warning">{{ novel.favorite_count }}</span></td>
+          <td class="td-muted">{{ novel.updated_at|date:"Y-m-d" }}</td>
+          <td>
+            <div class="action-group">
+              <form method="post" action="{% url 'dashboard:novel_toggle' novel.pk %}" style="display:inline">
+                {% csrf_token %}
+                {% if novel.status == 'published' %}
+                  <button type="submit" class="btn btn-xs" style="background:rgba(210,153,34,.1);color:#d29922;border-color:rgba(210,153,34,.3);font-size:11px;padding:3px 8px">下架</button>
+                {% else %}
+                  <button type="submit" class="btn btn-success btn-xs">发布</button>
+                {% endif %}
+              </form>
+              <form method="post" action="{% url 'dashboard:novel_delete' novel.pk %}"
+                    onsubmit="return confirm('确定删除小说《{{ novel.title }}》？所有章节、评论、收藏数据将同步删除！')" style="display:inline">
+                {% csrf_token %}
+                <button class="btn btn-danger btn-xs" type="submit">删除</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="8"><div class="empty-state"><div class="empty-icon">{% include 'dashboard/_icon.html' with name='book' size=36 %}</div><p>暂无共享小说</p></div></td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if page_obj.has_other_pages %}
+  <div class="pagination">
+    {% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}&q={{ q }}&status={{ status_filter }}">上一页</a>{% endif %}
+    <span class="current">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
+    {% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}&q={{ q }}&status={{ status_filter }}">下一页</a>{% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
