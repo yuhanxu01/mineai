@@ -130,13 +130,24 @@ class MeView(APIView):
         if not request.user.is_authenticated:
             return Response({'authenticated': False}, status=401)
         usage = getattr(request.user, 'token_usage', None)
+        cfg = SiteConfig.get()
+        has_own_key = bool(request.user.user_api_key)
         return Response({
             'authenticated': True,
             'email': request.user.email,
+            'has_own_key': has_own_key,
             'usage': {
                 'prompt_count': usage.prompt_count if usage else 0,
                 'input_tokens': usage.input_tokens if usage else 0,
                 'output_tokens': usage.output_tokens if usage else 0,
                 'total_tokens': usage.total_tokens if usage else 0,
+                'daily_prompt_count': usage.daily_prompt_count if usage else 0,
+                'daily_input_tokens': usage.daily_input_tokens if usage else 0,
+                'daily_output_tokens': usage.daily_output_tokens if usage else 0,
+            },
+            'quota': None if (has_own_key or request.user.is_staff) else {
+                'daily_prompt_count': cfg.free_daily_prompt_count,
+                'daily_input_tokens': cfg.free_daily_input_tokens,
+                'daily_output_tokens': cfg.free_daily_output_tokens,
             },
         })

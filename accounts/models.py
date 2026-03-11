@@ -1,5 +1,5 @@
 import random
-from datetime import timedelta
+from datetime import timedelta, date
 
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.db import models
@@ -48,6 +48,11 @@ class TokenUsage(models.Model):
     input_tokens = models.BigIntegerField(default=0, verbose_name='输入Token')
     output_tokens = models.BigIntegerField(default=0, verbose_name='输出Token')
     total_tokens = models.BigIntegerField(default=0, verbose_name='总Token')
+    # 每日用量（自动按自然日重置）
+    daily_date = models.DateField(null=True, blank=True, verbose_name='当日日期')
+    daily_prompt_count = models.PositiveIntegerField(default=0, verbose_name='今日提交次数')
+    daily_input_tokens = models.BigIntegerField(default=0, verbose_name='今日输入Token')
+    daily_output_tokens = models.BigIntegerField(default=0, verbose_name='今日输出Token')
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -55,13 +60,41 @@ class TokenUsage(models.Model):
 
     @classmethod
     def record(cls, user_id, usage_data):
-        cls.objects.get_or_create(user_id=user_id)
+        today = date.today()
+        obj, _ = cls.objects.get_or_create(user_id=user_id)
+        # 如果日期变了，先重置当日计数
+        if obj.daily_date != today:
+            cls.objects.filter(user_id=user_id).update(
+                daily_date=today,
+                daily_prompt_count=0,
+                daily_input_tokens=0,
+                daily_output_tokens=0,
+            )
         cls.objects.filter(user_id=user_id).update(
             prompt_count=models.F('prompt_count') + 1,
             input_tokens=models.F('input_tokens') + usage_data.get('prompt_tokens', 0),
             output_tokens=models.F('output_tokens') + usage_data.get('completion_tokens', 0),
             total_tokens=models.F('total_tokens') + usage_data.get('total_tokens', 0),
+            daily_prompt_count=models.F('daily_prompt_count') + 1,
+            daily_input_tokens=models.F('daily_input_tokens') + usage_data.get('prompt_tokens', 0),
+            daily_output_tokens=models.F('daily_output_tokens') + usage_data.get('completion_tokens', 0),
         )
+
+    @classmethod
+    def check_quota(cls, user_id):
+        """检查免费用户今日配额。返回 (ok: bool, error_msg: str)。"""
+        cfg = SiteConfig.get()
+        today = date.today()
+        obj, _ = cls.objects.get_or_create(user_id=user_id)
+        if obj.daily_date != today:
+            return True, ''
+        if obj.daily_prompt_count >= cfg.free_daily_prompt_count:
+            return False, f'今日提交次数已达上限（{cfg.free_daily_prompt_count} 次），请明日再试'
+        if obj.daily_input_tokens >= cfg.free_daily_input_tokens:
+            return False, f'今日输入Token已达上限（{cfg.free_daily_input_tokens:,}），请明日再试'
+        if obj.daily_output_tokens >= cfg.free_daily_output_tokens:
+            return False, f'今日输出Token已达上限（{cfg.free_daily_output_tokens:,}），请明日再试'
+        return True, ''
 
 
 class SiteConfig(models.Model):
@@ -85,6 +118,22 @@ class SiteConfig(models.Model):
         default=5,
         verbose_name='全局每分钟发码上限',
         help_text='全站每分钟最多发送的验证码次数，防止瞬时刷量',
+    )
+    # 免费用户每日 Token 配额
+    free_daily_input_tokens = models.PositiveIntegerField(
+        default=50000,
+        verbose_name='免费用户每日输入Token上限',
+        help_text='免费用户（未配置自己API密钥）每自然日最多消耗的输入Token数，默认 50,000',
+    )
+    free_daily_output_tokens = models.PositiveIntegerField(
+        default=25000,
+        verbose_name='免费用户每日输出Token上限',
+        help_text='免费用户（未配置自己API密钥）每自然日最多消耗的输出Token数，默认 25,000',
+    )
+    free_daily_prompt_count = models.PositiveIntegerField(
+        default=10,
+        verbose_name='免费用户每日提交次数上限',
+        help_text='免费用户每自然日最多提交的AI请求次数，默认 10 次',
     )
     updated_at = models.DateTimeField(auto_now=True, verbose_name='最后修改时间')
 
