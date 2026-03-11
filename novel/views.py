@@ -1,6 +1,10 @@
 import json
 from rest_framework.views import APIView
 from rest_framework.response import Response
+from django.http import StreamingHttpResponse, JsonResponse
+from django.views import View
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import csrf_exempt
 from novel.models import Project, Chapter
 from novel import agent
 from memory.pyramid import consolidate_universe
@@ -8,6 +12,18 @@ from memory.models import MemoryNode
 from core.llm import chat
 from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly
 from core.llm import chat
+
+
+def _token_auth(request):
+    """从 Authorization 头解析 Token，返回 User 或 None。"""
+    auth = request.META.get('HTTP_AUTHORIZATION', '')
+    if not auth.startswith('Token '):
+        return None
+    try:
+        from rest_framework.authtoken.models import Token
+        return Token.objects.select_related('user').get(key=auth[6:].strip()).user
+    except Exception:
+        return None
 
 
 class ProjectListView(APIView):
@@ -259,3 +275,89 @@ class GenerateIdeaView(APIView):
             return Response({"error": "AI生成的格式不是有效的JSON", "raw": response}, status=500)
         except Exception as e:
             return Response({"error": str(e)}, status=500)
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class WriteChapterStreamView(View):
+    """流式撰写章节，返回 text/event-stream。"""
+
+    def post(self, request, chapter_id):
+        user = _token_auth(request)
+        if not user:
+            return JsonResponse({"error": "需要认证"}, status=401)
+
+        data = json.loads(request.body or b'{}')
+        instruction = data.get('instruction', '')
+
+        try:
+            chapter = Chapter.objects.get(id=chapter_id)
+        except Chapter.DoesNotExist:
+            return JsonResponse({"error": "未找到"}, status=404)
+        if chapter.project.user and chapter.project.user != user:
+            return JsonResponse({"error": "无权操作"}, status=403)
+
+        from core.llm import _get_config
+        try:
+            config = _get_config()
+        except ValueError as e:
+            return JsonResponse({"error": str(e)}, status=400)
+
+        user_id = user.id
+        project_id = chapter.project_id
+
+        def generate():
+            try:
+                yield from agent.write_chapter_stream(
+                    project_id, chapter_id, instruction,
+                    user_id=user_id, config=config,
+                )
+            except Exception as e:
+                yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+        resp = StreamingHttpResponse(generate(), content_type='text/event-stream')
+        resp['Cache-Control'] = 'no-cache'
+        resp['X-Accel-Buffering'] = 'no'
+        return resp
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class ContinueWritingStreamView(View):
+    """流式续写章节，返回 text/event-stream。"""
+
+    def post(self, request, chapter_id):
+        user = _token_auth(request)
+        if not user:
+            return JsonResponse({"error": "需要认证"}, status=401)
+
+        data = json.loads(request.body or b'{}')
+        instruction = data.get('instruction', '')
+
+        try:
+            chapter = Chapter.objects.get(id=chapter_id)
+        except Chapter.DoesNotExist:
+            return JsonResponse({"error": "未找到"}, status=404)
+        if chapter.project.user and chapter.project.user != user:
+            return JsonResponse({"error": "无权操作"}, status=403)
+
+        from core.llm import _get_config
+        try:
+            config = _get_config()
+        except ValueError as e:
+            return JsonResponse({"error": str(e)}, status=400)
+
+        user_id = user.id
+        project_id = chapter.project_id
+
+        def generate():
+            try:
+                yield from agent.continue_writing_stream(
+                    project_id, chapter_id, instruction,
+                    user_id=user_id, config=config,
+                )
+            except Exception as e:
+                yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+        resp = StreamingHttpResponse(generate(), content_type='text/event-stream')
+        resp['Cache-Control'] = 'no-cache'
+        resp['X-Accel-Buffering'] = 'no'
+        return resp

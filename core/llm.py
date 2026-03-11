@@ -118,3 +118,85 @@ def chat(messages, system=None, temperature=0.7, max_tokens=4096, project_id=Non
             pass
 
     return text
+
+
+def chat_stream(messages, system=None, temperature=0.7, max_tokens=4096,
+                project_id=None, config=None, user_id=None):
+    """
+    流式版本的 chat()。生成器，逐块 yield 文本内容。
+    config 和 user_id 应在视图中提前捕获并传入，避免 threading.local 上下文失效问题。
+    """
+    if config is None:
+        config = _get_config()
+    if user_id is None:
+        from core.context import get_user
+        user_id = get_user()
+
+    _check_quota(user_id, config)
+
+    msgs = []
+    if system:
+        msgs.append({"role": "system", "content": system})
+    msgs.extend(messages)
+
+    payload = {
+        "model": config.chat_model,
+        "messages": msgs,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "stream": True,
+    }
+
+    AgentLog.objects.create(
+        project_id=project_id,
+        level='llm',
+        title=f'调用(流式) {config.chat_model}',
+        content=msgs[-1]["content"][:200] if msgs else '',
+        metadata={"model": config.chat_model, "tokens_limit": max_tokens, "stream": True}
+    )
+
+    url = f"{config.api_base}/chat/completions"
+    data = json.dumps(payload).encode('utf-8')
+    req = urllib.request.Request(url, data=data, headers={
+        'Content-Type': 'application/json',
+        'Authorization': f'Bearer {config.api_key}',
+    })
+
+    usage = {}
+    try:
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            for raw_line in resp:
+                line = raw_line.decode('utf-8').strip()
+                if not line or not line.startswith('data: '):
+                    continue
+                data_str = line[6:]
+                if data_str == '[DONE]':
+                    break
+                try:
+                    chunk_data = json.loads(data_str)
+                    delta = chunk_data['choices'][0].get('delta', {})
+                    content = delta.get('content', '')
+                    if content:
+                        yield content
+                    if chunk_data.get('usage'):
+                        usage = chunk_data['usage']
+                except (json.JSONDecodeError, KeyError, IndexError):
+                    pass
+    except urllib.error.HTTPError as e:
+        body = e.read().decode('utf-8') if e.fp else str(e)
+        raise ValueError(f"GLM API错误 {e.code}: {body}")
+
+    AgentLog.objects.create(
+        project_id=project_id,
+        level='llm',
+        title=f'流式响应完成 ({usage.get("total_tokens", "?")} tokens)',
+        content='',
+        metadata=usage
+    )
+
+    if user_id and usage:
+        try:
+            from accounts.models import TokenUsage
+            TokenUsage.record(user_id, usage)
+        except Exception:
+            pass
