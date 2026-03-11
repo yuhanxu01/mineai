@@ -52,8 +52,30 @@ def _api_call(endpoint, payload, config=None):
         raise ValueError(f"GLM API错误 {e.code}: {body}")
 
 
+def _check_quota(user_id, config):
+    """免费用户（使用平台密钥）配额检查，超限时抛出 ValueError。"""
+    if isinstance(config, _UserConfig):
+        return  # 用户自带密钥，不受配额限制
+    if not user_id:
+        return
+    try:
+        from accounts.models import User, TokenUsage
+        user = User.objects.get(id=user_id)
+        if user.is_staff or user.is_superuser:
+            return  # 管理员不受限
+        ok, msg = TokenUsage.check_quota(user_id)
+        if not ok:
+            raise ValueError(msg)
+    except ValueError:
+        raise
+    except Exception:
+        pass
+
+
 def chat(messages, system=None, temperature=0.7, max_tokens=4096, project_id=None):
     config = _get_config()
+    from core.context import get_user
+    _check_quota(get_user(), config)
     msgs = []
     if system:
         msgs.append({"role": "system", "content": system})
@@ -87,7 +109,6 @@ def chat(messages, system=None, temperature=0.7, max_tokens=4096, project_id=Non
         metadata=usage
     )
 
-    from core.context import get_user
     user_id = get_user()
     if user_id and usage:
         try:

@@ -45,6 +45,14 @@ class SiteConfigAdmin(admin.ModelAdmin):
                 'code_minute_limit',
             ),
         }),
+        ('免费用户每日Token配额', {
+            'description': '未配置自己API密钥的用户每自然日可使用的资源上限。管理员和已配置API密钥的用户不受此限制。',
+            'fields': (
+                'free_daily_input_tokens',
+                'free_daily_output_tokens',
+                'free_daily_prompt_count',
+            ),
+        }),
         ('只读信息', {
             'fields': ('updated_at',),
         }),
