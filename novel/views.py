@@ -76,6 +76,8 @@ class ProjectDetailView(APIView):
                 'outline': c.outline, 'word_count': c.word_count,
                 'status': c.status, 'memory_node_id': c.memory_node_id,
             } for c in chapters],
+            'total_words': sum(c.word_count for c in chapters),
+            'chapter_count': len(chapters),
             'created_at': p.created_at.isoformat(),
         })
 

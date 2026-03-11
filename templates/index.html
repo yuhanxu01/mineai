@@ -1135,7 +1135,7 @@ function Proj({p, onRef, goWrite, user}) {
 }
 
 function Write({p, onRef, onUsage, user}) {
-  const [chs] = useState(p.chapters||[]);
+  const chs = p.chapters||[];
   const [sel, setSel] = useState(null);
   const [cd, setCd] = useState(null);
   const [wr, setWr] = useState(false);
@@ -1149,6 +1149,14 @@ function Write({p, onRef, onUsage, user}) {
   const [customModal, setCustomModal] = useState(false);
   const [customPrompt, setCustomPrompt] = useState('');
   const taRef = React.useRef(null);
+
+  // Compute word count client-side from content (real-time, correct for CJK)
+  const wordCount = React.useMemo(() => {
+    const t = cd?.content || '';
+    const cjk = (t.match(/[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff]/g)||[]).length;
+    const asc = (t.match(/[a-zA-Z0-9]+/g)||[]).length;
+    return cjk + asc;
+  }, [cd?.content]);
 
   const requireLogin = () => { if(!user) { alert('此操作需要登录，请先登录'); window.location.hash = '#/login'; return false; } return true; };
   const load = async (ch) => { setSel(ch); const d = await F(`${API}/novel/chapter/${ch.id}/`); setCd(d); };
@@ -1297,16 +1305,19 @@ function Write({p, onRef, onUsage, user}) {
       )}
       <div className="split-l">
         {!sel?<div>
-          <h3 style={{fontFamily:'var(--serif)',fontSize:18,marginBottom:14}}>选择章节</h3>
+          <div style={{display:'flex',alignItems:'center',marginBottom:14}}>
+            <h3 style={{fontFamily:'var(--serif)',fontSize:18,flex:1}}>选择章节</h3>
+            <span style={{fontSize:12,color:'var(--fg3)'}}>共 {(p.total_words||0).toLocaleString()} 字</span>
+          </div>
           {chs.map(ch=>(<div key={ch.id} className="ch-item" onClick={()=>load(ch)}>
             <div className="ch-n">{ch.number}</div>
-            <div className="ch-info"><h4>{ch.title}</h4><p>{ch.word_count}字 · {STATUS_MAP[ch.status]||ch.status}</p></div>
+            <div className="ch-info"><h4>{ch.title}</h4><p>{ch.word_count.toLocaleString()}字 · {STATUS_MAP[ch.status]||ch.status}</p></div>
           </div>))}
         </div>:<div>
           <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:10}}>
             <button className="btn btn-s btn-sm" onClick={()=>{setSel(null);setCd(null)}}>← 返回</button>
             <h3 style={{fontFamily:'var(--serif)',fontSize:16}}>第{sel.number}章: {sel.title}</h3>
-            <span style={{fontSize:12,color:'var(--fg3)',marginLeft:'auto'}}>{cd?.word_count||0} 字</span>
+            <span style={{fontSize:12,color:'var(--fg3)',marginLeft:'auto'}}>{wordCount.toLocaleString()} 字</span>
           </div>
           <div className="tabs">
             <div className={`tab ${tab==='write'?'on':''}`} onClick={()=>setTab('write')}>写作</div>
