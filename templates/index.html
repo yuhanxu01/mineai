@@ -188,6 +188,32 @@ svg.icon{display:block;flex-shrink:0}
   .evo-node{min-width:150px;padding:8px}
 }
 
+/* ── Floating Chat Widget ── */
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+.fc-bubble{position:fixed;right:20px;bottom:20px;width:48px;height:48px;border-radius:50%;background:var(--gold);color:#0a0a0c;z-index:9000;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(0,0,0,.5);cursor:pointer;border:none;transition:transform .15s}
+.fc-bubble:hover{transform:scale(1.08)}
+.fc-window{position:fixed;z-index:9000;background:var(--bg2);border:1px solid var(--border2);border-radius:10px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,.55)}
+.fc-hd{padding:8px 12px;background:var(--bg3);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;cursor:move;user-select:none;flex-shrink:0}
+.fc-hd-title{font-size:13px;font-weight:500;display:flex;align-items:center;gap:6px;color:var(--fg)}
+.fc-hd-btns{display:flex;gap:4px}
+.fc-hd-btn{background:var(--bg4);border:1px solid var(--border);color:var(--fg3);width:22px;height:22px;border-radius:4px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:13px;line-height:1;padding:0}
+.fc-hd-btn:hover{background:var(--bg5);color:var(--fg)}
+.fc-msgs{flex:1;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:8px}
+.fc-msg{display:flex}
+.fc-msg.user{justify-content:flex-end}.fc-msg.assistant{justify-content:flex-start}
+.fc-bbl{max-width:85%;padding:8px 12px;border-radius:10px;font-size:13px;line-height:1.6;white-space:pre-wrap;word-break:break-word}
+.fc-msg.user .fc-bbl{background:var(--gold-dim);color:var(--fg);border-bottom-right-radius:3px}
+.fc-msg.assistant .fc-bbl{background:var(--bg4);color:var(--fg);border-bottom-left-radius:3px}
+.fc-thinking{padding:8px 12px;border-radius:10px;background:var(--bg4);font-size:12px;color:var(--fg3);align-self:flex-start}
+.fc-input-row{padding:8px;border-top:1px solid var(--border);display:flex;gap:6px;flex-shrink:0;align-items:flex-end}
+.fc-input-row textarea{flex:1;resize:none;min-height:36px;max-height:80px;font-size:12px;padding:7px 10px;line-height:1.4}
+.fc-resize{position:absolute;right:0;bottom:0;width:16px;height:16px;cursor:se-resize;background:linear-gradient(135deg,transparent 50%,var(--border2) 50%)}
+.fc-empty{text-align:center;padding:24px 10px;color:var(--fg3);font-size:12px}
+.fc-empty-icon{font-size:30px;margin-bottom:8px}
+
+/* streaming cursor in write area */
+@keyframes write-cursor{0%,100%{opacity:1}50%{opacity:0}}
+
 /* ── Platform styles ── */
 .platform-page{min-height:100vh;background:var(--bg);padding:40px 40px 60px}
 .plat-hd{display:flex;justify-content:space-between;align-items:center;margin-bottom:40px;padding-bottom:24px;border-bottom:1px solid var(--border)}
@@ -658,6 +684,146 @@ function MemoryForgeApp({user, onLogout, onUpdateUser}) {
           {v==='settings'&&<Settings cfg={cfg} onSave={()=>F(`${API}/core/config/`).then(setCfg)} />}
         </div>
       </div>
+      <FloatingChat user={user} onUsage={refreshUser} />
+    </div>
+  );
+}
+
+function FloatingChat({user, onUsage}) {
+  const [open, setOpen] = useState(false);
+  const [minimized, setMinimized] = useState(false);
+  const [pos, setPos] = useState(null);
+  const [size, setSize] = useState({w:340, h:480});
+  const [msgs, setMsgs] = useState([]);
+  const [inp, setInp] = useState('');
+  const [streaming, setStreaming] = useState(false);
+  const [streamText, setStreamText] = useState('');
+  const endRef = useRef(null);
+  const dragRef = useRef({});
+
+  useEffect(() => { endRef.current?.scrollIntoView({behavior:'smooth'}); }, [msgs, streamText]);
+
+  const getDefaultPos = () => ({
+    x: Math.max(0, window.innerWidth - size.w - 24),
+    y: Math.max(0, window.innerHeight - size.h - 24),
+  });
+
+  const startDrag = (e) => {
+    if (e.target.closest('button')) return;
+    e.preventDefault();
+    const cur = pos || getDefaultPos();
+    dragRef.current = {startX: e.clientX - cur.x, startY: e.clientY - cur.y};
+    const onMove = (e) => setPos({x: e.clientX - dragRef.current.startX, y: e.clientY - dragRef.current.startY});
+    const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  };
+
+  const startResize = (e) => {
+    e.preventDefault(); e.stopPropagation();
+    const startX=e.clientX, startY=e.clientY, startW=size.w, startH=size.h;
+    const onMove = (e) => setSize({w:Math.max(280,startW+(e.clientX-startX)), h:Math.max(320,startH+(e.clientY-startY))});
+    const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  };
+
+  const send = async () => {
+    if (!user) { alert('请先登录后使用对话功能'); return; }
+    if (!inp.trim() || streaming) return;
+    const m = inp.trim(); setInp('');
+    const history = msgs.map(msg => ({role: msg.role, content: msg.content}));
+    setMsgs(p => [...p, {role:'user', content:m}]);
+    setStreaming(true); setStreamText('');
+    const token = localStorage.getItem('mf_token');
+    const hdrs = {'Content-Type':'application/json'};
+    if(token) hdrs['Authorization'] = `Token ${token}`;
+    try {
+      const resp = await fetch(`${API}/core/chat-stream/`, {method:'POST', headers:hdrs, body:JSON.stringify({message:m, history})});
+      if(!resp.ok) throw new Error(await resp.text());
+      const reader = resp.body.getReader(); const dec = new TextDecoder();
+      let buf=''; let full='';
+      while(true) {
+        const {done, value} = await reader.read(); if(done) break;
+        buf += dec.decode(value,{stream:true});
+        const lns = buf.split('\n'); buf = lns.pop();
+        for(const ln of lns) {
+          if(!ln.startsWith('data: ')) continue;
+          let ev; try{ ev=JSON.parse(ln.slice(6)); }catch{ continue; }
+          if(ev.type==='chunk'){ full+=ev.text; setStreamText(full); }
+          else if(ev.type==='done'){ setMsgs(p=>[...p,{role:'assistant',content:full}]); setStreamText(''); onUsage&&onUsage(); }
+          else if(ev.type==='error'){ throw new Error(ev.message); }
+        }
+      }
+    } catch(e) {
+      setMsgs(p=>[...p,{role:'assistant',content:`错误: ${e.message}`}]); setStreamText('');
+    }
+    setStreaming(false);
+  };
+
+  const computedPos = pos || getDefaultPos();
+  const winStyle = {
+    position:'fixed', left:computedPos.x, top:computedPos.y,
+    width:size.w, height:minimized?44:size.h,
+    zIndex:9000, background:'var(--bg2)', border:'1px solid var(--border2)',
+    borderRadius:10, display:'flex', flexDirection:'column',
+    overflow:'hidden', boxShadow:'0 8px 32px rgba(0,0,0,.55)',
+  };
+
+  if (!open) return (
+    <button className="fc-bubble" onClick={()=>setOpen(true)} title="AI 对话">
+      <Icon name="chat" size={20}/>
+    </button>
+  );
+
+  return (
+    <div className="fc-window" style={winStyle}>
+      <div className="fc-hd" onMouseDown={startDrag}>
+        <span className="fc-hd-title"><Icon name="chat" size={13}/> AI 对话</span>
+        <div className="fc-hd-btns">
+          <button className="fc-hd-btn" onClick={()=>setMsgs([])} title="清空对话">
+            <Icon name="refresh" size={11}/>
+          </button>
+          <button className="fc-hd-btn" onClick={()=>setMinimized(m=>!m)} title={minimized?'展开':'最小化'}>
+            {minimized ? '□' : '—'}
+          </button>
+          <button className="fc-hd-btn" onClick={()=>{setOpen(false);setMinimized(false);}} title="关闭">×</button>
+        </div>
+      </div>
+      {!minimized && <>
+        <div className="fc-msgs">
+          {msgs.length===0 && (
+            <div className="fc-empty">
+              <div className="fc-empty-icon">💬</div>
+              <div style={{fontWeight:500,marginBottom:4}}>AI 智能助手</div>
+              <div style={{color:'var(--fg3)',lineHeight:1.6}}>随时为你解答任何问题<br/>支持多轮对话，Enter 发送</div>
+            </div>
+          )}
+          {msgs.map((m,i)=>(
+            <div key={i} className={`fc-msg ${m.role}`}>
+              <div className="fc-bbl">{m.content}</div>
+            </div>
+          ))}
+          {streamText && (
+            <div className="fc-msg assistant">
+              <div className="fc-bbl">{streamText}<span style={{opacity:.7,animation:'blink 1s infinite'}}>▌</span></div>
+            </div>
+          )}
+          {streaming && !streamText && <div className="fc-thinking">思考中...</div>}
+          <div ref={endRef}/>
+        </div>
+        <div className="fc-input-row">
+          <textarea
+            value={inp}
+            onChange={e=>setInp(e.target.value)}
+            onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}}}
+            placeholder="输入消息… Enter 发送，Shift+Enter 换行"
+            rows={1}
+          />
+          <button className="btn btn-p btn-sm" onClick={send} disabled={streaming} style={{flexShrink:0,alignSelf:'flex-end'}}>发送</button>
+        </div>
+        <div className="fc-resize" onMouseDown={startResize}/>
+      </>}
     </div>
   );
 }
@@ -963,8 +1129,45 @@ function Write({p, onRef, onUsage, user}) {
 
   const requireLogin = () => { if(!user) { alert('此操作需要登录，请先登录'); window.location.hash = '#/login'; return false; } return true; };
   const load = async (ch) => { setSel(ch); const d = await F(`${API}/novel/chapter/${ch.id}/`); setCd(d); };
-  const doWrite = async () => { if(!requireLogin()) return; if(!sel)return; setWr(true); try{await P(`${API}/novel/chapter/${sel.id}/write/`,{instruction:ins});const d=await F(`${API}/novel/chapter/${sel.id}/`);setCd(d);onRef();onUsage&&onUsage();}catch(e){alert(e.message)} setWr(false); };
-  const doCont = async () => { if(!requireLogin()) return; if(!sel)return; setWr(true); try{await P(`${API}/novel/chapter/${sel.id}/continue/`,{instruction:ins});const d=await F(`${API}/novel/chapter/${sel.id}/`);setCd(d);onRef();onUsage&&onUsage();}catch(e){alert(e.message)} setWr(false); };
+
+  const _streamChapter = async (url) => {
+    const base = cd?.content || '';
+    const sep = base ? '\n\n' : '';
+    const token = localStorage.getItem('mf_token');
+    const hdrs = {'Content-Type':'application/json'};
+    if(token) hdrs['Authorization'] = `Token ${token}`;
+    const resp = await fetch(url, {method:'POST', headers:hdrs, body:JSON.stringify({instruction:ins})});
+    if(!resp.ok) throw new Error(`${resp.status}: ${await resp.text()}`);
+    const reader = resp.body.getReader(); const dec = new TextDecoder();
+    let buf=''; let acc='';
+    while(true) {
+      const {done,value} = await reader.read(); if(done) break;
+      buf += dec.decode(value,{stream:true});
+      const lns = buf.split('\n'); buf = lns.pop();
+      for(const ln of lns) {
+        if(!ln.startsWith('data: ')) continue;
+        let ev; try{ ev=JSON.parse(ln.slice(6)); }catch{ continue; }
+        if(ev.type==='chunk'){ acc+=ev.text; setCd(p=>({...p,content:base+sep+acc})); }
+        else if(ev.type==='done'){ onRef&&onRef(); onUsage&&onUsage(); }
+        else if(ev.type==='error'){ throw new Error(ev.message); }
+      }
+    }
+  };
+
+  const doWrite = async () => {
+    if(!requireLogin()) return; if(!sel) return; setWr(true);
+    try { await _streamChapter(`${API}/novel/chapter/${sel.id}/write-stream/`); }
+    catch(e){ alert(e.message); }
+    setWr(false);
+  };
+
+  const doCont = async () => {
+    if(!requireLogin()) return; if(!sel) return; setWr(true);
+    try { await _streamChapter(`${API}/novel/chapter/${sel.id}/continue-stream/`); }
+    catch(e){ alert(e.message); }
+    setWr(false);
+  };
+
   const doSave = async () => { if(!requireLogin()) return; if(!cd)return; await U(`${API}/novel/chapter/${cd.id}/`,{content:cd.content}); onRef(); };
 
   return (
@@ -1000,8 +1203,8 @@ function Write({p, onRef, onUsage, user}) {
               <button className="btn btn-s" onClick={doCont} disabled={wr}>→ 续写</button>
               <button className="btn btn-s btn-sm" onClick={doSave}>保存</button>
             </div>
-            {wr&&<div className="load">Agent正在检索记忆、分析演变历史、生成内容...</div>}
-            <textarea className="ed" value={cd?.content||''} onChange={e=>setCd({...cd,content:e.target.value})} placeholder="章节内容将在此显示..."/>
+            {wr&&<div className="load">正在检索记忆、分析演变历史，流式生成内容中...</div>}
+            <textarea className="ed" value={cd?.content||''} onChange={e=>setCd({...cd,content:e.target.value})} placeholder="章节内容将在此流式输出显示..."/>
           </>}
           {tab==='outline'&&<div className="card"><p style={{fontSize:14,lineHeight:1.7,whiteSpace:'pre-wrap'}}>{cd?.outline||'暂无大纲'}</p></div>}
         </div>}

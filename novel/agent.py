@@ -1,5 +1,6 @@
 import json
 from core.llm import chat
+from core import llm as _llm_module
 from core.models import AgentLog
 from memory.pyramid import (
     retrieve_context, retrieve_evolution_context, ingest_text,
@@ -271,3 +272,119 @@ def _build_writing_prompt(project, chapter, memory_context, evolution_context, u
 确保与已建立的角色和情节线索保持连续性。
 注意角色的信念和目标在前面章节中的变化——让他们的行为体现这种成长。
 至少写1000字的高质量文学内容。"""
+
+
+def write_chapter_stream(project_id, chapter_id, user_instruction="", user_id=None, config=None):
+    """流式撰写章节，生成器逐块 yield SSE 格式字符串。"""
+    project = Project.objects.get(id=project_id)
+    chapter = Chapter.objects.get(id=chapter_id, project=project)
+    _log(project_id, 'think', f'开始撰写(流式) 第{chapter.number}章: {chapter.title}')
+
+    query = _build_retrieval_query(project, chapter, user_instruction)
+    _log(project_id, 'action', '在记忆金字塔中检索相关上下文')
+    memory_context = retrieve_context(project_id, query, max_tokens=100000)
+
+    _log(project_id, 'action', '检索角色演变历史')
+    evolution_context = retrieve_evolution_context(project_id, query)
+
+    system_prompt = _build_system_prompt(project)
+    writing_prompt = _build_writing_prompt(
+        project, chapter, memory_context, evolution_context, user_instruction
+    )
+
+    if config is None:
+        config = _llm_module._get_config()
+
+    _log(project_id, 'action', '调用LLM流式生成章节内容')
+    full_content = []
+    for chunk in _llm_module.chat_stream(
+        [{"role": "user", "content": writing_prompt}],
+        system=system_prompt, temperature=0.8, max_tokens=4096,
+        project_id=project_id, config=config, user_id=user_id,
+    ):
+        full_content.append(chunk)
+        yield f"data: {json.dumps({'type': 'chunk', 'text': chunk}, ensure_ascii=False)}\n\n"
+
+    content = ''.join(full_content)
+    chapter.content = (chapter.content + "\n\n" + content).strip() if chapter.content else content
+    chapter.status = 'draft'
+    chapter.save()
+
+    _log(project_id, 'action', '将新内容索引到记忆金字塔')
+    ingest_text(
+        project_id, content,
+        title=f"第{chapter.number}章: {chapter.title}",
+        parent_id=chapter.memory_node_id,
+        node_type='narrative',
+        chapter_index=chapter.number,
+    )
+    try:
+        extract_characters(project_id, content, chapter_index=chapter.number)
+    except Exception as e:
+        _log(project_id, 'error', f'角色提取失败: {str(e)}')
+
+    _log(project_id, 'info', f'第{chapter.number}章撰写完成(流式)', f'生成了 {len(content)} 字符')
+    yield f"data: {json.dumps({'type': 'done', 'word_count': len(content), 'chapter_id': chapter_id})}\n\n"
+
+
+def continue_writing_stream(project_id, chapter_id, user_instruction="", user_id=None, config=None):
+    """流式续写章节，生成器逐块 yield SSE 格式字符串。"""
+    project = Project.objects.get(id=project_id)
+    chapter = Chapter.objects.get(id=chapter_id, project=project)
+    _log(project_id, 'think', f'续写(流式) 第{chapter.number}章: {chapter.title}')
+
+    last_paragraph = ""
+    if chapter.content:
+        paragraphs = chapter.content.strip().split('\n\n')
+        last_paragraph = "\n\n".join(paragraphs[-3:])
+
+    query = f"续写: {last_paragraph[:500]}"
+    if user_instruction:
+        query = f"{user_instruction}\n\n上文: {last_paragraph[:300]}"
+
+    memory_context = retrieve_context(project_id, query, max_tokens=80000)
+    evolution_context = retrieve_evolution_context(project_id, query)
+
+    system_prompt = _build_system_prompt(project)
+    prompt = f"""续写这一章。从文本结束处无缝衔接。
+保持相同的叙事声音、语调和情节线索。
+
+{f'作者指示: {user_instruction}' if user_instruction else ''}
+
+## 故事上下文 (来自记忆金字塔)
+{memory_context[:30000]}
+
+## 角色与情节演变
+{evolution_context[:5000]}
+
+## 当前章节内容 (末尾部分)
+{last_paragraph}
+
+## 续写要求
+从上文结束处无缝继续叙事。至少写800字的优质文学内容。"""
+
+    if config is None:
+        config = _llm_module._get_config()
+
+    full_content = []
+    for chunk in _llm_module.chat_stream(
+        [{"role": "user", "content": prompt}],
+        system=system_prompt, temperature=0.8, max_tokens=4096,
+        project_id=project_id, config=config, user_id=user_id,
+    ):
+        full_content.append(chunk)
+        yield f"data: {json.dumps({'type': 'chunk', 'text': chunk}, ensure_ascii=False)}\n\n"
+
+    content = ''.join(full_content)
+    chapter.content = (chapter.content + "\n\n" + content).strip()
+    chapter.save()
+
+    ingest_text(project_id, content, title=f"第{chapter.number}章 续写",
+                parent_id=chapter.memory_node_id, chapter_index=chapter.number)
+    try:
+        extract_characters(project_id, content, chapter_index=chapter.number)
+    except Exception:
+        pass
+
+    _log(project_id, 'info', f'第{chapter.number}章续写完成(流式)', f'生成了 {len(content)} 字符')
+    yield f"data: {json.dumps({'type': 'done', 'word_count': len(content), 'chapter_id': chapter_id})}\n\n"
