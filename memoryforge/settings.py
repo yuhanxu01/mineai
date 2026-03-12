@@ -23,6 +23,7 @@ INSTALLED_APPS = [
     'hub',
     'novel_share',
     'ocr_studio',
+    'paper_lab',
     'dashboard',
 ]
 
