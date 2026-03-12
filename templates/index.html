@@ -7,6 +7,16 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"></script>
+<script>
+window.MathJax = {
+  tex: { inlineMath: [['$','$'],['\\(','\\)']], displayMath: [['$$','$$'],['\\[','\\]']], processEscapes: true },
+  options: { skipHtmlTags: ['script','noscript','style','textarea','pre'] },
+  startup: { typeset: false }
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async></script>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700&family=Noto+Sans+SC:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -248,6 +258,92 @@ svg.icon{display:block;flex-shrink:0}
 .app-card-foot{display:flex;justify-content:flex-end;margin-top:4px}
 .sb-back{display:flex;align-items:center;gap:6px;padding:6px 12px;font-size:12px;color:var(--fg3);cursor:pointer;border-bottom:1px solid var(--border);transition:all .15s;border-radius:0}
 .sb-back:hover{background:var(--bg3);color:var(--fg2)}
+
+/* ── Paper Lab 学术研究站 ── */
+.pl-split{display:flex;height:calc(100vh - 44px);overflow:hidden}
+.pl-lit-panel{flex:1;display:flex;flex-direction:column;overflow:hidden;border-right:1px solid var(--border)}
+.pl-side-panel{width:340px;display:flex;flex-direction:column;overflow:hidden;background:var(--bg2);flex-shrink:0}
+.pl-side-panel.wide{width:420px}
+.pl-viewer{flex:1;overflow-y:auto;padding:20px 24px;font-family:var(--serif);font-size:15px;line-height:2;color:var(--fg)}
+.pl-viewer h1,.pl-viewer h2,.pl-viewer h3{font-family:var(--serif);color:var(--gold2);margin:1.2em 0 .5em}
+.pl-viewer h1{font-size:22px}.pl-viewer h2{font-size:18px}.pl-viewer h3{font-size:16px}
+.pl-viewer p{margin-bottom:.8em}
+.pl-viewer code{font-family:var(--mono);background:var(--bg4);padding:1px 5px;border-radius:3px;font-size:13px}
+.pl-viewer pre{background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:12px;overflow-x:auto;margin:1em 0}
+.pl-viewer pre code{background:none;padding:0;font-size:12px}
+.pl-viewer blockquote{border-left:3px solid var(--gold-dim);padding:8px 16px;margin:1em 0;background:var(--bg3);border-radius:0 6px 6px 0;color:var(--fg2);font-style:italic}
+.pl-viewer table{border-collapse:collapse;width:100%;margin:1em 0;font-size:13px}
+.pl-viewer th{background:var(--bg4);border:1px solid var(--border);padding:6px 10px;text-align:left;color:var(--gold2);font-family:var(--sans)}
+.pl-viewer td{border:1px solid var(--border);padding:5px 10px}
+.pl-viewer img{max-width:100%;border-radius:6px}
+.pl-viewer .pl-line-anchor{position:relative}
+.pl-viewer .pl-line-num{position:absolute;left:-52px;width:44px;text-align:right;font-family:var(--mono);font-size:10px;color:var(--fg3);opacity:0;transition:opacity .15s;cursor:pointer;padding-top:3px}
+.pl-viewer:hover .pl-line-num{opacity:.5}
+.pl-viewer .pl-line-anchor:hover .pl-line-num{opacity:1;color:var(--gold)}
+.pl-viewer .pl-line-anchor.hl{background:rgba(201,168,108,.12);border-radius:4px;margin:0 -4px;padding:0 4px}
+
+.cite-chip{display:inline-flex;align-items:center;gap:4px;padding:1px 6px;border-radius:4px;font-size:11px;font-family:var(--mono);background:rgba(90,138,196,.15);color:var(--blue);border:1px solid rgba(90,138,196,.3);cursor:pointer;transition:all .12s;white-space:nowrap}
+.cite-chip:hover{background:rgba(90,138,196,.3);color:var(--fg)}
+
+.pl-msg-bubble{padding:10px 14px;border-radius:10px;font-size:13px;line-height:1.75;word-break:break-word}
+.pl-msg-bubble.user{background:var(--bg4);border-bottom-right-radius:3px}
+.pl-msg-bubble.assistant{background:var(--bg3);border-bottom-left-radius:3px}
+.pl-msg-bubble h1,.pl-msg-bubble h2,.pl-msg-bubble h3{font-size:14px;margin:.5em 0 .3em;color:var(--gold2)}
+.pl-msg-bubble p{margin-bottom:.5em}
+.pl-msg-bubble code{font-family:var(--mono);background:var(--bg5);padding:1px 5px;border-radius:3px;font-size:12px}
+.pl-msg-bubble pre{background:var(--bg2);border:1px solid var(--border);border-radius:5px;padding:8px;overflow-x:auto;margin:.5em 0}
+.pl-msg-bubble pre code{background:none;padding:0}
+.pl-msg-bubble ul,.pl-msg-bubble ol{padding-left:1.2em;margin:.3em 0}
+.pl-msg-bubble strong{color:var(--fg)}
+.pl-msg-bubble em{color:var(--fg2)}
+
+.pl-note-item{padding:10px 12px;border-radius:6px;border:1px solid var(--border);margin-bottom:8px;cursor:pointer;transition:all .1s}
+.pl-note-item:hover{background:var(--bg3);border-color:var(--border2)}
+.pl-note-item.ann{border-left:3px solid var(--gold)}
+.pl-note-item.ins{border-left:3px solid var(--green)}
+.pl-note-item.que{border-left:3px solid var(--blue)}
+.pl-note-item.con{border-left:3px solid var(--purple)}
+
+.pl-idea-card{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:10px}
+.pl-idea-card.gap{border-top:2px solid var(--cyan)}
+.pl-idea-card.contradiction{border-top:2px solid var(--red)}
+.pl-idea-card.extension{border-top:2px solid var(--green)}
+.pl-idea-card.method{border-top:2px solid var(--gold)}
+
+.pl-search-result{padding:12px;border-radius:6px;border:1px solid var(--border);margin-bottom:8px;cursor:pointer;transition:all .1s}
+.pl-search-result:hover{background:var(--bg3);border-color:var(--border2)}
+.pl-search-result .score-bar{height:3px;border-radius:2px;background:var(--bg4);margin-top:6px}
+.pl-search-result .score-fill{height:100%;border-radius:2px;background:var(--gold)}
+
+.pl-draft-ed{width:100%;min-height:400px;font-family:var(--serif);font-size:15px;line-height:2;background:var(--bg);border:1px solid var(--border);border-radius:var(--r);padding:16px;color:var(--fg);resize:vertical;outline:none}
+.pl-draft-ed:focus{border-color:var(--gold)}
+
+.pl-struct-nav{padding:10px;border-bottom:1px solid var(--border)}
+.pl-struct-item{padding:5px 10px;border-radius:4px;font-size:11px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--fg2)}
+.pl-struct-item:hover{background:var(--bg3);color:var(--fg)}
+.pl-struct-item.h1{padding-left:10px;font-weight:600;color:var(--gold2)}
+.pl-struct-item.h2{padding-left:22px}.pl-struct-item.h3{padding-left:34px}
+
+.pl-retrieval-badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:4px;font-size:10px;background:var(--bg4);color:var(--fg3);margin-bottom:8px}
+.pl-retrieval-badge.active{background:rgba(90,138,196,.15);color:var(--blue);border:1px solid rgba(90,138,196,.2)}
+
+@keyframes pl-scan{0%{transform:translateY(-100%)}100%{transform:translateY(200%)}}
+.pl-scanning{position:relative;overflow:hidden;pointer-events:none}
+.pl-scanning::after{content:'';position:absolute;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--gold),transparent);animation:pl-scan .8s infinite linear}
+
+@media(max-width:768px){
+  .pl-split{flex-direction:column;height:auto}
+  .pl-lit-panel{min-height:60vh}
+  .pl-side-panel,.pl-side-panel.wide{width:100%;max-height:50vh}
+}
+
+/* MathJax formula style */
+.pl-viewer mjx-container{overflow-x:auto;max-width:100%}
+.pl-msg-bubble mjx-container{font-size:0.95em}
+
+/* Fade in */
+@keyframes plFade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.pl-fade{animation:plFade .2s ease}
 @media(max-width:768px){
   .platform-page{padding:20px 16px 40px}
   .plat-hd{flex-direction:column;align-items:flex-start;gap:16px}
@@ -261,7 +357,7 @@ svg.icon{display:block;flex-shrink:0}
 <div id="root"></div>
 <script type="text/babel">
 {% verbatim %}
-const {useState, useEffect, useRef, useCallback} = React;
+const {useState, useEffect, useRef, useCallback, useMemo} = React;
 const API = '/api';
 const F = async (url, o = {}) => {
   const token = localStorage.getItem('mf_token');
@@ -1946,9 +2042,9 @@ function PlatformHome({user, onLogout}) {
         <div className="apps-grid">
           {apps.map(app => (
             <div key={app.slug} className="app-card"
-              onClick={() => { 
+              onClick={() => {
                 if (app.slug === 'novel_share') window.location.href = '/share/';
-                else window.location.hash = `#/app/${app.slug}`; 
+                else window.location.hash = `#/app/${app.slug}`;
               }}>
               <div className="app-card-icon" style={appIconStyle(app)}>
                 <Icon name={pickAppIcon(app)} size={28} stroke={1.7} />
@@ -1962,6 +2058,32 @@ function PlatformHome({user, onLogout}) {
               </div>
             </div>
           ))}
+          {/* 固定展示学术研究站 */}
+          <div className="app-card" onClick={() => { if(!user){alert('请先登录');return;} window.location.hash = '#/app/paper_lab'; }}>
+            <div className="app-card-icon" style={{color:'var(--cyan)',background:'rgba(90,196,180,.12)',borderColor:'rgba(90,196,180,.3)'}}>
+              <Icon name="search" size={28} stroke={1.7} />
+            </div>
+            <div>
+              <h3 className="app-card-name">学术研究站</h3>
+              <p className="app-card-desc">论文深度阅读 · 零幻觉检索 · 精确引用 · 知识探索 · 辅助写作</p>
+            </div>
+            <div className="app-card-foot">
+              <button className="btn btn-p" style={{fontSize:13,background:'var(--cyan)',color:'#0a0a0c'}}>进入应用 →</button>
+            </div>
+          </div>
+          {/* 固定展示知识图谱 */}
+          <div className="app-card" onClick={() => { if(!user){alert('请先登录');return;} window.location.hash = '#/app/knowledge_graph'; }}>
+            <div className="app-card-icon" style={{color:'var(--purple)',background:'rgba(154,106,196,.12)',borderColor:'rgba(154,106,196,.3)'}}>
+              <Icon name="share-2" size={28} stroke={1.7} />
+            </div>
+            <div>
+              <h3 className="app-card-name">知识图谱</h3>
+              <p className="app-card-desc">LLM自动提取 · 图谱可视化 · 跨应用知识链接 · PageRank · 路径探索</p>
+            </div>
+            <div className="app-card-foot">
+              <button className="btn btn-p" style={{fontSize:13,background:'var(--purple)',color:'#fff'}}>进入应用 →</button>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -2025,6 +2147,14 @@ function Root() {
   
   if (route === '#/app/ocr_studio') {
     return <OCRStudioApp user={user} onLogout={logout} onUpdateUser={setUser} />;
+  }
+
+  if (route === '#/app/paper_lab') {
+    return <PaperLabApp user={user} onLogout={logout} onUpdateUser={setUser} />;
+  }
+
+  if (route === '#/app/knowledge_graph') {
+    return <KGApp user={user} onLogout={logout} onUpdateUser={setUser} />;
   }
 
   return <PlatformHome user={user} onLogout={logout} />;
@@ -2649,6 +2779,2297 @@ function OCRMDViewer({content, goBack, project}) {
           fontSize:14,lineHeight:1.75,color:'var(--fg)',whiteSpace:'pre-wrap',wordBreak:'break-word'
         }}>
           {current.text}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+// 学术研究站 PaperLabApp
+// ═══════════════════════════════════════════════════════════════
+
+const PA = `${API}/paper`;
+
+// ── 工具函数 ──
+const renderMd = (text) => {
+  if (!text) return '';
+  try {
+    const html = marked.parse(text, {breaks: true, gfm: true});
+    return html;
+  } catch(e) { return text; }
+};
+
+const typeset = (el) => {
+  if (!el || !window.MathJax || !window.MathJax.typesetPromise) return;
+  window.MathJax.typesetPromise([el]).catch(()=>{});
+};
+
+// ── Citation Chip 组件 ──
+function CitationChip({cite, onClick}) {
+  return (
+    <span className="cite-chip" onClick={onClick} title={`跳转到: ${cite.cite_key}`}>
+      📄 {cite.lit_title ? cite.lit_title.slice(0,20) + (cite.lit_title.length>20?'…':'') : cite.file_ref}:L{cite.line_start}-{cite.line_end}
+    </span>
+  );
+}
+
+// ── Markdown+MathJax 渲染器 ──
+function MdRender({content, className='', style={}}) {
+  const ref = useRef(null);
+  const html = renderMd(content);
+  useEffect(() => { if (ref.current) typeset(ref.current); }, [content]);
+  return (
+    <div ref={ref} className={className} style={style}
+      dangerouslySetInnerHTML={{__html: html}} />
+  );
+}
+
+// ── 文献阅读器（带行号、高亮、公式渲染）──
+function LiteratureViewer({lit, highlightLines=null, onLineClick, onCreateNote}) {
+  const containerRef = useRef(null);
+  const [lines, setLines] = useState([]);
+  const [selRange, setSelRange] = useState(null);
+
+  useEffect(() => {
+    if (!lit?.content) { setLines([]); return; }
+    setLines(lit.content.split('\n'));
+  }, [lit?.id, lit?.content]);
+
+  useEffect(() => {
+    if (containerRef.current) typeset(containerRef.current);
+  }, [lines]);
+
+  useEffect(() => {
+    if (highlightLines && containerRef.current) {
+      const el = containerRef.current.querySelector(`[data-line="${highlightLines[0]}"]`);
+      if (el) el.scrollIntoView({behavior:'smooth', block:'center'});
+    }
+  }, [highlightLines]);
+
+  if (!lit) return <div className="empty"><h3>选择文献开始阅读</h3></div>;
+
+  const isHighlighted = (i) => {
+    if (!highlightLines) return false;
+    return i+1 >= highlightLines[0] && i+1 <= highlightLines[1];
+  };
+
+  return (
+    <div ref={containerRef} className="pl-viewer" style={{paddingLeft:60}}>
+      <div style={{marginBottom:20,paddingBottom:14,borderBottom:'1px solid var(--border)'}}>
+        <h2 style={{fontFamily:'var(--serif)',fontSize:20,color:'var(--gold2)',marginBottom:4}}>{lit.title}</h2>
+        {lit.authors && <div style={{fontSize:12,color:'var(--fg2)'}}>{lit.authors} {lit.year ? `(${lit.year})` : ''} {lit.journal ? `· ${lit.journal}` : ''}</div>}
+        <div style={{display:'flex',gap:8,marginTop:8,flexWrap:'wrap'}}>
+          <span style={{fontSize:10,padding:'2px 7px',borderRadius:4,background:'var(--bg4)',color:'var(--fg3)'}}>{lit.language === 'en' ? '英文' : lit.language === 'zh' ? '中文' : '混合'}</span>
+          <span style={{fontSize:10,padding:'2px 7px',borderRadius:4,background:'var(--bg4)',color:'var(--fg3)'}}>{lit.total_lines} 行</span>
+          {lit.is_indexed && <span style={{fontSize:10,padding:'2px 7px',borderRadius:4,background:'rgba(94,184,122,.15)',color:'var(--green)'}}>✓ 已索引</span>}
+        </div>
+      </div>
+      {lines.map((line, i) => {
+        const lineNum = i + 1;
+        const hl = isHighlighted(i);
+        // Detect heading for structure
+        const isH1 = line.startsWith('# ');
+        const isH2 = line.startsWith('## ');
+        const isH3 = line.startsWith('### ');
+        return (
+          <div key={i} data-line={lineNum} className={`pl-line-anchor${hl?' hl':''}`}
+            style={{position:'relative', cursor: onLineClick ? 'pointer' : 'default'}}
+            onClick={() => onLineClick && onLineClick(lineNum, line)}>
+            <span className="pl-line-num" onClick={e => {
+              e.stopPropagation();
+              onCreateNote && onCreateNote(lineNum, lineNum, line);
+            }}>{lineNum}</span>
+            <MdRender content={line || '\u00A0'}
+              className={isH1?'':isH2?'':isH3?'':''}
+              style={{display:'block', minHeight:'1.5em'}} />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Token 统计迷你面板 ──
+function TokenMiniPanel({onRefresh}) {
+  const [stats, setStats] = useState(null);
+  const load = () => F(`${PA}/token-stats/`).then(setStats).catch(()=>{});
+  useEffect(() => { load(); }, []);
+  useEffect(() => { if(onRefresh) { onRefresh.current = load; } }, []);
+  if (!stats) return null;
+  return (
+    <div style={{padding:'8px 12px',borderTop:'1px solid var(--border)',background:'var(--bg2)'}}>
+      <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}>
+        <span style={{fontSize:10,color:'var(--fg3)',letterSpacing:1}}>TOKEN 用量</span>
+        <button onClick={load} style={{background:'none',color:'var(--fg3)',fontSize:9,padding:'1px 5px',border:'1px solid var(--border)',borderRadius:3,cursor:'pointer'}}>刷新</button>
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:4}}>
+        <div style={{background:'var(--bg3)',borderRadius:4,padding:'4px 6px',textAlign:'center'}}>
+          <div style={{fontFamily:'var(--mono)',fontSize:13,color:'var(--gold2)',fontWeight:500}}>{((stats.total_tokens||0)/1000).toFixed(1)}K</div>
+          <div style={{fontSize:9,color:'var(--fg3)'}}>总Token</div>
+        </div>
+        <div style={{background:'var(--bg3)',borderRadius:4,padding:'4px 6px',textAlign:'center'}}>
+          <div style={{fontFamily:'var(--mono)',fontSize:13,color:'var(--cyan)',fontWeight:500}}>{stats.prompt_count||0}</div>
+          <div style={{fontSize:9,color:'var(--fg3)'}}>提交次数</div>
+        </div>
+        <div style={{background:'var(--bg3)',borderRadius:4,padding:'4px 6px',textAlign:'center'}}>
+          <div style={{fontFamily:'var(--mono)',fontSize:11,color:'var(--blue)',fontWeight:500}}>{((stats.daily_input||0)/1000).toFixed(1)}K</div>
+          <div style={{fontSize:9,color:'var(--fg3)'}}>今日输入</div>
+        </div>
+        <div style={{background:'var(--bg3)',borderRadius:4,padding:'4px 6px',textAlign:'center'}}>
+          <div style={{fontFamily:'var(--mono)',fontSize:11,color:'var(--green)',fontWeight:500}}>{((stats.daily_output||0)/1000).toFixed(1)}K</div>
+          <div style={{fontSize:9,color:'var(--fg3)'}}>今日输出</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── 文献库 ──
+function LiteratureLibrary({project, onOpenLit, onRefresh}) {
+  const [lits, setLits] = useState([]);
+  const [showAdd, setShowAdd] = useState(false);
+  const [showImport, setShowImport] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [form, setForm] = useState({title:'',authors:'',year:'',journal:'',abstract:'',content:'',language:'zh'});
+  const [ocrProjects, setOcrProjects] = useState([]);
+  const [ocrForm, setOcrForm] = useState({ocr_project_id:'',title:'',authors:'',year:'',language:'en'});
+
+  const load = () => {
+    F(`${PA}/projects/${project.id}/literatures/`).then(setLits).catch(()=>{});
+  };
+  useEffect(() => { load(); }, [project.id]);
+
+  const addLit = async () => {
+    if (!form.title.trim()) return alert('请输入文献标题');
+    setLoading(true);
+    try {
+      await P(`${PA}/projects/${project.id}/literatures/`, form);
+      setShowAdd(false); setForm({title:'',authors:'',year:'',journal:'',abstract:'',content:'',language:'zh'});
+      load(); onRefresh && onRefresh();
+    } catch(e) { alert('添加失败: ' + e.message); }
+    setLoading(false);
+  };
+
+  const loadOcrProjects = () => {
+    F(`${PA}/ocr-projects/`).then(setOcrProjects).catch(()=>{});
+  };
+
+  const importFromOcr = async () => {
+    if (!ocrForm.ocr_project_id) return alert('请选择OCR项目');
+    setLoading(true);
+    try {
+      await P(`${PA}/projects/${project.id}/literatures/import-ocr/`, ocrForm);
+      setShowImport(false); load(); onRefresh && onRefresh();
+    } catch(e) { alert('导入失败: ' + e.message); }
+    setLoading(false);
+  };
+
+  const deleteLit = async (id) => {
+    if (!confirm('确认删除此文献？')) return;
+    try { await F(`${PA}/literatures/${id}/`, {method:'DELETE'}); load(); } catch(e) {}
+  };
+
+  const reindex = async (id, e) => {
+    e.stopPropagation();
+    try {
+      await P(`${PA}/literatures/${id}/reindex/`, {});
+      alert('正在重建索引，请稍候刷新');
+    } catch(e) { alert('操作失败'); }
+  };
+
+  return (
+    <div className="pl-fade">
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+        <h3 style={{fontFamily:'var(--serif)',fontSize:18}}>文献库</h3>
+        <div style={{display:'flex',gap:8}}>
+          <button className="btn btn-sm btn-s" onClick={() => { setShowImport(true); loadOcrProjects(); }}>
+            📥 从OCR导入
+          </button>
+          <button className="btn btn-sm btn-p" onClick={() => setShowAdd(true)}>+ 添加文献</button>
+        </div>
+      </div>
+
+      {lits.length === 0 ? (
+        <div className="empty"><h3>暂无文献</h3><p>请添加文献或从OCR工作室导入</p></div>
+      ) : lits.map(lit => (
+        <div key={lit.id} className="card" style={{cursor:'pointer',marginBottom:10}}
+          onClick={() => onOpenLit(lit)}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:12}}>
+            <div style={{flex:1}}>
+              <div style={{fontFamily:'var(--serif)',fontSize:15,color:'var(--fg)',marginBottom:4}}>{lit.title}</div>
+              {lit.authors && <div style={{fontSize:12,color:'var(--fg2)'}}>{lit.authors} {lit.year ? `(${lit.year})` : ''}</div>}
+              <div style={{display:'flex',gap:6,marginTop:6,flexWrap:'wrap'}}>
+                <span style={{fontSize:10,padding:'2px 6px',borderRadius:3,background:'var(--bg4)',color:'var(--fg3)'}}>{lit.source_type === 'ocr' ? 'OCR' : lit.source_type === 'manual' ? '手动' : '上传'}</span>
+                <span style={{fontSize:10,padding:'2px 6px',borderRadius:3,background:'var(--bg4)',color:'var(--fg3)'}}>{lit.total_lines}行 / {lit.chunk_count}块</span>
+                {lit.is_indexed ? <span style={{fontSize:10,padding:'2px 6px',borderRadius:3,background:'rgba(94,184,122,.15)',color:'var(--green)'}}>✓ 已索引</span>
+                  : <span style={{fontSize:10,padding:'2px 6px',borderRadius:3,background:'rgba(196,90,90,.15)',color:'var(--red)'}}>未索引</span>}
+              </div>
+            </div>
+            <div style={{display:'flex',gap:6,flexShrink:0}}>
+              {!lit.is_indexed && <button className="btn btn-sm btn-s" onClick={e => reindex(lit.id, e)}>建立索引</button>}
+              <button className="btn btn-sm btn-s" onClick={e => { e.stopPropagation(); deleteLit(lit.id); }} style={{color:'var(--red)'}}>删除</button>
+            </div>
+          </div>
+          <div style={{marginTop:8,fontFamily:'var(--mono)',fontSize:10,color:'var(--fg3)'}}>
+            📎 {lit.file_ref}
+          </div>
+        </div>
+      ))}
+
+      {/* 添加文献对话框 */}
+      {showAdd && (
+        <div className="modal-ov" onClick={() => setShowAdd(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <h2>添加文献</h2>
+            <div className="fg"><label>标题 *</label><input value={form.title} onChange={e=>setForm({...form,title:e.target.value})} placeholder="论文/书籍标题" /></div>
+            <div className="g2">
+              <div className="fg"><label>作者</label><input value={form.authors} onChange={e=>setForm({...form,authors:e.target.value})} /></div>
+              <div className="fg"><label>年份</label><input value={form.year} onChange={e=>setForm({...form,year:e.target.value})} /></div>
+            </div>
+            <div className="fg"><label>期刊/来源</label><input value={form.journal} onChange={e=>setForm({...form,journal:e.target.value})} /></div>
+            <div className="fg"><label>摘要</label><textarea value={form.abstract} onChange={e=>setForm({...form,abstract:e.target.value})} rows={3} /></div>
+            <div className="fg"><label>语言</label>
+              <select value={form.language} onChange={e=>setForm({...form,language:e.target.value})}>
+                <option value="zh">中文</option><option value="en">英文</option><option value="mixed">混合</option>
+              </select>
+            </div>
+            <div className="fg"><label>全文内容（Markdown格式，支持公式）</label>
+              <textarea value={form.content} onChange={e=>setForm({...form,content:e.target.value})} rows={10} placeholder="粘贴论文全文（Markdown格式）..." />
+            </div>
+            <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}>
+              <button className="btn btn-s" onClick={() => setShowAdd(false)}>取消</button>
+              <button className="btn btn-p" onClick={addLit} disabled={loading}>{loading?'添加中...':'添加文献'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* OCR导入对话框 */}
+      {showImport && (
+        <div className="modal-ov" onClick={() => setShowImport(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <h2>从OCR工作室导入</h2>
+            <p style={{fontSize:12,color:'var(--fg2)',marginBottom:12}}>选择已完成OCR的项目，系统将自动合并所有页面内容并建立索引</p>
+            <div className="fg"><label>OCR项目 *</label>
+              <select value={ocrForm.ocr_project_id} onChange={e=>setOcrForm({...ocrForm,ocr_project_id:e.target.value})}>
+                <option value="">-- 选择OCR项目 --</option>
+                {ocrProjects.filter(p=>p.can_import).map(p => (
+                  <option key={p.id} value={p.id}>{p.name} ({p.done_pages}/{p.total_pages}页)</option>
+                ))}
+              </select>
+            </div>
+            <div className="fg"><label>文献标题（留空则使用文件名）</label><input value={ocrForm.title} onChange={e=>setOcrForm({...ocrForm,title:e.target.value})} /></div>
+            <div className="g2">
+              <div className="fg"><label>作者</label><input value={ocrForm.authors} onChange={e=>setOcrForm({...ocrForm,authors:e.target.value})} /></div>
+              <div className="fg"><label>年份</label><input value={ocrForm.year} onChange={e=>setOcrForm({...ocrForm,year:e.target.value})} /></div>
+            </div>
+            <div className="fg"><label>语言</label>
+              <select value={ocrForm.language} onChange={e=>setOcrForm({...ocrForm,language:e.target.value})}>
+                <option value="en">英文</option><option value="zh">中文</option><option value="mixed">混合</option>
+              </select>
+            </div>
+            <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}>
+              <button className="btn btn-s" onClick={() => setShowImport(false)}>取消</button>
+              <button className="btn btn-p" onClick={importFromOcr} disabled={loading}>{loading?'导入中...':'导入文献'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── 阅读台：文献+笔记 双栏 ──
+function ReadingDesk({project, lit, onCiteJump, user}) {
+  const [notes, setNotes] = useState([]);
+  const [hlLines, setHlLines] = useState(null);
+  const [noteModal, setNoteModal] = useState(null);
+  const [noteForm, setNoteForm] = useState({content:'',note_type:'annotation',title:''});
+  const [litDetail, setLitDetail] = useState(null);
+
+  useEffect(() => {
+    if (lit) {
+      F(`${PA}/literatures/${lit.id}/`).then(setLitDetail).catch(()=>{});
+      F(`${PA}/projects/${project.id}/notes/`).then(ns => setNotes(ns.filter(n=>n.lit_id===lit.id))).catch(()=>{});
+    }
+  }, [lit?.id]);
+
+  const openNote = (lineStart, lineEnd, text) => {
+    setNoteModal({lineStart, lineEnd, text});
+    setNoteForm({content:'', note_type:'annotation', title:''});
+  };
+
+  const saveNote = async () => {
+    if (!noteForm.content.trim()) return;
+    try {
+      await P(`${PA}/projects/${project.id}/notes/`, {
+        lit_id: lit.id,
+        note_type: noteForm.note_type,
+        title: noteForm.title,
+        content: noteForm.content,
+        cited_line_start: noteModal.lineStart,
+        cited_line_end: noteModal.lineEnd,
+        cited_text: noteModal.text,
+      });
+      setNoteModal(null);
+      F(`${PA}/projects/${project.id}/notes/`).then(ns => setNotes(ns.filter(n=>n.lit_id===lit.id)));
+    } catch(e) { alert('保存失败'); }
+  };
+
+  const deleteNote = async (id) => {
+    if (!confirm('删除此笔记？')) return;
+    try {
+      await F(`${PA}/notes/${id}/`, {method:'DELETE'});
+      setNotes(ns => ns.filter(n=>n.id!==id));
+    } catch(e) {}
+  };
+
+  const NOTE_TYPE_LABELS = {annotation:'标注',summary:'摘要',comment:'评论',question:'疑问',insight:'洞见',connection:'关联'};
+  const NOTE_COLORS = {annotation:'var(--gold)',summary:'var(--blue)',comment:'var(--fg2)',question:'var(--cyan)',insight:'var(--green)',connection:'var(--purple)'};
+
+  if (!lit) return (
+    <div className="empty" style={{paddingTop:80}}>
+      <h3>请先选择文献</h3>
+      <p>从文献库中选择一篇文献开始阅读</p>
+    </div>
+  );
+
+  return (
+    <div className="pl-split">
+      {/* 左：文献内容 */}
+      <div className="pl-lit-panel">
+        <div style={{padding:'8px 16px',borderBottom:'1px solid var(--border)',display:'flex',alignItems:'center',gap:8,background:'var(--bg2)',flexShrink:0}}>
+          <span style={{fontSize:12,color:'var(--fg2)',flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{lit.title}</span>
+          {hlLines && (
+            <span className="cite-chip" style={{cursor:'default'}}>L{hlLines[0]}-{hlLines[1]}</span>
+          )}
+          {hlLines && <button className="btn btn-sm btn-s" onClick={() => setHlLines(null)}>清除高亮</button>}
+        </div>
+        <LiteratureViewer
+          lit={litDetail}
+          highlightLines={hlLines}
+          onLineClick={(lineNum, text) => openNote(lineNum, lineNum, text)}
+          onCreateNote={openNote}
+        />
+      </div>
+
+      {/* 右：笔记面板 */}
+      <div className="pl-side-panel">
+        <div style={{padding:'12px 14px',borderBottom:'1px solid var(--border)',fontWeight:500,fontSize:13,color:'var(--fg2)'}}>
+          📝 笔记 ({notes.length})
+        </div>
+        <div style={{flex:1,overflow:'auto',padding:12}}>
+          {notes.length === 0 && (
+            <div style={{textAlign:'center',padding:30,color:'var(--fg3)',fontSize:12}}>
+              点击文献行号 (①) 创建标注笔记
+            </div>
+          )}
+          {notes.map(note => (
+            <div key={note.id} className={`pl-note-item ${note.note_type.slice(0,3)}`}
+              style={{borderLeftColor: NOTE_COLORS[note.note_type]||'var(--gold)'}}
+              onClick={() => note.cited_line_start && setHlLines([note.cited_line_start, note.cited_line_end||note.cited_line_start])}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:4}}>
+                <span style={{fontSize:10,color:NOTE_COLORS[note.note_type]||'var(--gold)',fontWeight:500}}>{NOTE_TYPE_LABELS[note.note_type]||note.note_type}</span>
+                <div style={{display:'flex',gap:4,alignItems:'center'}}>
+                  {note.citation && <span className="cite-chip" style={{fontSize:9}}>{note.citation}</span>}
+                  <button onClick={e=>{e.stopPropagation();deleteNote(note.id);}} style={{background:'none',border:'none',color:'var(--fg3)',cursor:'pointer',fontSize:12,padding:'0 2px'}}>✕</button>
+                </div>
+              </div>
+              {note.cited_text && <div style={{fontSize:11,color:'var(--fg3)',fontStyle:'italic',marginBottom:4,borderLeft:'2px solid var(--border2)',paddingLeft:6}}>{note.cited_text.slice(0,100)}</div>}
+              <div style={{fontSize:12,color:'var(--fg)',lineHeight:1.5}}>{note.content}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 创建笔记对话框 */}
+      {noteModal && (
+        <div className="modal-ov" onClick={() => setNoteModal(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{maxWidth:480}}>
+            <h2>创建笔记</h2>
+            {noteModal.text && (
+              <div style={{background:'var(--bg3)',borderRadius:6,padding:'8px 12px',marginBottom:12,fontSize:12,color:'var(--fg2)',borderLeft:'3px solid var(--gold)',fontStyle:'italic'}}>
+                {noteModal.text.slice(0,200)}
+              </div>
+            )}
+            <div style={{fontSize:11,color:'var(--fg3)',marginBottom:12,fontFamily:'var(--mono)'}}>
+              引用位置: L{noteModal.lineStart}{noteModal.lineEnd !== noteModal.lineStart ? `-${noteModal.lineEnd}` : ''}
+            </div>
+            <div className="fg"><label>笔记类型</label>
+              <select value={noteForm.note_type} onChange={e=>setNoteForm({...noteForm,note_type:e.target.value})}>
+                {Object.entries(NOTE_TYPE_LABELS).map(([k,v]) => <option key={k} value={k}>{v}</option>)}
+              </select>
+            </div>
+            <div className="fg"><label>标题（可选）</label><input value={noteForm.title} onChange={e=>setNoteForm({...noteForm,title:e.target.value})} /></div>
+            <div className="fg"><label>笔记内容</label><textarea value={noteForm.content} onChange={e=>setNoteForm({...noteForm,content:e.target.value})} rows={5} placeholder="写下你的思考、理解或问题..." autoFocus /></div>
+            <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}>
+              <button className="btn btn-s" onClick={() => setNoteModal(null)}>取消</button>
+              <button className="btn btn-p" onClick={saveNote}>保存笔记</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── 知识检索 ──
+function KnowledgeSearch({project, onJumpToLit}) {
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [topK, setTopK] = useState(10);
+
+  const search = async () => {
+    if (!query.trim()) return;
+    setLoading(true);
+    try {
+      const res = await P(`${PA}/projects/${project.id}/search/`, {query, top_k: topK});
+      setResults(res.results || []);
+    } catch(e) { alert('检索失败: ' + e.message); }
+    setLoading(false);
+  };
+
+  const explore = async () => {
+    if (!query.trim()) return;
+    setLoading(true);
+    try {
+      const res = await P(`${PA}/projects/${project.id}/explore/`, {query, depth: 2});
+      // Show as results
+      const chunks = [];
+      (res.layers||[]).forEach(l => l.chunks && chunks.push(...l.chunks.map(c => ({...c, score: c.score||0.5, preview: c.preview||''}))));
+      setResults(chunks);
+      if (res.summary) alert('探索摘要:\n\n' + res.summary);
+    } catch(e) { alert('探索失败: ' + e.message); }
+    setLoading(false);
+  };
+
+  const maxScore = results.length > 0 ? Math.max(...results.map(r=>r.score||0)) : 1;
+
+  return (
+    <div className="pl-fade">
+      <h3 style={{fontFamily:'var(--serif)',fontSize:18,marginBottom:16}}>知识检索</h3>
+      <div style={{display:'flex',gap:8,marginBottom:16}}>
+        <input value={query} onChange={e=>setQuery(e.target.value)}
+          onKeyDown={e=>e.key==='Enter'&&search()}
+          placeholder="输入研究问题或关键词..."
+          style={{flex:1}} />
+        <select value={topK} onChange={e=>setTopK(Number(e.target.value))} style={{width:80}}>
+          {[5,10,20,30].map(k=><option key={k} value={k}>{k}条</option>)}
+        </select>
+        <button className="btn btn-p" onClick={search} disabled={loading}>{loading?'检索中...':'🔍 检索'}</button>
+        <button className="btn btn-s" onClick={explore} disabled={loading} title="深度探索：从查询出发，逐层展开相关概念">🧭 探索</button>
+      </div>
+
+      {results.length > 0 && (
+        <div style={{marginBottom:8,fontSize:12,color:'var(--fg3)'}}>找到 {results.length} 个相关片段</div>
+      )}
+
+      {results.map((r, i) => (
+        <div key={i} className="pl-search-result pl-fade" onClick={() => onJumpToLit && onJumpToLit(r.lit_id, r.line_start, r.line_end)}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:6}}>
+            <div style={{flex:1}}>
+              <div style={{fontFamily:'var(--serif)',fontSize:13,color:'var(--fg)',marginBottom:2}}>{r.lit_title}</div>
+              {r.heading && <div style={{fontSize:10,color:'var(--gold-dim)',marginBottom:4}}>§ {r.heading}</div>}
+            </div>
+            <span className="cite-chip" style={{marginLeft:8,flexShrink:0}}>{r.cite_key}</span>
+          </div>
+          <div style={{fontSize:12,color:'var(--fg2)',lineHeight:1.6}}>{r.preview}</div>
+          <div className="score-bar" style={{marginTop:8}}>
+            <div className="score-fill" style={{width:`${Math.round((r.score/maxScore)*100)}%`}} />
+          </div>
+          <div style={{display:'flex',justify:'space-between',marginTop:4,gap:8}}>
+            <span style={{fontSize:10,color:'var(--fg3)',fontFamily:'var(--mono)'}}>{r.cite_key}</span>
+            <span style={{fontSize:10,color:'var(--fg3)'}}>{r.chunk_type}</span>
+          </div>
+        </div>
+      ))}
+
+      {!loading && results.length === 0 && query && (
+        <div className="empty"><h3>未找到结果</h3><p>尝试换一个查询词，或先确认文献已建立索引</p></div>
+      )}
+    </div>
+  );
+}
+
+// ── 研究讨论 ──
+function ResearchChat({project, user, onTokenRefresh}) {
+  const [convs, setConvs] = useState([]);
+  const [curConv, setCurConv] = useState(null);
+  const [msgs, setMsgs] = useState([]);
+  const [inp, setInp] = useState('');
+  const [streaming, setStreaming] = useState(false);
+  const [streamText, setStreamText] = useState('');
+  const [curCitations, setCurCitations] = useState([]);
+  const [retrieving, setRetrieving] = useState(false);
+  const msgEndRef = useRef(null);
+  const msgRef = useRef(null);
+
+  useEffect(() => { loadConvs(); }, [project.id]);
+  useEffect(() => { msgEndRef.current?.scrollIntoView({behavior:'smooth'}); }, [msgs, streamText]);
+  useEffect(() => {
+    if (curConv) {
+      F(`${PA}/conversations/${curConv.id}/`).then(d => { setMsgs(d.messages || []); }).catch(()=>{});
+    }
+  }, [curConv?.id]);
+
+  useEffect(() => {
+    if (msgRef.current) typeset(msgRef.current);
+  }, [msgs, streamText]);
+
+  const loadConvs = () => {
+    F(`${PA}/projects/${project.id}/conversations/`).then(setConvs).catch(()=>{});
+  };
+
+  const newConv = async () => {
+    const c = await P(`${PA}/projects/${project.id}/conversations/`, {title:'新对话'});
+    setCurConv(c); setMsgs([]); loadConvs();
+  };
+
+  const send = async () => {
+    if (!inp.trim() || streaming) return;
+    if (!curConv) { alert('请先创建对话'); return; }
+    const m = inp.trim(); setInp('');
+    setMsgs(prev => [...prev, {role:'user', content:m, citations:[]}]);
+    setStreaming(true); setStreamText(''); setCurCitations([]); setRetrieving(true);
+
+    const token = localStorage.getItem('mf_token');
+    const hdrs = {'Content-Type':'application/json', 'Authorization': `Token ${token}`};
+
+    try {
+      const resp = await fetch(`${PA}/conversations/${curConv.id}/chat/`, {
+        method:'POST', headers:hdrs, body:JSON.stringify({message:m})
+      });
+      if (!resp.ok) throw new Error(await resp.text());
+      const reader = resp.body.getReader(); const dec = new TextDecoder();
+      let buf=''; let full=''; let cites=[];
+      while(true) {
+        const {done, value} = await reader.read(); if(done) break;
+        buf += dec.decode(value, {stream:true});
+        const lns = buf.split('\n'); buf = lns.pop();
+        for(const ln of lns) {
+          if(!ln.startsWith('data: ')) continue;
+          let ev; try{ ev=JSON.parse(ln.slice(6)); }catch{ continue; }
+          if(ev.type==='retrieval_start') { setRetrieving(true); }
+          else if(ev.type==='citations') { cites=ev.citations||[]; setCurCitations(cites); setRetrieving(false); }
+          else if(ev.type==='chunk') { full+=ev.text; setStreamText(full); }
+          else if(ev.type==='done') {
+            setMsgs(prev => [...prev, {role:'assistant', content:full, citations:cites}]);
+            setStreamText(''); onTokenRefresh && onTokenRefresh();
+          }
+        }
+      }
+    } catch(e) {
+      setMsgs(prev=>[...prev,{role:'assistant',content:`错误: ${e.message}`,citations:[]}]);
+      setStreamText('');
+    }
+    setStreaming(false); setRetrieving(false);
+  };
+
+  return (
+    <div style={{display:'flex',height:'calc(100vh - 88px)',overflow:'hidden'}}>
+      {/* 对话列表侧栏 */}
+      <div style={{width:180,borderRight:'1px solid var(--border)',display:'flex',flexDirection:'column',flexShrink:0}}>
+        <div style={{padding:'10px 8px',borderBottom:'1px solid var(--border)'}}>
+          <button className="btn btn-p btn-sm" style={{width:'100%'}} onClick={newConv}>+ 新对话</button>
+        </div>
+        <div style={{flex:1,overflow:'auto',padding:'6px 4px'}}>
+          {convs.map(c => (
+            <div key={c.id} className={`ni${curConv?.id===c.id?' on':''}`} onClick={() => setCurConv(c)} style={{marginBottom:2}}>
+              <i><Icon name="chat" size={12}/></i>
+              <span style={{flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',fontSize:12}}>{c.title}</span>
+              <span style={{fontSize:10,color:'var(--fg3)'}}>{c.msg_count}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 聊天区 */}
+      <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>
+        {!curConv ? (
+          <div className="empty" style={{paddingTop:80}}>
+            <h3>开始研究对话</h3>
+            <p>点击「新对话」，Agent 将基于您的文献库回答问题</p>
+            <div style={{marginTop:16,padding:16,background:'var(--bg3)',borderRadius:8,maxWidth:400,margin:'16px auto 0',textAlign:'left'}}>
+              <div style={{fontSize:12,color:'var(--gold2)',fontWeight:500,marginBottom:8}}>⚡ 零幻觉保证</div>
+              <div style={{fontSize:12,color:'var(--fg2)',lineHeight:1.7}}>Agent 只从您导入的文献库中检索答案，每个观点必须附带精确引用（格式：文件名:L行号-行号），绝不凭空推测。</div>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div ref={msgRef} style={{flex:1,overflow:'auto',padding:16,display:'flex',flexDirection:'column',gap:12}}>
+              {msgs.length === 0 && (
+                <div style={{textAlign:'center',padding:40,color:'var(--fg3)'}}>
+                  <div style={{fontSize:24,marginBottom:8}}>🔬</div>
+                  <div>提问后，Agent 将自动检索文献库并给出有引用的回答</div>
+                </div>
+              )}
+              {msgs.map((m, i) => (
+                <div key={i} className={`cht-m${m.role==='user'?' u':' a'}`}>
+                  <div className={`pl-msg-bubble ${m.role}`}>
+                    {m.role === 'assistant' ? (
+                      <MdRender content={m.content} />
+                    ) : (
+                      <span>{m.content}</span>
+                    )}
+                  </div>
+                  {m.role === 'assistant' && m.citations && m.citations.length > 0 && (
+                    <div style={{display:'flex',flexWrap:'wrap',gap:4,marginTop:6,paddingLeft:4}}>
+                      <span style={{fontSize:10,color:'var(--fg3)'}}>引用:</span>
+                      {m.citations.map((c,ci) => (
+                        <CitationChip key={ci} cite={c} onClick={() => {}} />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+
+              {/* 检索状态 */}
+              {retrieving && (
+                <div style={{display:'flex',alignItems:'center',gap:8,color:'var(--fg3)',fontSize:12}}>
+                  <div className="load" style={{padding:0}}/>
+                  <span>正在检索文献库...</span>
+                </div>
+              )}
+
+              {/* 当前引用预览 */}
+              {curCitations.length > 0 && !retrieving && (
+                <div style={{padding:'8px 12px',background:'rgba(90,138,196,.08)',borderRadius:6,border:'1px solid rgba(90,138,196,.2)'}}>
+                  <div style={{fontSize:10,color:'var(--blue)',marginBottom:6}}>📎 检索到的文献片段</div>
+                  <div style={{display:'flex',flexWrap:'wrap',gap:4}}>
+                    {curCitations.map((c,i) => <CitationChip key={i} cite={c} />)}
+                  </div>
+                </div>
+              )}
+
+              {/* 流式输出 */}
+              {streamText && (
+                <div className="cht-m a">
+                  <div className="pl-msg-bubble assistant">
+                    <MdRender content={streamText} />
+                    <span style={{display:'inline-block',width:6,height:14,background:'var(--gold)',marginLeft:2,verticalAlign:'middle',animation:'blink 1s infinite'}} />
+                  </div>
+                </div>
+              )}
+              <div ref={msgEndRef} />
+            </div>
+
+            <div style={{padding:'10px 14px',borderTop:'1px solid var(--border)',display:'flex',gap:8}}>
+              <textarea value={inp} onChange={e=>setInp(e.target.value)}
+                onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}}}
+                placeholder="提问（回车发送，Shift+回车换行）&#10;例：这些文献对XX问题的核心观点是什么？"
+                style={{flex:1,resize:'none',minHeight:64,maxHeight:120,fontSize:13,lineHeight:1.5}} />
+              <button className={`btn btn-p${streaming?' generating':''}`} onClick={send} disabled={streaming} style={{alignSelf:'flex-end',padding:'10px 16px'}}>
+                {streaming ? '...' : '发送'}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── 写作台 ──
+function WritingDesk({project, user, onTokenRefresh}) {
+  const [drafts, setDrafts] = useState([]);
+  const [curDraft, setCurDraft] = useState(null);
+  const [content, setContent] = useState('');
+  const [preview, setPreview] = useState(false);
+  const [assistInp, setAssistInp] = useState('');
+  const [assisting, setAssisting] = useState(false);
+  const [assistResult, setAssistResult] = useState('');
+  const [citations, setCitations] = useState([]);
+  const [dirty, setDirty] = useState(false);
+  const previewRef = useRef(null);
+
+  useEffect(() => { loadDrafts(); }, [project.id]);
+  useEffect(() => { if(preview && previewRef.current) typeset(previewRef.current); }, [preview, content]);
+
+  const loadDrafts = () => {
+    F(`${PA}/projects/${project.id}/drafts/`).then(setDrafts).catch(()=>{});
+  };
+
+  const newDraft = async () => {
+    const title = prompt('草稿标题:');
+    if (!title?.trim()) return;
+    const d = await P(`${PA}/projects/${project.id}/drafts/`, {title: title.trim()});
+    setCurDraft(d); setContent(''); setDirty(false); loadDrafts();
+  };
+
+  const selectDraft = async (d) => {
+    const full = await F(`${PA}/drafts/${d.id}/`);
+    setCurDraft(full); setContent(full.content||''); setDirty(false);
+  };
+
+  const saveDraft = async () => {
+    if (!curDraft) return;
+    await U(`${PA}/drafts/${curDraft.id}/`, {content});
+    setDirty(false);
+  };
+
+  const requestAssist = async () => {
+    if (!curDraft || !assistInp.trim()) return;
+    setAssisting(true); setAssistResult(''); setCitations([]);
+
+    const token = localStorage.getItem('mf_token');
+    const hdrs = {'Content-Type':'application/json','Authorization':`Token ${token}`};
+    try {
+      const resp = await fetch(`${PA}/drafts/${curDraft.id}/assist/`, {
+        method:'POST', headers:hdrs,
+        body:JSON.stringify({instruction:assistInp, section_context:content.slice(-800)})
+      });
+      if (!resp.ok) throw new Error(await resp.text());
+      const reader = resp.body.getReader(); const dec = new TextDecoder();
+      let buf=''; let full='';
+      while(true) {
+        const {done, value} = await reader.read(); if(done) break;
+        buf += dec.decode(value,{stream:true});
+        const lns = buf.split('\n'); buf = lns.pop();
+        for(const ln of lns) {
+          if(!ln.startsWith('data: ')) continue;
+          let ev; try{ ev=JSON.parse(ln.slice(6)); }catch{ continue; }
+          if(ev.type==='citations') { setCitations(ev.citations||[]); }
+          else if(ev.type==='chunk') { full+=ev.text; setAssistResult(full); }
+          else if(ev.type==='done') { onTokenRefresh && onTokenRefresh(); }
+        }
+      }
+    } catch(e) { setAssistResult('错误: ' + e.message); }
+    setAssisting(false);
+  };
+
+  const insertResult = () => {
+    if (!assistResult) return;
+    setContent(c => c + '\n\n' + assistResult);
+    setAssistResult(''); setCitations([]); setDirty(true);
+  };
+
+  return (
+    <div style={{display:'flex',height:'calc(100vh - 88px)',overflow:'hidden'}}>
+      {/* 草稿列表 */}
+      <div style={{width:180,borderRight:'1px solid var(--border)',display:'flex',flexDirection:'column',flexShrink:0}}>
+        <div style={{padding:'10px 8px',borderBottom:'1px solid var(--border)'}}>
+          <button className="btn btn-p btn-sm" style={{width:'100%'}} onClick={newDraft}>+ 新草稿</button>
+        </div>
+        <div style={{flex:1,overflow:'auto',padding:'6px 4px'}}>
+          {drafts.map(d => (
+            <div key={d.id} className={`ni${curDraft?.id===d.id?' on':''}`} onClick={()=>selectDraft(d)} style={{marginBottom:2}}>
+              <i><Icon name="pen" size={12}/></i>
+              <span style={{flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',fontSize:12}}>{d.title}</span>
+              <span style={{fontSize:10,color:'var(--fg3)'}}>{d.word_count}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 写作区 */}
+      {!curDraft ? (
+        <div className="empty" style={{flex:1,paddingTop:80}}>
+          <h3>写作台</h3>
+          <p>创建或选择草稿，AI 辅助写作将自动附带文献引用</p>
+        </div>
+      ) : (
+        <div style={{flex:1,display:'flex',overflow:'hidden'}}>
+          {/* 编辑器 */}
+          <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>
+            <div style={{padding:'8px 14px',borderBottom:'1px solid var(--border)',display:'flex',alignItems:'center',gap:8,background:'var(--bg2)',flexShrink:0}}>
+              <span style={{flex:1,fontSize:13,fontWeight:500}}>{curDraft.title}</span>
+              {dirty && <span style={{fontSize:11,color:'var(--gold)'}}>● 未保存</span>}
+              <button className="btn btn-sm btn-s" onClick={() => setPreview(p=>!p)}>{preview?'编辑':'预览'}</button>
+              <button className="btn btn-sm btn-p" onClick={saveDraft}>保存</button>
+            </div>
+            {preview ? (
+              <div ref={previewRef} className="pl-viewer" style={{flex:1,overflow:'auto',padding:24}}>
+                <MdRender content={content} />
+              </div>
+            ) : (
+              <textarea className="pl-draft-ed" style={{flex:1,borderRadius:0,border:'none',borderBottom:'1px solid var(--border)'}}
+                value={content} onChange={e=>{setContent(e.target.value);setDirty(true);}}
+                placeholder="在此写作... 支持 Markdown 和 LaTeX 公式（$ ... $ 或 $$ ... $$）" />
+            )}
+          </div>
+
+          {/* AI辅助侧栏 */}
+          <div className="pl-side-panel" style={{borderLeft:'1px solid var(--border)'}}>
+            <div style={{padding:'12px 14px',borderBottom:'1px solid var(--border)',fontSize:13,fontWeight:500,color:'var(--fg2)'}}>
+              🤖 AI写作辅助
+            </div>
+            <div style={{flex:1,overflow:'auto',padding:12}}>
+              <div style={{fontSize:12,color:'var(--fg3)',marginBottom:12,lineHeight:1.6}}>
+                AI 将从文献库检索相关内容，生成带精确引用的写作建议
+              </div>
+              <textarea value={assistInp} onChange={e=>setAssistInp(e.target.value)}
+                placeholder="例：分析XX方法的优缺点，或：概述目前研究现状..."
+                style={{width:'100%',minHeight:80,fontSize:12,resize:'vertical',marginBottom:8}} />
+              <button className={`btn btn-p btn-sm${assisting?' generating':''}`} onClick={requestAssist} disabled={assisting} style={{width:'100%',marginBottom:12}}>
+                {assisting ? '生成中...' : '生成带引用的内容'}
+              </button>
+
+              {citations.length > 0 && (
+                <div style={{marginBottom:10}}>
+                  <div style={{fontSize:10,color:'var(--fg3)',marginBottom:4}}>检索到的引用:</div>
+                  <div style={{display:'flex',flexWrap:'wrap',gap:4}}>
+                    {citations.map((c,i) => <CitationChip key={i} cite={c} />)}
+                  </div>
+                </div>
+              )}
+
+              {assistResult && (
+                <div>
+                  <div style={{fontSize:10,color:'var(--green)',marginBottom:6}}>✓ 生成结果</div>
+                  <div style={{background:'var(--bg3)',borderRadius:6,padding:10,fontSize:12,lineHeight:1.6,marginBottom:8,maxHeight:300,overflow:'auto',color:'var(--fg)'}}>
+                    <MdRender content={assistResult} />
+                  </div>
+                  <button className="btn btn-s btn-sm" style={{width:'100%'}} onClick={insertResult}>↓ 插入到草稿</button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── 启发灯塔 ──
+function IdeaLighthouse({project, user, onTokenRefresh}) {
+  const [ideas, setIdeas] = useState([]);
+  const [generating, setGenerating] = useState(false);
+  const [focusQuery, setFocusQuery] = useState('');
+
+  const IDEA_LABELS = {gap:'研究空白',contradiction:'文献矛盾',extension:'扩展方向',method:'方法创新',connection:'跨领域',hypothesis:'研究假设'};
+  const IDEA_COLORS = {gap:'var(--cyan)',contradiction:'var(--red)',extension:'var(--green)',method:'var(--gold)',connection:'var(--purple)',hypothesis:'var(--blue)'};
+
+  useEffect(() => { loadIdeas(); }, [project.id]);
+
+  const loadIdeas = () => {
+    F(`${PA}/projects/${project.id}/ideas/`).then(setIdeas).catch(()=>{});
+  };
+
+  const generate = async () => {
+    setGenerating(true);
+    try {
+      const res = await P(`${PA}/projects/${project.id}/ideas/generate/`, {focus_query: focusQuery});
+      setIdeas(prev => [...(res.ideas||[]).map(i=>({...i})), ...prev]);
+      onTokenRefresh && onTokenRefresh();
+    } catch(e) { alert('生成失败: ' + e.message); }
+    setGenerating(false);
+  };
+
+  const deleteIdea = async (id) => {
+    try {
+      await F(`${PA}/ideas/${id}/`, {method:'DELETE'});
+      setIdeas(prev => prev.filter(i=>i.id!==id));
+    } catch(e) {}
+  };
+
+  const starIdea = async (id, starred) => {
+    try {
+      await U(`${PA}/ideas/${id}/`, {is_starred: !starred});
+      setIdeas(prev => prev.map(i => i.id===id ? {...i,is_starred:!starred} : i));
+    } catch(e) {}
+  };
+
+  return (
+    <div className="pl-fade">
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+        <h3 style={{fontFamily:'var(--serif)',fontSize:18}}>启发灯塔</h3>
+        <span style={{fontSize:12,color:'var(--fg3)'}}>基于文献库的研究灵感（必须有文献依据）</span>
+      </div>
+
+      <div className="card" style={{marginBottom:20,borderColor:'var(--gold-dim)'}}>
+        <div style={{fontSize:13,color:'var(--gold2)',fontWeight:500,marginBottom:8}}>⚠️ 设计原则</div>
+        <div style={{fontSize:12,color:'var(--fg2)',lineHeight:1.7}}>
+          启发灯塔的所有灵感均来自您的文献库，每条灵感必须附带具体的文献依据。Agent 不会天马行空，只会在现有文献基础上发现研究机会。
+        </div>
+      </div>
+
+      <div style={{display:'flex',gap:8,marginBottom:20}}>
+        <input value={focusQuery} onChange={e=>setFocusQuery(e.target.value)}
+          placeholder="聚焦方向（留空则基于整个项目）..."
+          style={{flex:1}} />
+        <button className={`btn btn-p${generating?' generating':''}`} onClick={generate} disabled={generating}>
+          {generating ? '分析中...' : '✨ 生成灵感'}
+        </button>
+      </div>
+
+      {ideas.length === 0 && !generating && (
+        <div className="empty"><h3>暂无灵感</h3><p>点击「生成灵感」，Agent 将分析文献库寻找研究机会</p></div>
+      )}
+
+      {ideas.map(idea => (
+        <div key={idea.id} className={`pl-idea-card ${idea.idea_type}`}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:8}}>
+            <div>
+              <span style={{fontSize:10,padding:'2px 7px',borderRadius:4,background:`rgba(128,128,128,.15)`,color:IDEA_COLORS[idea.idea_type]||'var(--fg2)',fontWeight:500,marginRight:6}}>
+                {IDEA_LABELS[idea.idea_type]||idea.idea_type}
+              </span>
+              <span style={{fontFamily:'var(--serif)',fontSize:15,color:'var(--fg)'}}>{idea.title}</span>
+            </div>
+            <div style={{display:'flex',gap:6,flexShrink:0}}>
+              <button onClick={() => starIdea(idea.id, idea.is_starred)} style={{background:'none',border:'none',cursor:'pointer',fontSize:16,color:idea.is_starred?'var(--gold)':'var(--fg3)'}}>
+                {idea.is_starred ? '★' : '☆'}
+              </button>
+              <button onClick={() => deleteIdea(idea.id)} style={{background:'none',border:'none',cursor:'pointer',fontSize:13,color:'var(--fg3)'}}>✕</button>
+            </div>
+          </div>
+          <div style={{fontSize:13,color:'var(--fg2)',lineHeight:1.7,marginBottom:8}}>{idea.description}</div>
+          {idea.evidence_summary && (
+            <div style={{fontSize:11,color:'var(--fg3)',borderTop:'1px solid var(--border)',paddingTop:8,marginTop:4,lineHeight:1.6}}>
+              <span style={{color:'var(--gold-dim)'}}>文献依据: </span>
+              {idea.evidence_summary}
+            </div>
+          )}
+          {idea.evidence_chunks && idea.evidence_chunks.length > 0 && (
+            <div style={{display:'flex',flexWrap:'wrap',gap:4,marginTop:6}}>
+              {idea.evidence_chunks.map((c,i) => (
+                <span key={i} className="cite-chip">{c.cite}</span>
+              ))}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── 项目笔记汇总 ──
+function NotesOverview({project, onJumpToLit}) {
+  const [notes, setNotes] = useState([]);
+  const NOTE_TYPE_LABELS = {annotation:'标注',summary:'摘要',comment:'评论',question:'疑问',insight:'洞见',connection:'关联'};
+  useEffect(() => {
+    F(`${PA}/projects/${project.id}/notes/`).then(setNotes).catch(()=>{});
+  }, [project.id]);
+
+  return (
+    <div className="pl-fade">
+      <h3 style={{fontFamily:'var(--serif)',fontSize:18,marginBottom:16}}>研究笔记 ({notes.length})</h3>
+      {notes.length === 0 && <div className="empty"><h3>暂无笔记</h3><p>在阅读台中点击行号创建标注</p></div>}
+      {notes.map(note => (
+        <div key={note.id} className="card" style={{marginBottom:10,cursor:'pointer'}}
+          onClick={() => note.lit_id && onJumpToLit && onJumpToLit(note.lit_id, note.cited_line_start, note.cited_line_end)}>
+          <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
+            <div>
+              <span style={{fontSize:11,color:'var(--gold-dim)',marginRight:8}}>{NOTE_TYPE_LABELS[note.note_type]||note.note_type}</span>
+              {note.title && <span style={{fontSize:13,fontWeight:500}}>{note.title}</span>}
+            </div>
+            {note.citation && <span className="cite-chip">{note.citation}</span>}
+          </div>
+          {note.cited_text && <div style={{fontSize:11,color:'var(--fg3)',fontStyle:'italic',marginBottom:6,borderLeft:'2px solid var(--border2)',paddingLeft:6}}>{note.cited_text.slice(0,100)}</div>}
+          <div style={{fontSize:13,color:'var(--fg)',lineHeight:1.6}}>{note.content}</div>
+          <div style={{fontSize:10,color:'var(--fg3)',marginTop:6}}>{note.lit_title}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── 主 PaperLabApp ──
+function PaperLabApp({user, onLogout, onUpdateUser}) {
+  const [v, setV] = useState('projects');
+  const [projects, setProjects] = useState([]);
+  const [curProject, setCurProject] = useState(null);
+  const [curLit, setCurLit] = useState(null);
+  const [hlLines, setHlLines] = useState(null);
+  const [sbOpen, setSbOpen] = useState(false);
+  const [showNewProject, setShowNewProject] = useState(false);
+  const [newProjForm, setNewProjForm] = useState({title:'',description:'',domain:'',research_questions:''});
+  const tokenRefreshRef = useRef(null);
+
+  useEffect(() => { loadProjects(); }, []);
+
+  const loadProjects = () => {
+    F(`${PA}/projects/`).then(setProjects).catch(()=>{});
+  };
+
+  const createProject = async () => {
+    if (!newProjForm.title.trim()) return alert('请输入项目标题');
+    try {
+      const p = await P(`${PA}/projects/`, newProjForm);
+      setShowNewProject(false);
+      setNewProjForm({title:'',description:'',domain:'',research_questions:''});
+      loadProjects();
+    } catch(e) { alert('创建失败: ' + e.message); }
+  };
+
+  const selectProject = (p) => {
+    setCurProject(p); setCurLit(null); setHlLines(null); setV('library');
+  };
+
+  const openLit = (lit) => {
+    setCurLit(lit); setHlLines(null); setV('reading');
+  };
+
+  const jumpToLit = (litId, lineStart, lineEnd) => {
+    F(`${PA}/literatures/${litId}/`).then(lit => {
+      setCurLit(lit);
+      setHlLines(lineStart ? [lineStart, lineEnd || lineStart] : null);
+      setV('reading');
+    }).catch(()=>{});
+  };
+
+  const goTo = (view) => { setV(view); setSbOpen(false); };
+
+  const tokenRefresh = () => {
+    if (tokenRefreshRef.current) tokenRefreshRef.current();
+    F(`${API}/auth/me/`).then(me => { if(me.authenticated) onUpdateUser(me); }).catch(()=>{});
+  };
+
+  const NAV_GROUPS = [
+    {
+      label: '导航',
+      items: [
+        {id:'projects', icon:'grid', label:'研究项目'},
+      ]
+    },
+    ...(curProject ? [{
+      label: curProject.title,
+      items: [
+        {id:'library', icon:'book', label:'文献库'},
+        {id:'reading', icon:'eye', label:'阅读台'},
+        {id:'search', icon:'search', label:'知识检索'},
+        {id:'chat', icon:'chat', label:'研究讨论'},
+        {id:'notes', icon:'note', label:'研究笔记'},
+        {id:'writing', icon:'pen', label:'写作台'},
+        {id:'ideas', icon:'spark', label:'启发灯塔'},
+      ]
+    }] : []),
+  ];
+
+  const TOP_TITLES = {
+    projects:'研究项目', library:'文献库', reading:'阅读台',
+    search:'知识检索', chat:'研究讨论', notes:'研究笔记',
+    writing:'写作台', ideas:'启发灯塔',
+  };
+
+  return (
+    <div className="app">
+      <div className={`sb-ov${sbOpen?' open':''}`} onClick={() => setSbOpen(false)} />
+      <div className={`sb${sbOpen?' open':''}`}>
+        <div className="sb-back" onClick={() => window.location.hash='#/'}>← 返回平台</div>
+        <div className="sb-hd"><h1>学术研究站</h1><p>零幻觉·精确引用·深度探索</p></div>
+        <div className="sb-nav">
+          {NAV_GROUPS.map(grp => (
+            <div className="ns" key={grp.label}>
+              <div className="ns-t">{grp.label}</div>
+              {grp.items.map(item => (
+                <div key={item.id} className={`ni${v===item.id?' on':''}`} onClick={() => goTo(item.id)}>
+                  <i><Icon name={item.icon} size={14} /></i>{item.label}
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+        <TokenMiniPanel onRefresh={tokenRefreshRef} />
+        <div style={{padding:'6px 12px 10px'}}>
+          <div style={{fontSize:11,color:'var(--fg3)',marginBottom:6,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',display:'flex',alignItems:'center',gap:6}}>
+            <Icon name="user" size={14} />{user?.email||'访客'}
+          </div>
+          <div style={{display:'flex',gap:6}}>
+            <button onClick={onLogout} style={{flex:1,padding:'5px 8px',borderRadius:'var(--r)',background:'var(--bg4)',color:'var(--fg3)',border:'1px solid var(--border2)',fontSize:12,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:4}}>
+              <Icon name="logout" size={13} />退出
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="main">
+        <div className="top">
+          <button className="menu-btn" onClick={() => setSbOpen(o=>!o)}><Icon name="menu" size={18} /></button>
+          <span className="top-t">{TOP_TITLES[v]||v}</span>
+          {curProject && v!=='projects' && (
+            <span className="top-b">{curProject.title}</span>
+          )}
+          {curLit && (v==='reading') && (
+            <span style={{fontSize:11,color:'var(--fg3)',fontFamily:'var(--mono)',marginLeft:4}}>
+              {curLit.file_ref || curLit.title?.slice(0,20)}
+            </span>
+          )}
+        </div>
+
+        <div className={`ct${v==='reading'||v==='chat'||v==='writing'?'':''}`} style={v==='reading'||v==='chat'||v==='writing'?{padding:0,overflow:'hidden'}:{}}>
+          {/* 研究项目列表 */}
+          {v === 'projects' && (
+            <div className="pl-fade">
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
+                <h2 style={{fontFamily:'var(--serif)',fontSize:22}}>研究项目</h2>
+                <button className="btn btn-p" onClick={() => setShowNewProject(true)}>+ 新建项目</button>
+              </div>
+
+              <div className="card" style={{marginBottom:20,borderColor:'var(--cyan)',background:'rgba(90,196,180,.05)'}}>
+                <div style={{fontSize:13,color:'var(--cyan)',fontWeight:500,marginBottom:6}}>🔬 学术研究站设计理念</div>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,fontSize:12,color:'var(--fg2)'}}>
+                  <div>⚡ <b>零幻觉</b>：仅引用文献库中的真实内容</div>
+                  <div>📎 <b>精确引用</b>：文件名:L行号-行号 可点击跳转</div>
+                  <div>🧭 <b>深度探索</b>：Agent 自动在知识迷宫中导航</div>
+                  <div>✍️ <b>辅助写作</b>：每段内容自动附带文献依据</div>
+                  <div>📄 <b>OCR绑定</b>：与OCR工作室深度集成</div>
+                  <div>💡 <b>启发灯塔</b>：基于文献的研究灵感</div>
+                </div>
+              </div>
+
+              {projects.length === 0 ? (
+                <div className="empty"><h3>暂无研究项目</h3><p>创建第一个研究项目，开始你的学术研究之旅</p></div>
+              ) : (
+                <div className="g2">
+                  {projects.map(p => (
+                    <div key={p.id} className="card" style={{cursor:'pointer',transition:'all .2s'}}
+                      onClick={() => selectProject(p)}
+                      onMouseEnter={e=>e.currentTarget.style.borderColor='var(--cyan)'}
+                      onMouseLeave={e=>e.currentTarget.style.borderColor=''}>
+                      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
+                        <h3 style={{fontFamily:'var(--serif)',fontSize:16,color:'var(--gold2)'}}>{p.title}</h3>
+                        <div style={{display:'flex',gap:6}}>
+                          <span style={{fontSize:10,padding:'2px 6px',borderRadius:3,background:'rgba(90,196,180,.1)',color:'var(--cyan)'}}>{p.lit_count}篇文献</span>
+                          <span style={{fontSize:10,padding:'2px 6px',borderRadius:3,background:'var(--bg4)',color:'var(--fg3)'}}>{p.note_count}条笔记</span>
+                        </div>
+                      </div>
+                      {p.domain && <div style={{fontSize:12,color:'var(--blue)',marginTop:4}}># {p.domain}</div>}
+                      {p.description && <div style={{fontSize:12,color:'var(--fg2)',marginTop:6,lineHeight:1.5}}>{p.description.slice(0,100)}</div>}
+                      {p.research_questions && (
+                        <div style={{fontSize:11,color:'var(--fg3)',marginTop:6,borderTop:'1px solid var(--border)',paddingTop:6}}>
+                          研究问题: {p.research_questions.slice(0,80)}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {showNewProject && (
+                <div className="modal-ov" onClick={() => setShowNewProject(false)}>
+                  <div className="modal" onClick={e => e.stopPropagation()}>
+                    <h2>新建研究项目</h2>
+                    <div className="fg"><label>项目标题 *</label><input value={newProjForm.title} onChange={e=>setNewProjForm({...newProjForm,title:e.target.value})} autoFocus /></div>
+                    <div className="fg"><label>研究领域</label><input value={newProjForm.domain} onChange={e=>setNewProjForm({...newProjForm,domain:e.target.value})} placeholder="如：深度学习、材料科学..." /></div>
+                    <div className="fg"><label>项目描述</label><textarea value={newProjForm.description} onChange={e=>setNewProjForm({...newProjForm,description:e.target.value})} rows={3} /></div>
+                    <div className="fg"><label>核心研究问题</label><textarea value={newProjForm.research_questions} onChange={e=>setNewProjForm({...newProjForm,research_questions:e.target.value})} rows={4} placeholder="描述你要研究的核心问题，Agent 将基于此聚焦分析..." /></div>
+                    <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}>
+                      <button className="btn btn-s" onClick={() => setShowNewProject(false)}>取消</button>
+                      <button className="btn btn-p" onClick={createProject}>创建项目</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 需要项目的视图 */}
+          {!curProject && v !== 'projects' && (
+            <div className="empty"><h3>请先选择研究项目</h3><button className="btn btn-p" onClick={()=>goTo('projects')}>选择项目</button></div>
+          )}
+
+          {curProject && v === 'library' && (
+            <LiteratureLibrary project={curProject} onOpenLit={openLit} />
+          )}
+
+          {curProject && v === 'reading' && (
+            <ReadingDesk project={curProject} lit={curLit} onCiteJump={jumpToLit} user={user} />
+          )}
+
+          {curProject && v === 'search' && (
+            <KnowledgeSearch project={curProject} onJumpToLit={jumpToLit} />
+          )}
+
+          {curProject && v === 'chat' && (
+            <ResearchChat project={curProject} user={user} onTokenRefresh={tokenRefresh} />
+          )}
+
+          {curProject && v === 'notes' && (
+            <NotesOverview project={curProject} onJumpToLit={jumpToLit} />
+          )}
+
+          {curProject && v === 'writing' && (
+            <WritingDesk project={curProject} user={user} onTokenRefresh={tokenRefresh} />
+          )}
+
+          {curProject && v === 'ideas' && (
+            <IdeaLighthouse project={curProject} user={user} onTokenRefresh={tokenRefresh} />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── 知识图谱 应用 ────────────────────────────────────────────────
+
+const KG_API = `${API}/kg`;
+
+// 节点类型颜色映射
+const KG_NODE_COLORS = {
+  concept: 'var(--gold)',
+  entity: 'var(--cyan)',
+  event: 'var(--orange)',
+  claim: 'var(--blue)',
+  method: 'var(--purple)',
+  result: 'var(--green)',
+  character: 'var(--red)',
+  paper: '#5ab4c4',
+  place: '#a0b45a',
+  term: '#c45aaa',
+  memory: 'var(--gold2)',
+};
+
+const KG_NODE_LABELS = {
+  concept:'概念', entity:'实体', event:'事件', claim:'论断',
+  method:'方法', result:'结论', character:'人物', paper:'论文',
+  place:'地点', term:'术语', memory:'记忆',
+};
+
+const KG_RELATION_LABELS = {
+  supports:'支持', contradicts:'矛盾', causes:'导致', extends:'扩展',
+  related_to:'相关', defines:'定义', exemplifies:'举例', cites:'引用',
+  part_of:'组成', leads_to:'推导', opposes:'对立', has_method:'使用方法',
+  has_result:'得出结论', is_a:'属于', instance_of:'实例化',
+  precedes:'先于', follows:'后于',
+};
+
+// ── Cytoscape图谱可视化 ──────────────────────────────────────────
+
+function KGCytoGraph({elements, onNodeClick, selectedNodeId}) {
+  const containerRef = useRef(null);
+  const cyRef = useRef(null);
+
+  useEffect(() => {
+    if (!containerRef.current || !window.cytoscape) return;
+
+    if (cyRef.current) {
+      cyRef.current.destroy();
+    }
+
+    const cy = window.cytoscape({
+      container: containerRef.current,
+      elements: elements,
+      style: [
+        {
+          selector: 'node',
+          style: {
+            'background-color': (ele) => KG_NODE_COLORS[ele.data('type')] || 'var(--fg2)',
+            'label': 'data(label)',
+            'color': '#e8e4df',
+            'font-size': '11px',
+            'font-family': 'Noto Sans SC, sans-serif',
+            'text-valign': 'bottom',
+            'text-halign': 'center',
+            'text-margin-y': '4px',
+            'width': (ele) => Math.max(18, 12 + (ele.data('importance') || 0.5) * 24),
+            'height': (ele) => Math.max(18, 12 + (ele.data('importance') || 0.5) * 24),
+            'border-width': 1.5,
+            'border-color': (ele) => KG_NODE_COLORS[ele.data('type')] || 'var(--fg2)',
+            'border-opacity': 0.6,
+            'background-opacity': 0.85,
+          }
+        },
+        {
+          selector: 'node:selected',
+          style: {
+            'border-width': 3,
+            'border-opacity': 1,
+            'background-opacity': 1,
+          }
+        },
+        {
+          selector: 'edge',
+          style: {
+            'width': (ele) => Math.max(1, (ele.data('weight') || 1) * 1.5),
+            'line-color': 'rgba(90,90,120,0.6)',
+            'target-arrow-color': 'rgba(90,90,120,0.8)',
+            'target-arrow-shape': 'triangle',
+            'curve-style': 'bezier',
+            'label': 'data(relation_label)',
+            'font-size': '9px',
+            'color': 'rgba(160,154,146,0.7)',
+            'text-rotation': 'autorotate',
+            'font-family': 'Noto Sans SC, sans-serif',
+            'opacity': 0.8,
+          }
+        },
+        {
+          selector: 'edge:selected',
+          style: {
+            'line-color': 'var(--gold)',
+            'target-arrow-color': 'var(--gold)',
+            'opacity': 1,
+          }
+        }
+      ],
+      layout: {
+        name: 'cose',
+        animate: false,
+        nodeRepulsion: 8000,
+        idealEdgeLength: 100,
+        gravity: 0.25,
+        numIter: 1000,
+      },
+      userZoomingEnabled: true,
+      userPanningEnabled: true,
+      boxSelectionEnabled: false,
+    });
+
+    cy.on('tap', 'node', (evt) => {
+      const node = evt.target;
+      if (onNodeClick) onNodeClick({
+        id: node.id(),
+        label: node.data('label'),
+        type: node.data('type'),
+        importance: node.data('importance'),
+        description: node.data('description'),
+        source_ref: node.data('source_ref'),
+      });
+    });
+
+    cyRef.current = cy;
+
+    return () => {
+      if (cyRef.current) {
+        cyRef.current.destroy();
+        cyRef.current = null;
+      }
+    };
+  }, [elements]);
+
+  // 高亮选中节点
+  useEffect(() => {
+    if (!cyRef.current || !selectedNodeId) return;
+    cyRef.current.$(':selected').unselect();
+    cyRef.current.$(`#${selectedNodeId}`).select();
+  }, [selectedNodeId]);
+
+  return (
+    <div ref={containerRef} style={{
+      width:'100%', height:'100%',
+      background:'var(--bg)',
+      borderRadius:'var(--r)',
+    }} />
+  );
+}
+
+// ── 图谱项目列表 ──────────────────────────────────────────────────
+
+function KGProjectList({onSelect}) {
+  const [projects, setProjects] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showNew, setShowNew] = useState(false);
+  const [newTitle, setNewTitle] = useState('');
+  const [newDesc, setNewDesc] = useState('');
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const data = await F(`${KG_API}/projects/`);
+      setProjects(data);
+    } catch(e) {}
+    setLoading(false);
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const createProject = async () => {
+    if (!newTitle.trim()) return;
+    try {
+      await P(`${KG_API}/projects/`, {title: newTitle.trim(), description: newDesc});
+      setNewTitle(''); setNewDesc(''); setShowNew(false);
+      load();
+    } catch(e) { alert('创建失败'); }
+  };
+
+  const deleteProject = async (id, e) => {
+    e.stopPropagation();
+    if (!confirm('确认删除图谱？此操作不可撤销')) return;
+    try {
+      await fetch(`${KG_API}/projects/${id}/`, {
+        method:'DELETE', headers:{'Authorization':`Token ${localStorage.getItem('mf_token')}`}
+      });
+      load();
+    } catch(e) {}
+  };
+
+  if (loading) return <div className="load" style={{padding:40}}>加载中...</div>;
+
+  return (
+    <div style={{padding:24,maxWidth:700}}>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:20}}>
+        <h2 style={{color:'var(--purple)',fontFamily:'var(--serif)',fontSize:20}}>知识图谱项目</h2>
+        <button className="btn btn-p" style={{background:'var(--purple)'}} onClick={() => setShowNew(true)}>+ 新建图谱</button>
+      </div>
+
+      {showNew && (
+        <div style={{background:'var(--bg3)',border:'1px solid var(--border2)',borderRadius:'var(--r)',padding:16,marginBottom:16}}>
+          <input value={newTitle} onChange={e=>setNewTitle(e.target.value)} placeholder="图谱名称" style={{width:'100%',marginBottom:8}} />
+          <textarea value={newDesc} onChange={e=>setNewDesc(e.target.value)} placeholder="描述（可选）" style={{width:'100%',marginBottom:8,minHeight:60}} />
+          <div style={{display:'flex',gap:8}}>
+            <button className="btn btn-p" style={{background:'var(--purple)'}} onClick={createProject}>创建</button>
+            <button className="btn" onClick={() => setShowNew(false)}>取消</button>
+          </div>
+        </div>
+      )}
+
+      {projects.length === 0 && (
+        <div style={{color:'var(--fg3)',textAlign:'center',padding:60}}>
+          暂无知识图谱，点击"新建图谱"开始构建
+        </div>
+      )}
+
+      <div style={{display:'flex',flexDirection:'column',gap:10}}>
+        {projects.map(p => (
+          <div key={p.id} onClick={() => onSelect(p)}
+            style={{background:'var(--bg3)',border:'1px solid var(--border2)',borderRadius:'var(--r)',
+              padding:'14px 16px',cursor:'pointer',transition:'border-color .15s',
+              display:'flex',alignItems:'center',gap:12}}
+            onMouseEnter={e=>e.currentTarget.style.borderColor='var(--purple)'}
+            onMouseLeave={e=>e.currentTarget.style.borderColor='var(--border2)'}
+          >
+            <div style={{width:40,height:40,borderRadius:8,background:'rgba(154,106,196,.15)',
+              border:'1px solid rgba(154,106,196,.3)',display:'flex',alignItems:'center',
+              justifyContent:'center',flexShrink:0}}>
+              <Icon name="share-2" size={20} stroke={1.5} style={{color:'var(--purple)'}} />
+            </div>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontWeight:600,marginBottom:3}}>{p.title}</div>
+              <div style={{color:'var(--fg3)',fontSize:12}}>
+                {p.source_app !== 'manual' && <span style={{marginRight:8}}>[{p.source_app}]</span>}
+                {p.node_count} 节点 · {p.edge_count} 边 · {new Date(p.updated_at).toLocaleDateString()}
+              </div>
+            </div>
+            <button onClick={(e) => deleteProject(p.id, e)}
+              style={{background:'transparent',color:'var(--fg3)',padding:'4px 8px',fontSize:12}}>
+              删除
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── 图谱可视化视图 ────────────────────────────────────────────────
+
+function KGGraphView({kg}) {
+  const [elements, setElements] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [selectedNode, setSelectedNode] = useState(null);
+  const [nodePanel, setNodePanel] = useState(null);
+  const [maxNodes, setMaxNodes] = useState(100);
+  const [stats, setStats] = useState({nodes:0, edges:0});
+
+  const loadGraph = async () => {
+    setLoading(true);
+    try {
+      const data = await F(`${KG_API}/projects/${kg.id}/graph/?max_nodes=${maxNodes}`);
+      setElements(data.elements || []);
+      setStats({nodes: data.node_count, edges: data.edge_count});
+    } catch(e) {}
+    setLoading(false);
+  };
+
+  useEffect(() => { loadGraph(); }, [kg.id, maxNodes]);
+
+  const handleNodeClick = async (nodeInfo) => {
+    setSelectedNode(nodeInfo.id);
+    // 获取节点详情
+    try {
+      const detail = await F(`${KG_API}/projects/${kg.id}/nodes/${nodeInfo.id}/`);
+      setNodePanel(detail);
+    } catch(e) {
+      setNodePanel(nodeInfo);
+    }
+  };
+
+  return (
+    <div style={{display:'flex',height:'100%',gap:0}}>
+      {/* 图谱区域 */}
+      <div style={{flex:1,position:'relative',minWidth:0}}>
+        {loading && (
+          <div style={{position:'absolute',top:16,left:'50%',transform:'translateX(-50%)',
+            background:'var(--bg3)',padding:'6px 16px',borderRadius:20,zIndex:10,
+            fontSize:12,color:'var(--fg2)'}}>加载中...</div>
+        )}
+        <div style={{position:'absolute',top:12,left:12,zIndex:10,display:'flex',gap:8,alignItems:'center'}}>
+          <select value={maxNodes} onChange={e=>setMaxNodes(Number(e.target.value))}
+            style={{padding:'4px 8px',fontSize:12,background:'var(--bg3)'}}>
+            <option value={50}>50节点</option>
+            <option value={100}>100节点</option>
+            <option value={200}>200节点</option>
+          </select>
+          <button className="btn" style={{fontSize:12,padding:'4px 12px'}} onClick={loadGraph}>刷新</button>
+          <span style={{fontSize:11,color:'var(--fg3)',background:'var(--bg3)',padding:'3px 8px',borderRadius:12}}>
+            {stats.nodes} 节点 · {stats.edges} 边
+          </span>
+        </div>
+
+        {/* 节点类型图例 */}
+        <div style={{position:'absolute',bottom:12,left:12,zIndex:10,
+          background:'rgba(8,8,11,.85)',borderRadius:'var(--r)',padding:'8px 12px',
+          display:'flex',flexWrap:'wrap',gap:'4px 12px',maxWidth:320}}>
+          {Object.entries(KG_NODE_COLORS).slice(0,8).map(([type, color]) => (
+            <span key={type} style={{display:'flex',alignItems:'center',gap:4,fontSize:11,color:'var(--fg2)'}}>
+              <span style={{width:8,height:8,borderRadius:'50%',background:color,display:'inline-block'}} />
+              {KG_NODE_LABELS[type]}
+            </span>
+          ))}
+        </div>
+
+        {elements.length > 0 ? (
+          <KGCytoGraph elements={elements} onNodeClick={handleNodeClick} selectedNodeId={selectedNode} />
+        ) : (
+          !loading && (
+            <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100%',color:'var(--fg3)'}}>
+              暂无节点数据，请先提取知识
+            </div>
+          )
+        )}
+      </div>
+
+      {/* 节点详情面板 */}
+      {nodePanel && (
+        <div style={{width:280,background:'var(--bg2)',borderLeft:'1px solid var(--border)',
+          padding:16,overflowY:'auto',flexShrink:0}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+            <span style={{fontWeight:600,fontSize:14}}>{nodePanel.label}</span>
+            <button onClick={() => setNodePanel(null)}
+              style={{background:'transparent',color:'var(--fg3)',fontSize:16}}>×</button>
+          </div>
+          <div style={{display:'flex',gap:6,marginBottom:10}}>
+            <span style={{fontSize:11,padding:'2px 8px',borderRadius:10,
+              background:`${KG_NODE_COLORS[nodePanel.node_type]}22`,
+              color: KG_NODE_COLORS[nodePanel.node_type]}}>
+              {KG_NODE_LABELS[nodePanel.node_type]}
+            </span>
+            <span style={{fontSize:11,color:'var(--fg3)'}}>重要度 {(nodePanel.importance||0).toFixed(2)}</span>
+          </div>
+          {nodePanel.description && (
+            <p style={{color:'var(--fg2)',fontSize:12,marginBottom:10,lineHeight:1.6}}>{nodePanel.description}</p>
+          )}
+          {nodePanel.source_ref && (
+            <div style={{fontSize:11,color:'var(--gold)',marginBottom:10}}>来源: {nodePanel.source_ref}</div>
+          )}
+          {nodePanel.keywords && nodePanel.keywords.length > 0 && (
+            <div style={{marginBottom:10}}>
+              <div style={{fontSize:11,color:'var(--fg3)',marginBottom:4}}>关键词</div>
+              <div style={{display:'flex',flexWrap:'wrap',gap:4}}>
+                {nodePanel.keywords.map((k,i) => (
+                  <span key={i} style={{fontSize:11,padding:'2px 6px',background:'var(--bg4)',borderRadius:10}}>{k}</span>
+                ))}
+              </div>
+            </div>
+          )}
+          {nodePanel.out_edges && nodePanel.out_edges.length > 0 && (
+            <div style={{marginBottom:10}}>
+              <div style={{fontSize:11,color:'var(--fg3)',marginBottom:4}}>出边 ({nodePanel.out_edges.length})</div>
+              {nodePanel.out_edges.map(e => (
+                <div key={e.edge_id} style={{fontSize:11,color:'var(--fg2)',padding:'3px 0',
+                  borderBottom:'1px solid var(--border)'}}>
+                  <span style={{color:'var(--cyan)'}}>{e.relation_label}</span> → {e.target_label}
+                </div>
+              ))}
+            </div>
+          )}
+          {nodePanel.in_edges && nodePanel.in_edges.length > 0 && (
+            <div>
+              <div style={{fontSize:11,color:'var(--fg3)',marginBottom:4}}>入边 ({nodePanel.in_edges.length})</div>
+              {nodePanel.in_edges.map(e => (
+                <div key={e.edge_id} style={{fontSize:11,color:'var(--fg2)',padding:'3px 0',
+                  borderBottom:'1px solid var(--border)'}}>
+                  {e.source_label} <span style={{color:'var(--orange)'}}>{e.relation_label}</span> →
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── 节点管理 ──────────────────────────────────────────────────────
+
+function KGNodeManager({kg}) {
+  const [nodes, setNodes] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [search, setSearch] = useState('');
+  const [filterType, setFilterType] = useState('');
+  const [offset, setOffset] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [showAdd, setShowAdd] = useState(false);
+  const [addLabel, setAddLabel] = useState('');
+  const [addType, setAddType] = useState('concept');
+  const [addDesc, setAddDesc] = useState('');
+  const LIMIT = 30;
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      let url = `${KG_API}/projects/${kg.id}/nodes/?limit=${LIMIT}&offset=${offset}`;
+      if (search) url += `&q=${encodeURIComponent(search)}`;
+      if (filterType) url += `&type=${filterType}`;
+      const data = await F(url);
+      setNodes(data.nodes || []);
+      setTotal(data.total || 0);
+    } catch(e) {}
+    setLoading(false);
+  };
+
+  useEffect(() => { load(); }, [kg.id, offset, filterType]);
+  useEffect(() => { setOffset(0); }, [search, filterType]);
+
+  const addNode = async () => {
+    if (!addLabel.trim()) return;
+    try {
+      await P(`${KG_API}/projects/${kg.id}/nodes/`, {
+        label: addLabel.trim(), node_type: addType, description: addDesc,
+      });
+      setAddLabel(''); setAddDesc(''); setShowAdd(false);
+      load();
+    } catch(e) { alert('添加失败'); }
+  };
+
+  const deleteNode = async (id) => {
+    if (!confirm('确认删除节点？相关边也会被删除')) return;
+    try {
+      await fetch(`${KG_API}/projects/${kg.id}/nodes/${id}/`, {
+        method:'DELETE', headers:{'Authorization':`Token ${localStorage.getItem('mf_token')}`}
+      });
+      load();
+    } catch(e) {}
+  };
+
+  return (
+    <div style={{padding:20,height:'100%',display:'flex',flexDirection:'column'}}>
+      <div style={{display:'flex',gap:8,marginBottom:16,flexWrap:'wrap',alignItems:'center'}}>
+        <input value={search} onChange={e=>setSearch(e.target.value)}
+          onKeyDown={e=>e.key==='Enter'&&load()}
+          placeholder="搜索节点..." style={{flex:1,minWidth:160}} />
+        <select value={filterType} onChange={e=>setFilterType(e.target.value)}
+          style={{padding:'8px',background:'var(--bg3)',fontSize:13}}>
+          <option value="">所有类型</option>
+          {Object.entries(KG_NODE_LABELS).map(([k,v]) => (
+            <option key={k} value={k}>{v}</option>
+          ))}
+        </select>
+        <button className="btn" onClick={load} style={{fontSize:12}}>搜索</button>
+        <button className="btn btn-p" style={{background:'var(--purple)',fontSize:12}}
+          onClick={() => setShowAdd(!showAdd)}>+ 添加节点</button>
+      </div>
+
+      {showAdd && (
+        <div style={{background:'var(--bg3)',borderRadius:'var(--r)',border:'1px solid var(--border2)',
+          padding:14,marginBottom:14}}>
+          <div style={{display:'flex',gap:8,marginBottom:8}}>
+            <input value={addLabel} onChange={e=>setAddLabel(e.target.value)} placeholder="节点标签" style={{flex:1}} />
+            <select value={addType} onChange={e=>setAddType(e.target.value)}
+              style={{padding:'8px',background:'var(--bg3)',fontSize:13}}>
+              {Object.entries(KG_NODE_LABELS).map(([k,v]) => (
+                <option key={k} value={k}>{v}</option>
+              ))}
+            </select>
+          </div>
+          <textarea value={addDesc} onChange={e=>setAddDesc(e.target.value)} placeholder="描述（可选）"
+            style={{width:'100%',marginBottom:8,minHeight:50}} />
+          <div style={{display:'flex',gap:8}}>
+            <button className="btn btn-p" style={{background:'var(--purple)',fontSize:12}} onClick={addNode}>添加</button>
+            <button className="btn" style={{fontSize:12}} onClick={() => setShowAdd(false)}>取消</button>
+          </div>
+        </div>
+      )}
+
+      <div style={{fontSize:12,color:'var(--fg3)',marginBottom:10}}>
+        共 {total} 个节点 {search && `（搜索"${search}"）`}
+      </div>
+
+      <div style={{flex:1,overflowY:'auto'}}>
+        {loading ? <div className="load" style={{padding:20}}>加载中...</div> : (
+          <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
+            <thead>
+              <tr style={{borderBottom:'1px solid var(--border2)'}}>
+                <th style={{padding:'8px 6px',textAlign:'left',color:'var(--fg3)',fontWeight:400}}>标签</th>
+                <th style={{padding:'8px 6px',textAlign:'left',color:'var(--fg3)',fontWeight:400,width:70}}>类型</th>
+                <th style={{padding:'8px 6px',textAlign:'left',color:'var(--fg3)',fontWeight:400,width:60}}>重要度</th>
+                <th style={{padding:'8px 6px',textAlign:'left',color:'var(--fg3)',fontWeight:400}}>描述</th>
+                <th style={{padding:'8px 6px',width:50}}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {nodes.map(n => (
+                <tr key={n.id} style={{borderBottom:'1px solid var(--border)'}}>
+                  <td style={{padding:'8px 6px',fontWeight:500}}>
+                    <span style={{display:'inline-block',width:8,height:8,borderRadius:'50%',
+                      background:KG_NODE_COLORS[n.node_type]||'#888',marginRight:6}} />
+                    {n.label}
+                  </td>
+                  <td style={{padding:'8px 6px',color:'var(--fg3)',fontSize:11}}>
+                    {KG_NODE_LABELS[n.node_type]}
+                  </td>
+                  <td style={{padding:'8px 6px',color:'var(--fg2)',fontSize:11}}>
+                    {n.importance.toFixed(2)}
+                  </td>
+                  <td style={{padding:'8px 6px',color:'var(--fg2)',maxWidth:300,
+                    overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                    {n.description || <span style={{color:'var(--fg3)'}}>-</span>}
+                  </td>
+                  <td style={{padding:'8px 6px',textAlign:'right'}}>
+                    <button onClick={() => deleteNode(n.id)}
+                      style={{background:'transparent',color:'var(--fg3)',fontSize:11,padding:'2px 6px'}}>
+                      删除
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <div style={{display:'flex',gap:8,marginTop:12,justifyContent:'center'}}>
+        <button className="btn" disabled={offset===0} onClick={() => setOffset(Math.max(0,offset-LIMIT))}
+          style={{fontSize:12}}>上一页</button>
+        <span style={{padding:'6px 12px',fontSize:12,color:'var(--fg3)'}}>
+          {Math.floor(offset/LIMIT)+1} / {Math.ceil(total/LIMIT)||1}
+        </span>
+        <button className="btn" disabled={offset+LIMIT>=total} onClick={() => setOffset(offset+LIMIT)}
+          style={{fontSize:12}}>下一页</button>
+      </div>
+    </div>
+  );
+}
+
+// ── 知识探索（搜索+子图+路径） ────────────────────────────────────
+
+function KGExplorer({kg}) {
+  const [mode, setMode] = useState('search'); // search|subgraph|path
+  const [query, setQuery] = useState('');
+  const [source, setSource] = useState('');
+  const [target, setTarget] = useState('');
+  const [results, setResults] = useState(null);
+  const [subElements, setSubElements] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [stats, setStats] = useState(null);
+  const [selectedNode, setSelectedNode] = useState(null);
+
+  const doSearch = async () => {
+    if (!query.trim()) return;
+    setLoading(true);
+    try {
+      const data = await P(`${KG_API}/projects/${kg.id}/search/`, {query, top_k:20});
+      setResults(data.nodes || []);
+      setStats({duration_ms: data.duration_ms});
+    } catch(e) {}
+    setLoading(false);
+  };
+
+  const doSubgraph = async () => {
+    if (!query.trim() && !source.trim()) return;
+    setLoading(true);
+    try {
+      const payload = {max_depth:2, max_nodes:50};
+      if (query.trim()) payload.seed_labels = query.split(',').map(s=>s.trim()).filter(Boolean);
+      const data = await P(`${KG_API}/projects/${kg.id}/subgraph/`, payload);
+      setSubElements(data.elements || []);
+      setStats(data.stats);
+    } catch(e) {}
+    setLoading(false);
+  };
+
+  const doPath = async () => {
+    if (!source.trim() || !target.trim()) return;
+    setLoading(true);
+    try {
+      const data = await P(`${KG_API}/projects/${kg.id}/path/`, {source, target});
+      setResults(data);
+      setStats({duration_ms: data.duration_ms});
+    } catch(e) {}
+    setLoading(false);
+  };
+
+  return (
+    <div style={{padding:20,height:'100%',display:'flex',flexDirection:'column'}}>
+      <div style={{display:'flex',gap:0,marginBottom:16,background:'var(--bg3)',
+        borderRadius:'var(--r)',padding:3,alignSelf:'flex-start'}}>
+        {[['search','节点搜索'],['subgraph','子图探索'],['path','路径搜索']].map(([m,l]) => (
+          <button key={m} onClick={() => {setMode(m);setResults(null);setSubElements([]);setStats(null);}}
+            style={{padding:'6px 16px',borderRadius:'calc(var(--r) - 2px)',fontSize:13,
+              background:mode===m?'var(--purple)':'transparent',
+              color:mode===m?'#fff':'var(--fg2)'}}>
+            {l}
+          </button>
+        ))}
+      </div>
+
+      <div style={{display:'flex',gap:8,marginBottom:16,alignItems:'center'}}>
+        {mode === 'path' ? (
+          <>
+            <input value={source} onChange={e=>setSource(e.target.value)} placeholder="起始概念" style={{flex:1}} />
+            <span style={{color:'var(--fg3)',fontSize:16}}>→</span>
+            <input value={target} onChange={e=>setTarget(e.target.value)} placeholder="目标概念" style={{flex:1}} />
+          </>
+        ) : (
+          <input value={query} onChange={e=>setQuery(e.target.value)}
+            onKeyDown={e=>e.key==='Enter'&&(mode==='search'?doSearch():doSubgraph())}
+            placeholder={mode==='subgraph'?'输入种子概念（逗号分隔）':'搜索节点关键词...'}
+            style={{flex:1}} />
+        )}
+        <button className="btn btn-p" style={{background:'var(--purple)',fontSize:13}}
+          onClick={mode==='search'?doSearch:mode==='subgraph'?doSubgraph:doPath}
+          disabled={loading}>
+          {loading?'...':(mode==='path'?'查找路径':mode==='subgraph'?'展开子图':'搜索')}
+        </button>
+      </div>
+
+      {stats && (
+        <div style={{fontSize:11,color:'var(--fg3)',marginBottom:10}}>
+          耗时 {stats.duration_ms}ms
+          {stats.nodes !== undefined && ` · ${stats.nodes}节点 · ${stats.edges}边`}
+          {stats.nodes_traversed !== undefined && ` · 遍历${stats.nodes_traversed}节点`}
+        </div>
+      )}
+
+      {/* 搜索结果 */}
+      {mode === 'search' && results && (
+        <div style={{flex:1,overflowY:'auto'}}>
+          {results.length === 0 ? (
+            <div style={{color:'var(--fg3)',padding:20}}>无匹配节点</div>
+          ) : results.map(n => (
+            <div key={n.id} style={{padding:'10px 12px',background:'var(--bg3)',
+              borderRadius:'var(--r)',marginBottom:6,
+              borderLeft:`3px solid ${KG_NODE_COLORS[n.node_type]||'#888'}`}}>
+              <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:4}}>
+                <span style={{fontWeight:600}}>{n.label}</span>
+                <span style={{fontSize:11,color:KG_NODE_COLORS[n.node_type]}}>{KG_NODE_LABELS[n.node_type]}</span>
+                <span style={{fontSize:11,color:'var(--fg3)',marginLeft:'auto'}}>重要度 {n.importance.toFixed(2)}</span>
+              </div>
+              {n.description && <div style={{fontSize:12,color:'var(--fg2)'}}>{n.description}</div>}
+              {n.source_ref && <div style={{fontSize:11,color:'var(--gold)',marginTop:3}}>{n.source_ref}</div>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* 路径结果 */}
+      {mode === 'path' && results && (
+        <div style={{flex:1,overflowY:'auto'}}>
+          {!results.found ? (
+            <div style={{color:'var(--fg3)',padding:20}}>未找到路径（可尝试增大max_length）</div>
+          ) : (
+            <div>
+              <div style={{color:'var(--green)',marginBottom:12,fontSize:13}}>
+                找到路径，长度 {results.length}
+              </div>
+              <div style={{display:'flex',flexWrap:'wrap',alignItems:'center',gap:4}}>
+                {results.path_nodes && results.path_nodes.map((n, i) => (
+                  <React.Fragment key={n.id}>
+                    <span style={{padding:'4px 10px',background:'var(--bg3)',
+                      border:`1px solid ${KG_NODE_COLORS[n.type]||'#888'}`,
+                      borderRadius:16,fontSize:12,color:KG_NODE_COLORS[n.type]}}>
+                      {n.label}
+                    </span>
+                    {i < results.path_edges.length && (
+                      <span style={{fontSize:11,color:'var(--fg3)',padding:'0 4px'}}>
+                        —[{results.path_edges[i].relation}]→
+                      </span>
+                    )}
+                  </React.Fragment>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 子图可视化 */}
+      {mode === 'subgraph' && subElements.length > 0 && (
+        <div style={{flex:1,minHeight:0}}>
+          <KGCytoGraph elements={subElements} onNodeClick={n=>setSelectedNode(n)} selectedNodeId={selectedNode?.id} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── AI提取知识 ────────────────────────────────────────────────────
+
+function KGExtractor({kg}) {
+  const [text, setText] = useState('');
+  const [sourceRef, setSourceRef] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState(null);
+  const [chatQ, setChatQ] = useState('');
+  const [chatAnswer, setChatAnswer] = useState('');
+  const [chatLoading, setChatLoading] = useState(false);
+  const [tab, setTab] = useState('extract');
+
+  const extract = async () => {
+    if (!text.trim()) return;
+    setLoading(true);
+    setResult(null);
+    try {
+      const data = await P(`${KG_API}/projects/${kg.id}/extract/`, {
+        text, source_ref: sourceRef,
+      });
+      setResult(data);
+    } catch(e) { alert('提取失败'); }
+    setLoading(false);
+  };
+
+  const computeRank = async () => {
+    try {
+      const data = await P(`${KG_API}/projects/${kg.id}/rank/`, {});
+      alert(`PageRank计算完成，更新了 ${data.updated} 个节点，耗时 ${data.duration_ms}ms`);
+    } catch(e) { alert('计算失败'); }
+  };
+
+  const doChat = async () => {
+    if (!chatQ.trim()) return;
+    setChatLoading(true);
+    setChatAnswer('');
+    try {
+      const token = localStorage.getItem('mf_token');
+      const res = await fetch(`${KG_API}/projects/${kg.id}/chat/`, {
+        method: 'POST',
+        headers: {'Content-Type':'application/json','Authorization':`Token ${token}`},
+        body: JSON.stringify({question: chatQ}),
+      });
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+      while (true) {
+        const {done, value} = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, {stream:true});
+        const lines = buf.split('\n');
+        buf = lines.pop();
+        for (const line of lines) {
+          if (!line.startsWith('data:')) continue;
+          try {
+            const d = JSON.parse(line.slice(5));
+            if (d.type === 'chunk') setChatAnswer(a => a + d.text);
+          } catch(e) {}
+        }
+      }
+    } catch(e) { setChatAnswer('错误: ' + e.message); }
+    setChatLoading(false);
+  };
+
+  return (
+    <div style={{padding:20,height:'100%',display:'flex',flexDirection:'column'}}>
+      <div style={{display:'flex',gap:0,marginBottom:16,background:'var(--bg3)',
+        borderRadius:'var(--r)',padding:3,alignSelf:'flex-start'}}>
+        {[['extract','提取知识'],['chat','图谱问答']].map(([t,l]) => (
+          <button key={t} onClick={() => setTab(t)}
+            style={{padding:'6px 16px',borderRadius:'calc(var(--r) - 2px)',fontSize:13,
+              background:tab===t?'var(--purple)':'transparent',
+              color:tab===t?'#fff':'var(--fg2)'}}>
+            {l}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'extract' && (
+        <div style={{display:'flex',flexDirection:'column',gap:10,flex:1}}>
+          <input value={sourceRef} onChange={e=>setSourceRef(e.target.value)}
+            placeholder="来源引用（如 paper.md:L45-60，可选）" style={{width:'100%'}} />
+          <textarea value={text} onChange={e=>setText(e.target.value)}
+            placeholder="粘贴要提取知识的文本（最多4000字）..."
+            style={{flex:1,minHeight:200,width:'100%',resize:'none',fontFamily:'var(--mono)',fontSize:12}} />
+          <div style={{display:'flex',gap:8,alignItems:'center'}}>
+            <button className="btn btn-p" style={{background:'var(--purple)'}}
+              onClick={extract} disabled={loading||!text.trim()}>
+              {loading ? '提取中...' : 'AI提取知识'}
+            </button>
+            <button className="btn" onClick={computeRank} style={{fontSize:12}}>
+              重算PageRank
+            </button>
+          </div>
+          {result && (
+            <div style={{background:'var(--bg3)',borderRadius:'var(--r)',padding:14,
+              border:'1px solid var(--border2)'}}>
+              {result.error ? (
+                <div style={{color:'var(--red)'}}>提取失败: {result.error}</div>
+              ) : (
+                <div>
+                  <div style={{color:'var(--green)',marginBottom:6}}>
+                    提取成功！新增 {result.nodes_created} 节点、{result.edges_created} 条边
+                  </div>
+                  <div style={{fontSize:12,color:'var(--fg3)'}}>
+                    图谱现有 {result.total_nodes} 节点、{result.total_edges} 条边
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === 'chat' && (
+        <div style={{display:'flex',flexDirection:'column',gap:10,flex:1}}>
+          <div style={{color:'var(--fg3)',fontSize:12,padding:'8px 12px',background:'var(--bg3)',
+            borderRadius:'var(--r)'}}>
+            基于当前知识图谱内容回答问题，不会编造图谱外信息
+          </div>
+          <div style={{flex:1,background:'var(--bg3)',borderRadius:'var(--r)',padding:14,
+            overflowY:'auto',minHeight:150,fontFamily:'var(--mono)',fontSize:13,lineHeight:1.7,
+            whiteSpace:'pre-wrap',color:'var(--fg)'}}>
+            {chatAnswer || <span style={{color:'var(--fg3)'}}>回答将显示在这里...</span>}
+          </div>
+          <div style={{display:'flex',gap:8}}>
+            <input value={chatQ} onChange={e=>setChatQ(e.target.value)}
+              onKeyDown={e=>e.key==='Enter'&&!e.shiftKey&&doChat()}
+              placeholder="基于知识图谱提问..." style={{flex:1}} />
+            <button className="btn btn-p" style={{background:'var(--purple)'}}
+              onClick={doChat} disabled={chatLoading||!chatQ.trim()}>
+              {chatLoading?'..':'发送'}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── 统计分析 ──────────────────────────────────────────────────────
+
+function KGAnalytics({kg}) {
+  const [stats, setStats] = useState(null);
+  const [days, setDays] = useState(30);
+  const [loading, setLoading] = useState(false);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const url = `${KG_API}/stats/?days=${days}${kg?`&kg_id=${kg.id}`:''}`;
+      const data = await F(url);
+      setStats(data);
+    } catch(e) {}
+    setLoading(false);
+  };
+
+  useEffect(() => { load(); }, [days, kg?.id]);
+
+  const OPERATION_LABELS = {
+    extract_text:'文本提取', add_node:'添加节点', add_edge:'添加边',
+    query_subgraph:'查询子图', search_nodes:'搜索节点', find_path:'路径搜索',
+    batch_extract:'批量提取', get_context:'获取上下文', compute_rank:'计算排名',
+    bfs_traverse:'BFS遍历',
+  };
+
+  if (loading) return <div className="load" style={{padding:40}}>加载中...</div>;
+  if (!stats) return null;
+
+  const agg = stats.aggregates || {};
+
+  return (
+    <div style={{padding:20,height:'100%',overflowY:'auto'}}>
+      <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:20}}>
+        <h3 style={{fontSize:15,color:'var(--purple)'}}>调用统计</h3>
+        <select value={days} onChange={e=>setDays(Number(e.target.value))}
+          style={{padding:'4px 8px',fontSize:12,background:'var(--bg3)'}}>
+          <option value={7}>近7天</option>
+          <option value={30}>近30天</option>
+          <option value={90}>近90天</option>
+        </select>
+        <button className="btn" style={{fontSize:12}} onClick={load}>刷新</button>
+      </div>
+
+      {/* 汇总指标 */}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))',gap:10,marginBottom:20}}>
+        {[
+          ['总调用次数', stats.total_calls, '次'],
+          ['总耗时', Math.round((agg.total_duration_ms||0)/1000), '秒'],
+          ['LLM输入Token', agg.total_tokens_in||0, ''],
+          ['LLM输出Token', agg.total_tokens_out||0, ''],
+          ['遍历节点', agg.total_nodes_traversed||0, '个'],
+          ['遍历边', agg.total_edges_traversed||0, '条'],
+          ['平均耗时', Math.round(agg.avg_duration_ms||0), 'ms'],
+        ].map(([label, val, unit]) => (
+          <div key={label} style={{background:'var(--bg3)',borderRadius:'var(--r)',
+            padding:'12px 14px',border:'1px solid var(--border2)'}}>
+            <div style={{fontSize:11,color:'var(--fg3)',marginBottom:4}}>{label}</div>
+            <div style={{fontSize:18,fontWeight:600,color:'var(--purple)'}}>
+              {typeof val === 'number' ? val.toLocaleString() : val}
+              <span style={{fontSize:12,fontWeight:400,color:'var(--fg3)',marginLeft:3}}>{unit}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* 按操作分类 */}
+      {stats.by_operation && stats.by_operation.length > 0 && (
+        <div style={{marginBottom:20}}>
+          <div style={{fontSize:13,color:'var(--fg2)',marginBottom:10,fontWeight:500}}>操作分布</div>
+          {stats.by_operation.map(op => (
+            <div key={op.operation} style={{display:'flex',alignItems:'center',gap:8,marginBottom:6}}>
+              <span style={{width:80,fontSize:12,color:'var(--fg3)'}}>{OPERATION_LABELS[op.operation]||op.operation}</span>
+              <div style={{flex:1,height:16,background:'var(--bg3)',borderRadius:8,overflow:'hidden'}}>
+                <div style={{height:'100%',background:'var(--purple)',opacity:0.7,
+                  width:`${Math.min(100, (op.count/stats.total_calls)*100)}%`,
+                  borderRadius:8,transition:'width .3s'}} />
+              </div>
+              <span style={{width:40,fontSize:12,color:'var(--fg2)',textAlign:'right'}}>{op.count}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* 最近日志 */}
+      {stats.recent_logs && stats.recent_logs.length > 0 && (
+        <div>
+          <div style={{fontSize:13,color:'var(--fg2)',marginBottom:10,fontWeight:500}}>最近调用记录</div>
+          <div style={{background:'var(--bg3)',borderRadius:'var(--r)',overflow:'hidden'}}>
+            {stats.recent_logs.map(log => (
+              <div key={log.id} style={{padding:'8px 12px',borderBottom:'1px solid var(--border)',
+                display:'flex',alignItems:'center',gap:8,fontSize:12}}>
+                <span style={{color:log.success?'var(--green)':'var(--red)',fontSize:10}}>●</span>
+                <span style={{width:90,color:'var(--fg2)'}}>{OPERATION_LABELS[log.operation]||log.operation}</span>
+                <span style={{width:60,color:'var(--fg3)'}}>{log.caller_app}</span>
+                <span style={{width:55,color:'var(--fg2)'}}>{log.duration_ms}ms</span>
+                {log.nodes_created > 0 && <span style={{color:'var(--green)'}}>+{log.nodes_created}节点</span>}
+                {log.edges_created > 0 && <span style={{color:'var(--cyan)'}}>+{log.edges_created}边</span>}
+                {(log.llm_tokens_input||0) > 0 && (
+                  <span style={{color:'var(--gold)',fontSize:11,marginLeft:'auto'}}>
+                    {log.llm_tokens_input}+{log.llm_tokens_output} tok
+                  </span>
+                )}
+                <span style={{color:'var(--fg3)',fontSize:11,marginLeft:'auto'}}>
+                  {new Date(log.created_at).toLocaleString()}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── 主应用组件 ────────────────────────────────────────────────────
+
+function KGApp({user, onLogout, onUpdateUser}) {
+  const [v, setV] = useState('projects');
+  const [currentKG, setCurrentKG] = useState(null);
+  const [sbOpen, setSbOpen] = useState(true);
+
+  const navItems = currentKG ? [
+    {id:'graph', label:'图谱可视化', icon:'share-2'},
+    {id:'explorer', label:'知识探索', icon:'search'},
+    {id:'nodes', label:'节点管理', icon:'list'},
+    {id:'extract', label:'AI提取', icon:'zap'},
+    {id:'analytics', label:'统计分析', icon:'bar-chart-2'},
+  ] : [];
+
+  const topNavItems = [
+    {id:'projects', label:'所有图谱', icon:'folder'},
+    {id:'analytics_global', label:'全局统计', icon:'activity'},
+  ];
+
+  return (
+    <div className="app">
+      {/* 侧边栏 */}
+      <div className="sb" style={{display:'flex',flexDirection:'column'}}>
+        <div style={{padding:'16px 14px 12px',borderBottom:'1px solid var(--border)',
+          display:'flex',alignItems:'center',gap:10}}>
+          <div style={{width:32,height:32,borderRadius:8,background:'rgba(154,106,196,.2)',
+            display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+            <Icon name="share-2" size={18} stroke={1.5} style={{color:'var(--purple)'}} />
+          </div>
+          <div>
+            <div style={{fontWeight:700,fontSize:14,color:'var(--fg)',fontFamily:'var(--serif)'}}>知识图谱</div>
+            {currentKG && <div style={{fontSize:11,color:'var(--purple)',marginTop:1,maxWidth:130,
+              overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{currentKG.title}</div>}
+          </div>
+        </div>
+
+        <nav style={{flex:1,overflowY:'auto',padding:'8px 0'}}>
+          {/* 顶层导航 */}
+          {topNavItems.map(item => (
+            <div key={item.id} onClick={() => {setV(item.id);if(item.id==='projects')setCurrentKG(null);}}
+              style={{padding:'8px 14px',cursor:'pointer',display:'flex',alignItems:'center',gap:8,
+                background: v===item.id?'rgba(154,106,196,.15)':'transparent',
+                color: v===item.id?'var(--purple)':'var(--fg2)',
+                borderLeft: v===item.id?'2px solid var(--purple)':'2px solid transparent',
+                fontSize:13}}>
+              <Icon name={item.icon} size={15} stroke={1.5} />
+              {item.label}
+            </div>
+          ))}
+
+          {/* 当前图谱导航 */}
+          {currentKG && (
+            <>
+              <div style={{padding:'10px 14px 4px',fontSize:11,color:'var(--fg3)',textTransform:'uppercase',letterSpacing:'.05em'}}>
+                当前图谱
+              </div>
+              {navItems.map(item => (
+                <div key={item.id} onClick={() => setV(item.id)}
+                  style={{padding:'8px 14px 8px 20px',cursor:'pointer',display:'flex',alignItems:'center',gap:8,
+                    background: v===item.id?'rgba(154,106,196,.15)':'transparent',
+                    color: v===item.id?'var(--purple)':'var(--fg2)',
+                    borderLeft: v===item.id?'2px solid var(--purple)':'2px solid transparent',
+                    fontSize:13}}>
+                  <Icon name={item.icon} size={14} stroke={1.5} />
+                  {item.label}
+                </div>
+              ))}
+            </>
+          )}
+        </nav>
+
+        <div style={{padding:'10px 14px',borderTop:'1px solid var(--border)'}}>
+          <div style={{fontSize:11,color:'var(--fg3)',marginBottom:6}}>{user?.email}</div>
+          <div style={{display:'flex',gap:6}}>
+            <button onClick={() => {window.location.hash='#/';}}
+              style={{flex:1,background:'var(--bg3)',color:'var(--fg2)',
+                padding:'5px 0',borderRadius:'var(--r)',fontSize:11}}>
+              ← 平台首页
+            </button>
+            <button onClick={onLogout}
+              style={{flex:1,background:'var(--bg3)',color:'var(--fg2)',
+                padding:'5px 0',borderRadius:'var(--r)',fontSize:11}}>
+              退出
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* 主内容 */}
+      <div style={{flex:1,display:'flex',flexDirection:'column',minWidth:0,overflow:'hidden'}}>
+        {/* 标题栏 */}
+        <div style={{height:46,borderBottom:'1px solid var(--border)',display:'flex',
+          alignItems:'center',padding:'0 16px',gap:12,background:'var(--bg2)',flexShrink:0}}>
+          {currentKG && (
+            <button onClick={() => {setCurrentKG(null);setV('projects');}}
+              style={{background:'transparent',color:'var(--fg3)',fontSize:12,
+                display:'flex',alignItems:'center',gap:4}}>
+              ← 返回
+            </button>
+          )}
+          <span style={{fontSize:14,fontWeight:500,color:'var(--fg)'}}>
+            {v==='projects'?'知识图谱项目':
+             v==='analytics_global'?'全局统计':
+             v==='graph'?'图谱可视化':
+             v==='explorer'?'知识探索':
+             v==='nodes'?'节点管理':
+             v==='extract'?'AI提取知识':
+             v==='analytics'?'统计分析':''}
+          </span>
+          {currentKG && (
+            <span style={{fontSize:12,color:'var(--fg3)',marginLeft:'auto'}}>
+              {currentKG.node_count} 节点 · {currentKG.edge_count} 边
+            </span>
+          )}
+        </div>
+
+        {/* 视图内容 */}
+        <div style={{flex:1,overflow:'auto',minHeight:0}}>
+          {v === 'projects' && (
+            <KGProjectList onSelect={(kg) => {setCurrentKG(kg);setV('graph');}} />
+          )}
+          {v === 'analytics_global' && <KGAnalytics kg={null} />}
+          {currentKG && v === 'graph' && <KGGraphView kg={currentKG} />}
+          {currentKG && v === 'explorer' && <KGExplorer kg={currentKG} />}
+          {currentKG && v === 'nodes' && <KGNodeManager kg={currentKG} />}
+          {currentKG && v === 'extract' && <KGExtractor kg={currentKG} />}
+          {currentKG && v === 'analytics' && <KGAnalytics kg={currentKG} />}
         </div>
       </div>
     </div>
