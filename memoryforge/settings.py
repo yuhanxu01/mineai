@@ -24,6 +24,7 @@ INSTALLED_APPS = [
     'novel_share',
     'ocr_studio',
     'paper_lab',
+    'knowledge_graph',
     'dashboard',
 ]
 

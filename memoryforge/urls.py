@@ -14,6 +14,7 @@ urlpatterns = [
     path('api/share/', include('novel_share.urls')),
     path('api/ocr/', include('ocr_studio.urls')),
     path('api/paper/', include('paper_lab.urls')),
+    path('api/kg/', include('knowledge_graph.urls')),
     path('share/', TemplateView.as_view(template_name='share_index.html')),
     path('dashboard/', include('dashboard.urls', namespace='dashboard')),
     path('', TemplateView.as_view(template_name='index.html')),
