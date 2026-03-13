@@ -344,17 +344,77 @@ svg.icon{display:block;flex-shrink:0}
 /* Fade in */
 @keyframes plFade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 .pl-fade{animation:plFade .2s ease}
+/* ── Dashboard ── */
+.dash-wrap{min-height:100vh;background:var(--bg);display:flex;flex-direction:column}
+.dash-nav{height:52px;background:var(--bg2);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 24px;gap:14px;flex-shrink:0}
+.dash-logo{font-family:var(--serif);font-size:18px;font-weight:600;color:var(--gold2);letter-spacing:1px;white-space:nowrap;flex-shrink:0}
+.dash-sw{flex:1;max-width:420px;position:relative;margin:0 12px}.dash-sw input{width:100%;padding:7px 12px 7px 34px;border-radius:20px;font-size:13px}.dash-sw-ic{position:absolute;left:10px;top:50%;transform:translateY(-50%);pointer-events:none;color:var(--fg3)}
+.dash-right{margin-left:auto;display:flex;align-items:center;gap:8px;flex-shrink:0}
+.dash-body{flex:1;padding:24px 28px;max-width:1200px;margin:0 auto;width:100%;overflow-y:auto}
+.dash-greet{margin-bottom:24px}.dash-greet h2{font-family:var(--serif);font-size:20px;color:var(--fg);margin-bottom:3px}.dash-greet p{font-size:12px;color:var(--fg3)}
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-bottom:28px}
+.stat-c{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:14px 16px}
+.stat-v{font-family:var(--mono);font-size:22px;font-weight:600;margin-bottom:3px;line-height:1.2}.stat-l{font-size:10px;color:var(--fg3);letter-spacing:.5px}
+.stat-bar{height:3px;background:var(--bg4);border-radius:2px;margin-top:8px;overflow:hidden}.stat-fill{height:100%;border-radius:2px;max-width:100%;transition:width .4s}
+.sec-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}.sec-title{font-size:11px;letter-spacing:2px;color:var(--fg3);text-transform:uppercase}
+.apps-grid2{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;margin-bottom:16px}
+.ac2{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:20px;cursor:pointer;transition:all .18s;display:flex;flex-direction:column;gap:10px}
+.ac2:hover{transform:translateY(-2px);box-shadow:0 6px 24px rgba(0,0,0,.35)}
+.ac2-ico{width:42px;height:42px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0}.ac2-name{font-family:var(--serif);font-size:16px;color:var(--fg)}.ac2-desc{font-size:12px;color:var(--fg2);line-height:1.6;flex:1}
+.ac2-foot{display:flex;align-items:center;justify-content:space-between;margin-top:2px}
+.ac2-edit{opacity:0;background:var(--bg4);color:var(--fg3);padding:3px 8px;border-radius:4px;font-size:11px;border:1px solid var(--border);cursor:pointer;transition:opacity .15s}.ac2:hover .ac2-edit{opacity:1}
+.ai-rec{background:var(--bg2);border:1px solid var(--gold-dim);border-radius:10px;padding:14px;margin-top:8px}.ai-rec-hd{font-size:11px;color:var(--gold);letter-spacing:1px;margin-bottom:8px;display:flex;align-items:center;gap:6px}.ai-rec-txt{font-size:13px;color:var(--fg2);line-height:1.75;white-space:pre-wrap}
+.tp-ov{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:800;display:flex;justify-content:flex-end}
+.tp{width:280px;height:100%;background:var(--bg2);border-left:1px solid var(--border2);padding:20px;overflow-y:auto;display:flex;flex-direction:column;gap:18px}
+.tp h3{font-family:var(--serif);font-size:17px;color:var(--fg);margin:0}
+.tp-presets{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.tp-preset{border:2px solid var(--border);border-radius:8px;padding:10px 8px;cursor:pointer;transition:border-color .15s;text-align:center}.tp-preset:hover{border-color:var(--border2)}.tp-preset.on{border-color:var(--gold)}
+.tp-swatches{display:flex;gap:4px;justify-content:center;margin-bottom:5px}.tp-sw{width:14px;height:14px;border-radius:3px}.tp-pn{font-size:11px;color:var(--fg2)}
+.tp-row{display:flex;align-items:center;gap:8px}.tp-row label{font-size:12px;color:var(--fg2);flex:1}.tp-row input[type=color]{width:36px;height:28px;padding:2px;border:1px solid var(--border2);border-radius:4px;background:var(--bg3);cursor:pointer}
+.csw-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin:8px 0}.csw{height:28px;border-radius:6px;border:2px solid transparent;cursor:pointer;transition:all .12s}.csw:hover{transform:scale(1.1)}.csw.on{border-color:white}
+/* ── App card menu ── */
+.app-menu-wrap{position:relative;flex-shrink:0}
+.app-menu-btn{background:none;border:none;color:var(--fg3);padding:5px;border-radius:5px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .12s;line-height:1}
+.app-menu-btn:hover{background:var(--bg4);color:var(--fg)}
+.app-menu{position:absolute;bottom:calc(100% + 6px);right:0;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:4px;z-index:60;min-width:110px;box-shadow:0 4px 18px rgba(0,0,0,.45)}
+.app-menu-item{padding:7px 12px;font-size:12px;color:var(--fg2);border-radius:5px;cursor:pointer;display:flex;align-items:center;gap:8px;transition:background .1s;white-space:nowrap}
+.app-menu-item:hover{background:var(--bg4);color:var(--fg)}
+.app-menu-sep{height:1px;background:var(--border);margin:3px 0}
+/* drag states */
+.ac2.drag-over{border-color:var(--gold)!important;background:var(--bg3)}
+.ac2.dragging{opacity:.35;transform:scale(.97)}
+.ac2-pinmark{position:absolute;top:9px;right:36px;font-size:11px;color:var(--gold);opacity:.75;pointer-events:none}
 @media(max-width:768px){
   .platform-page{padding:20px 16px 40px}
   .plat-hd{flex-direction:column;align-items:flex-start;gap:16px}
   .plat-actions{width:100%;justify-content:space-between}
   .plat-user-info{text-align:left}
   .apps-grid{grid-template-columns:1fr}
+  .dash-nav{padding:0 14px;gap:8px}.dash-body{padding:14px 16px}
+  .stat-grid{grid-template-columns:repeat(2,1fr)}.apps-grid2{grid-template-columns:1fr}
+  .tp{width:100vw;border-left:none}.dash-sw{margin:0 8px}
 }
 </style>
 </head>
 <body>
 <div id="root"></div>
+<script>
+(function(){
+  try{
+    var T={
+      dark_gold:{bg:'#08080b',bg2:'#0f1014',bg3:'#181820',bg4:'#22222c',bg5:'#2c2c38',gold:'#c9a86c','gold2':'#dbb97a','gold-dim':'#8a7548'},
+      dark_blue:{bg:'#07090f',bg2:'#0c1220',bg3:'#131a2e',bg4:'#1c2540',bg5:'#243050',gold:'#5a8ac4','gold2':'#6a9ad4','gold-dim':'#3a5a94'},
+      dark_green:{bg:'#06100a',bg2:'#0c1810',bg3:'#142218',bg4:'#1c2e22',bg5:'#243a2c',gold:'#3eb87a','gold2':'#4ec88a','gold-dim':'#1e884a'},
+      dark_purple:{bg:'#09070e',bg2:'#110e1a',bg3:'#1a1428',bg4:'#221c36',bg5:'#2c2444',gold:'#9a6ac4','gold2':'#aa7ad4','gold-dim':'#6a3a94'}
+    };
+    var id=localStorage.getItem('mf_tid')||'dark_gold';
+    var t=T[id];
+    if(t){Object.entries(t).forEach(function(e){document.documentElement.style.setProperty('--'+e[0],e[1]);});}
+    var accent=localStorage.getItem('mf_accent');
+    if(accent){document.documentElement.style.setProperty('--gold',accent);document.documentElement.style.setProperty('--gold2',accent);}
+  }catch(e){}
+})();
+</script>
 <script type="text/babel">
 {% verbatim %}
 const {useState, useEffect, useRef, useCallback, useMemo} = React;
@@ -621,6 +681,18 @@ const ICONS = {
   triangle: (p) => (
     <Svg {...p}>
       <path d="M12 5l7 12H5z" />
+    </Svg>
+  ),
+  dots: (p) => (
+    <Svg {...p}>
+      <circle cx="12" cy="5"  r="1.3" fill="currentColor" stroke="none"/>
+      <circle cx="12" cy="12" r="1.3" fill="currentColor" stroke="none"/>
+      <circle cx="12" cy="19" r="1.3" fill="currentColor" stroke="none"/>
+    </Svg>
+  ),
+  pin: (p) => (
+    <Svg {...p}>
+      <path d="M12 2l2 6h5l-4 3 1.5 6L12 14l-4.5 3L9 11 5 8h5z"/>
     </Svg>
   )
 };
@@ -1996,96 +2068,459 @@ function Settings({cfg, onSave}) {
   );
 }
 
+// ── Theme System ──
+const THEMES = [
+  {id:'dark_gold', name:'暗金', swatches:['#08080b','#c9a86c','#5a8ac4'],
+   vars:{bg:'#08080b',bg2:'#0f1014',bg3:'#181820',bg4:'#22222c',bg5:'#2c2c38',gold:'#c9a86c','gold2':'#dbb97a','gold-dim':'#8a7548'}},
+  {id:'dark_blue', name:'深蓝', swatches:['#07090f','#5a8ac4','#5ac4b4'],
+   vars:{bg:'#07090f',bg2:'#0c1220',bg3:'#131a2e',bg4:'#1c2540',bg5:'#243050',gold:'#5a8ac4','gold2':'#6a9ad4','gold-dim':'#3a5a94'}},
+  {id:'dark_green', name:'暗翠', swatches:['#06100a','#3eb87a','#5ac4b4'],
+   vars:{bg:'#06100a',bg2:'#0c1810',bg3:'#142218',bg4:'#1c2e22',bg5:'#243a2c',gold:'#3eb87a','gold2':'#4ec88a','gold-dim':'#1e884a'}},
+  {id:'dark_purple', name:'紫夜', swatches:['#09070e','#9a6ac4','#c45a9a'],
+   vars:{bg:'#09070e',bg2:'#110e1a',bg3:'#1a1428',bg4:'#221c36',bg5:'#2c2444',gold:'#9a6ac4','gold2':'#aa7ad4','gold-dim':'#6a3a94'}},
+];
+
+const ACCENT_PRESETS = [
+  '#c9a86c','#dbb97a','#5a8ac4','#3eb87a','#9a6ac4',
+  '#c45a5a','#5ac4b4','#d49a5a','#e87890','#68c87a',
+];
+
+const STATIC_APPS = [
+  {name:'学术研究站', slug:'paper_lab', description:'论文深度阅读 · 零幻觉检索 · 精确引用 · 知识探索 · 辅助写作', icon:'search', color:'#5ac4b4'},
+  {name:'知识图谱', slug:'knowledge_graph', description:'LLM自动提取 · 图谱可视化 · 跨应用知识链接 · PageRank · 路径探索', icon:'triangle', color:'#9a6ac4'},
+];
+
+function applyTheme(vars) {
+  Object.entries(vars).forEach(([k,v]) => document.documentElement.style.setProperty(`--${k}`, v));
+}
+
+const isLight = (hex) => {
+  try {
+    const c = hex.replace('#','');
+    const r=parseInt(c.slice(0,2),16), g=parseInt(c.slice(2,4),16), b=parseInt(c.slice(4,6),16);
+    return (r*299+g*587+b*114)/1000 > 128;
+  } catch { return false; }
+};
+
+function ThemePanel({onClose}) {
+  const [tid, setTid] = useState(() => localStorage.getItem('mf_tid') || 'dark_gold');
+  const [accent, setAccent] = useState(() => localStorage.getItem('mf_accent') || '');
+
+  const selTheme = (t) => {
+    setTid(t.id); setAccent('');
+    localStorage.setItem('mf_tid', t.id);
+    localStorage.removeItem('mf_accent');
+    applyTheme(t.vars);
+  };
+
+  const selAccent = (c) => {
+    setAccent(c);
+    localStorage.setItem('mf_accent', c);
+    document.documentElement.style.setProperty('--gold', c);
+    document.documentElement.style.setProperty('--gold2', c);
+    const base = THEMES.find(t => t.id === tid);
+    if (base) {
+      const {gold:_g, 'gold2':_g2, 'gold-dim':_gd, ...rest} = base.vars;
+      applyTheme(rest);
+    }
+  };
+
+  const reset = () => {
+    setTid('dark_gold'); setAccent('');
+    localStorage.removeItem('mf_tid'); localStorage.removeItem('mf_accent');
+    applyTheme(THEMES[0].vars);
+  };
+
+  return (
+    <div className="tp-ov" onClick={e => e.target===e.currentTarget && onClose()}>
+      <div className="tp">
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+          <h3>主题设置</h3>
+          <button className="btn btn-s btn-sm" onClick={onClose}>✕</button>
+        </div>
+        <div>
+          <div className="sec-title" style={{marginBottom:8}}>预设主题</div>
+          <div className="tp-presets">
+            {THEMES.map(t => (
+              <div key={t.id} className={`tp-preset${tid===t.id&&!accent?' on':''}`} onClick={() => selTheme(t)}>
+                <div className="tp-swatches">
+                  {t.swatches.map((c,i) => <div key={i} className="tp-sw" style={{background:c}} />)}
+                </div>
+                <div className="tp-pn">{t.name}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div>
+          <div className="sec-title" style={{marginBottom:8}}>自定义强调色</div>
+          <div className="csw-grid">
+            {ACCENT_PRESETS.map(c => (
+              <div key={c} className={`csw${accent===c?' on':''}`} style={{background:c}} onClick={() => selAccent(c)} />
+            ))}
+          </div>
+          <div className="tp-row" style={{marginTop:4}}>
+            <label>自定义颜色</label>
+            <input type="color" value={accent||'#c9a86c'} onChange={e => selAccent(e.target.value)} />
+          </div>
+        </div>
+        <button className="btn btn-s btn-sm" onClick={reset} style={{marginTop:'auto'}}>重置默认</button>
+      </div>
+    </div>
+  );
+}
+
+function AppColorModal({app, appColors, onSave, onClose}) {
+  const [color, setColor] = useState(appColors[app.slug] || app.color || '#c9a86c');
+  return (
+    <div className="modal-ov" onClick={e => e.target===e.currentTarget && onClose()}>
+      <div className="modal" style={{maxWidth:300}}>
+        <h2 style={{fontSize:16,marginBottom:14}}>自定义「{app.name}」颜色</h2>
+        <div className="csw-grid">
+          {ACCENT_PRESETS.map(c => (
+            <div key={c} className={`csw${color===c?' on':''}`} style={{background:c}} onClick={() => setColor(c)} />
+          ))}
+        </div>
+        <div className="tp-row" style={{marginTop:10}}>
+          <label>自定义颜色</label>
+          <input type="color" value={color} onChange={e => setColor(e.target.value)} />
+        </div>
+        <div style={{display:'flex',gap:8,marginTop:16,justifyContent:'flex-end'}}>
+          <button className="btn btn-s btn-sm" onClick={onClose}>取消</button>
+          <button className="btn btn-p btn-sm" onClick={() => { onSave(app.slug, color); onClose(); }}>保存</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PlatformHome({user, onLogout}) {
   const [apps, setApps] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [query, setQuery] = useState('');
+  const [aiRec, setAiRec] = useState('');
+  const [aiLoading, setAiLoading] = useState(false);
+  const [showTheme, setShowTheme] = useState(false);
+  const [editApp, setEditApp] = useState(null);
+  const [openMenu, setOpenMenu] = useState(null);
+  const [appColors, setAppColors] = useState({});
+  const [pinnedApps, setPinnedApps] = useState([]);
+  const [appOrder, setAppOrder] = useState([]);
+  const [dragOver, setDragOver] = useState(null);
+  const [draggingSlug, setDraggingSlug] = useState(null);
+  const dragRef = useRef(null);
+  const longPressTimer = useRef(null);
 
+  // Per-user namespace
+  const ns = useCallback((k) => user?.email ? `mf:${user.email}:${k}` : `mf:guest:${k}`, [user?.email]);
+  const savePref = useCallback((k, v) => localStorage.setItem(ns(k), JSON.stringify(v)), [ns]);
+  const getPref = useCallback((k, def) => { try { return JSON.parse(localStorage.getItem(ns(k))) ?? def; } catch { return def; } }, [ns]);
+
+  // Load per-user prefs when user resolves
   useEffect(() => {
+    setAppColors(getPref('colors', {}));
+    setPinnedApps(getPref('pinned', []));
+    setAppOrder(getPref('order', []));
+  }, [user?.email]);
+
+  // Apply stored theme on mount
+  useEffect(() => {
+    const tid = localStorage.getItem('mf_tid') || 'dark_gold';
+    const t = THEMES.find(t => t.id === tid);
+    if (t) applyTheme(t.vars);
+    const accent = localStorage.getItem('mf_accent');
+    if (accent) {
+      document.documentElement.style.setProperty('--gold', accent);
+      document.documentElement.style.setProperty('--gold2', accent);
+    }
     F(`${API}/platform/apps/`)
       .then(data => { setApps(data); setLoading(false); })
       .catch(() => setLoading(false));
   }, []);
 
+  // Close menu on outside click
+  useEffect(() => {
+    if (!openMenu) return;
+    const h = () => setOpenMenu(null);
+    document.addEventListener('click', h, true);
+    return () => document.removeEventListener('click', h, true);
+  }, [openMenu]);
+
+  const allApps = useMemo(() => {
+    const slugs = new Set(apps.map(a => a.slug));
+    return [...apps, ...STATIC_APPS.filter(a => !slugs.has(a.slug))];
+  }, [apps]);
+
+  const filteredApps = useMemo(() => {
+    if (!query.trim()) return allApps;
+    const q = query.toLowerCase();
+    return allApps.filter(a => a.name.toLowerCase().includes(q) || a.description.toLowerCase().includes(q));
+  }, [allApps, query]);
+
+  // Pinned first, then custom order
+  const sortedApps = useMemo(() => {
+    const list = [...filteredApps];
+    if (appOrder.length) {
+      list.sort((a, b) => {
+        const ia = appOrder.indexOf(a.slug), ib = appOrder.indexOf(b.slug);
+        if (ia < 0 && ib < 0) return 0;
+        if (ia < 0) return 1;
+        if (ib < 0) return -1;
+        return ia - ib;
+      });
+    }
+    list.sort((a, b) => {
+      const pa = pinnedApps.includes(a.slug), pb = pinnedApps.includes(b.slug);
+      return pa === pb ? 0 : pa ? -1 : 1;
+    });
+    return list;
+  }, [filteredApps, appOrder, pinnedApps]);
+
   const u = user?.usage || {};
+  const quota = user?.quota;
+  const pct = (v, max) => max ? Math.min(100, Math.round(v / max * 100)) : 0;
+  // Default: gold for all apps
+  const getColor = (app) => appColors[app.slug] || '#c9a86c';
+
+  const saveAppColor = (slug, color) => {
+    const next = {...appColors, [slug]: color};
+    setAppColors(next);
+    savePref('colors', next);
+  };
+
+  const togglePin = (slug) => {
+    const next = pinnedApps.includes(slug) ? pinnedApps.filter(s => s !== slug) : [...pinnedApps, slug];
+    setPinnedApps(next);
+    savePref('pinned', next);
+  };
+
+  const handleShare = (app) => {
+    const url = `${location.origin}/#/app/${app.slug}`;
+    navigator.clipboard?.writeText(url).then(() => {}).catch(() => {});
+    // Brief toast via title bar
+    const orig = document.title;
+    document.title = `已复制 ${app.name} 链接`;
+    setTimeout(() => { document.title = orig; }, 1500);
+  };
+
+  // Drag & drop reorder
+  const handleDrop = (targetSlug) => {
+    const src = dragRef.current;
+    if (!src || src === targetSlug) return;
+    const slugs = sortedApps.map(a => a.slug);
+    const from = slugs.indexOf(src), to = slugs.indexOf(targetSlug);
+    if (from < 0 || to < 0) return;
+    slugs.splice(from, 1);
+    slugs.splice(to, 0, src);
+    dragRef.current = null;
+    setAppOrder(slugs);
+    savePref('order', slugs);
+  };
+
+  const goApp = (app) => {
+    if (draggingSlug) return;
+    if (!user) { window.location.hash = '#/login'; return; }
+    if (app.slug === 'novel_share') window.location.href = '/share/';
+    else window.location.hash = `#/app/${app.slug}`;
+  };
+
+  const aiRecommend = async () => {
+    if (!query.trim() || aiLoading) return;
+    if (!user) { window.location.hash = '#/login'; return; }
+    setAiLoading(true); setAiRec('');
+    const appList = allApps.map(a => `- ${a.name}: ${a.description}`).join('\n');
+    const msg = `用户需求: "${query}"\n\n平台可用应用:\n${appList}\n\n请推荐最合适的1-2个应用并简要说明原因，格式简洁。`;
+    const token = localStorage.getItem('mf_token');
+    const hdrs = {'Content-Type':'application/json'};
+    if (token) hdrs['Authorization'] = `Token ${token}`;
+    try {
+      const resp = await fetch(`${API}/core/chat-stream/`, {method:'POST', headers:hdrs, body:JSON.stringify({message:msg})});
+      if (!resp.ok) throw new Error(await resp.text());
+      const reader = resp.body.getReader(); const dec = new TextDecoder();
+      let buf = '', full = '';
+      while (true) {
+        const {done, value} = await reader.read(); if (done) break;
+        buf += dec.decode(value, {stream:true});
+        const lns = buf.split('\n'); buf = lns.pop();
+        for (const ln of lns) {
+          if (!ln.startsWith('data: ')) continue;
+          let ev; try { ev = JSON.parse(ln.slice(6)); } catch { continue; }
+          if (ev.type==='chunk') { full += ev.text; setAiRec(full); }
+          else if (ev.type==='done') { setAiRec(full); }
+        }
+      }
+    } catch { setAiRec('推荐失败，请稍后再试'); }
+    setAiLoading(false);
+  };
 
   return (
-    <div className="platform-page">
-      <div className="plat-hd">
-        <div>
-          <h1 className="plat-title">应用平台</h1>
-          <p className="plat-sub">选择要使用的应用</p>
+    <div className="dash-wrap">
+      <nav className="dash-nav">
+        <div className="dash-logo">✦ 应用平台</div>
+        <div className="dash-sw">
+          <div className="dash-sw-ic"><Icon name="search" size={14} /></div>
+          <input
+            placeholder="搜索应用，或描述需求让 AI 推荐…"
+            value={query}
+            onChange={e => { setQuery(e.target.value); setAiRec(''); }}
+            onKeyDown={e => e.key === 'Enter' && aiRecommend()}
+          />
         </div>
-        <div className="plat-actions">
+        <div className="dash-right">
+          {query.trim() && (
+            <button className={`btn btn-sm${aiLoading ? ' btn-ai generating' : ' btn-ai'}`}
+              onClick={aiRecommend} disabled={aiLoading}>
+              {aiLoading ? 'AI 推荐中…' : '✨ AI 推荐'}
+            </button>
+          )}
+          <button className="btn btn-s btn-sm" onClick={() => setShowTheme(true)} title="主题" style={{fontSize:15,padding:'4px 9px'}}>🎨</button>
           {user ? (
             <>
-              <div className="plat-user-info">
-                <div className="plat-email">
-                  <span className="with-ic">
-                    <Icon name="user" size={14} />
-                    {user.email}
-                  </span>
-                </div>
-                <div className="plat-token">Token: {((u.total_tokens||0)/1000).toFixed(1)}K 已用</div>
-              </div>
-              <button className="btn btn-s" onClick={onLogout}>退出登录</button>
+              <span style={{fontSize:12,color:'var(--fg3)',maxWidth:160,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{user.email}</span>
+              <button className="btn btn-s btn-sm" onClick={onLogout}>退出</button>
             </>
           ) : (
-            <button className="btn btn-p" onClick={() => { window.location.hash = '#/login'; }}>登录 / 注册</button>
+            <button className="btn btn-p btn-sm" onClick={() => { window.location.hash = '#/login'; }}>登录 / 注册</button>
+          )}
+        </div>
+      </nav>
+
+      <div className="dash-body">
+        {/* Token Stats */}
+        {user && (
+          <div style={{marginBottom:28}}>
+            <div className="sec-hd">
+              <div className="sec-title">Token 用量</div>
+              <span style={{fontSize:11,color:'var(--fg3)'}}>
+                {user.has_own_key ? '自有 API 密钥 · 无限额度' : quota ? `今日已用 ${pct(u.daily_prompt_count||0, quota.daily_prompt_count)}%` : ''}
+              </span>
+            </div>
+            <div className="stat-grid">
+              <div className="stat-c">
+                <div className="stat-v" style={{color:'var(--gold2)'}}>{(u.prompt_count||0).toLocaleString()}</div>
+                <div className="stat-l">总提问次数</div>
+                {quota && <>
+                  <div className="stat-bar"><div className="stat-fill" style={{width:`${pct(u.daily_prompt_count||0,quota.daily_prompt_count)}%`,background:'var(--gold)'}} /></div>
+                  <div style={{fontSize:10,color:'var(--fg3)',marginTop:3}}>今日 {u.daily_prompt_count||0} / {quota.daily_prompt_count}</div>
+                </>}
+              </div>
+              <div className="stat-c">
+                <div className="stat-v" style={{color:'var(--cyan)'}}>{((u.total_tokens||0)/1000).toFixed(1)}<span style={{fontSize:14}}>K</span></div>
+                <div className="stat-l">累计 Token</div>
+                <div style={{fontSize:10,color:'var(--fg3)',marginTop:6}}>
+                  输入 {((u.input_tokens||0)/1000).toFixed(1)}K · 输出 {((u.output_tokens||0)/1000).toFixed(1)}K
+                </div>
+              </div>
+              {quota && <>
+                <div className="stat-c">
+                  <div className="stat-v" style={{color:'var(--blue)'}}>{((u.daily_input_tokens||0)/1000).toFixed(1)}<span style={{fontSize:14}}>K</span></div>
+                  <div className="stat-l">今日输入</div>
+                  <div className="stat-bar"><div className="stat-fill" style={{width:`${pct(u.daily_input_tokens||0,quota.daily_input_tokens)}%`,background:'var(--blue)'}} /></div>
+                  <div style={{fontSize:10,color:'var(--fg3)',marginTop:3}}>限额 {(quota.daily_input_tokens/1000).toFixed(0)}K</div>
+                </div>
+                <div className="stat-c">
+                  <div className="stat-v" style={{color:'var(--green)'}}>{((u.daily_output_tokens||0)/1000).toFixed(1)}<span style={{fontSize:14}}>K</span></div>
+                  <div className="stat-l">今日输出</div>
+                  <div className="stat-bar"><div className="stat-fill" style={{width:`${pct(u.daily_output_tokens||0,quota.daily_output_tokens)}%`,background:'var(--green)'}} /></div>
+                  <div style={{fontSize:10,color:'var(--fg3)',marginTop:3}}>限额 {(quota.daily_output_tokens/1000).toFixed(0)}K</div>
+                </div>
+              </>}
+            </div>
+          </div>
+        )}
+
+        {/* Apps grid */}
+        <div>
+          <div className="sec-hd">
+            <div className="sec-title">应用</div>
+            {query.trim() && <span style={{fontSize:12,color:'var(--fg3)'}}>找到 {sortedApps.length} 个</span>}
+          </div>
+          {loading ? (
+            <div className="load">加载中...</div>
+          ) : sortedApps.length === 0 ? (
+            <div className="empty"><h3>未找到相关应用</h3><p>试试「✨ AI 推荐」</p></div>
+          ) : (
+            <div className="apps-grid2">
+              {sortedApps.map(app => {
+                const color = getColor(app);
+                const icStyle = {color, background:hexToRgba(color,.12)||'var(--bg3)', border:`1px solid ${hexToRgba(color,.28)||'var(--border)'}`};
+                const pinned = pinnedApps.includes(app.slug);
+                const isDragging = draggingSlug === app.slug;
+                const isOver = dragOver === app.slug;
+                return (
+                  <div key={app.slug}
+                    className={`ac2${isOver?' drag-over':''}${isDragging?' dragging':''}`}
+                    style={{
+                      borderColor: appColors[app.slug] ? hexToRgba(color,.35)||'var(--border)' : 'var(--border)',
+                      position:'relative', cursor: isDragging ? 'grabbing' : 'grab'
+                    }}
+                    draggable
+                    onDragStart={e => {
+                      dragRef.current = app.slug;
+                      setDraggingSlug(app.slug);
+                      e.dataTransfer.effectAllowed = 'move';
+                      e.dataTransfer.setData('text/plain', app.slug);
+                    }}
+                    onDragOver={e => { e.preventDefault(); if (dragRef.current !== app.slug) setDragOver(app.slug); }}
+                    onDrop={e => { e.preventDefault(); handleDrop(app.slug); setDragOver(null); setDraggingSlug(null); }}
+                    onDragEnd={() => { dragRef.current = null; setDragOver(null); setDraggingSlug(null); }}
+                    onClick={() => goApp(app)}
+                  >
+                    {pinned && <span className="ac2-pinmark">📌</span>}
+                    <div style={{display:'flex',alignItems:'center',gap:12}}>
+                      <div className="ac2-ico" style={icStyle}>
+                        <Icon name={pickAppIcon(app)} size={24} stroke={1.7} />
+                      </div>
+                      <div className="ac2-name">{app.name}</div>
+                    </div>
+                    <div className="ac2-desc">{app.description}</div>
+                    <div className="ac2-foot">
+                      <button className="btn btn-sm"
+                        style={{background:color, color:isLight(color)?'#111':'#fff', fontSize:12, padding:'4px 12px'}}
+                        onClick={e => { e.stopPropagation(); goApp(app); }}>
+                        进入 →
+                      </button>
+                      {/* 3-dot menu */}
+                      <div className="app-menu-wrap" onClick={e => e.stopPropagation()}>
+                        <button className="app-menu-btn"
+                          onClick={() => setOpenMenu(openMenu === app.slug ? null : app.slug)}>
+                          <Icon name="dots" size={15} />
+                        </button>
+                        {openMenu === app.slug && (
+                          <div className="app-menu">
+                            <div className="app-menu-item" onClick={() => { handleShare(app); setOpenMenu(null); }}>
+                              <Icon name="share" size={12} /> 分享
+                            </div>
+                            <div className="app-menu-sep" />
+                            <div className="app-menu-item" onClick={() => { togglePin(app.slug); setOpenMenu(null); }}>
+                              <Icon name="target" size={12} /> {pinned ? '取消置顶' : '置顶'}
+                            </div>
+                            <div className="app-menu-sep" />
+                            <div className="app-menu-item" onClick={() => { setEditApp(app); setOpenMenu(null); }}>
+                              <Icon name="bolt" size={12} /> 修改颜色
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {(aiRec || aiLoading) && (
+            <div className="ai-rec">
+              <div className="ai-rec-hd"><Icon name="spark" size={13} /> AI 应用推荐</div>
+              <div className="ai-rec-txt">
+                {aiRec || '思考中...'}
+                {aiLoading && <span style={{opacity:.7, animation:'blink 1s infinite'}}>▌</span>}
+              </div>
+            </div>
           )}
         </div>
       </div>
-      {loading ? (
-        <div className="load">加载中...</div>
-      ) : apps.length === 0 ? (
-        <div className="empty"><h3>暂无可用应用</h3><p>请联系管理员在后台配置应用</p></div>
-      ) : (
-        <div className="apps-grid">
-          {apps.map(app => (
-            <div key={app.slug} className="app-card"
-              onClick={() => {
-                if (app.slug === 'novel_share') window.location.href = '/share/';
-                else window.location.hash = `#/app/${app.slug}`;
-              }}>
-              <div className="app-card-icon" style={appIconStyle(app)}>
-                <Icon name={pickAppIcon(app)} size={28} stroke={1.7} />
-              </div>
-              <div>
-                <h3 className="app-card-name">{app.name}</h3>
-                <p className="app-card-desc">{app.description}</p>
-              </div>
-              <div className="app-card-foot">
-                <button className="btn btn-p" style={{fontSize:13}}>进入应用 →</button>
-              </div>
-            </div>
-          ))}
-          {/* 固定展示学术研究站 */}
-          <div className="app-card" onClick={() => { if(!user){alert('请先登录');return;} window.location.hash = '#/app/paper_lab'; }}>
-            <div className="app-card-icon" style={{color:'var(--cyan)',background:'rgba(90,196,180,.12)',borderColor:'rgba(90,196,180,.3)'}}>
-              <Icon name="search" size={28} stroke={1.7} />
-            </div>
-            <div>
-              <h3 className="app-card-name">学术研究站</h3>
-              <p className="app-card-desc">论文深度阅读 · 零幻觉检索 · 精确引用 · 知识探索 · 辅助写作</p>
-            </div>
-            <div className="app-card-foot">
-              <button className="btn btn-p" style={{fontSize:13,background:'var(--cyan)',color:'#0a0a0c'}}>进入应用 →</button>
-            </div>
-          </div>
-          {/* 固定展示知识图谱 */}
-          <div className="app-card" onClick={() => { if(!user){alert('请先登录');return;} window.location.hash = '#/app/knowledge_graph'; }}>
-            <div className="app-card-icon" style={{color:'var(--purple)',background:'rgba(154,106,196,.12)',borderColor:'rgba(154,106,196,.3)'}}>
-              <Icon name="share-2" size={28} stroke={1.7} />
-            </div>
-            <div>
-              <h3 className="app-card-name">知识图谱</h3>
-              <p className="app-card-desc">LLM自动提取 · 图谱可视化 · 跨应用知识链接 · PageRank · 路径探索</p>
-            </div>
-            <div className="app-card-foot">
-              <button className="btn btn-p" style={{fontSize:13,background:'var(--purple)',color:'#fff'}}>进入应用 →</button>
-            </div>
-          </div>
-        </div>
-      )}
+
+      {showTheme && <ThemePanel onClose={() => setShowTheme(false)} />}
+      {editApp && <AppColorModal app={editApp} appColors={appColors} onSave={saveAppColor} onClose={() => setEditApp(null)} />}
     </div>
   );
 }
