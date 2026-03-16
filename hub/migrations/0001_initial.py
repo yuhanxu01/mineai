@@ -7,7 +7,7 @@ def seed_apps(apps, schema_editor):
         name='记忆熔炉',
         slug='memoryforge',
         description='AI 辅助长篇小说创作引擎，基于分层记忆金字塔系统，帮助作者管理超长故事线与角色演变。',
-        icon='🔥',
+        icon='layers',
         color='#c9a86c',
         is_active=True,
         order=1,

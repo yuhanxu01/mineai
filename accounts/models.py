@@ -1,4 +1,5 @@
-import random
+import secrets
+import uuid
 from datetime import timedelta, date
 
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
@@ -27,6 +28,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     email = models.EmailField(unique=True, verbose_name='邮箱')
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
+    is_guest = models.BooleanField(default=False, verbose_name='是否访客')
     created_at = models.DateTimeField(auto_now_add=True)
     user_api_key = models.CharField(max_length=512, blank=True, default='', verbose_name='用户自定义API密钥')
 
@@ -169,7 +171,7 @@ class VerificationCode(models.Model):
 
     @classmethod
     def generate(cls, email):
-        code = f"{random.randint(0, 999999):06d}"
+        code = f"{secrets.randbelow(1000000):06d}"
         cls.objects.create(email=email, code=code)
         return code
 
@@ -215,3 +217,18 @@ class VerificationCode(models.Model):
             obj.save(update_fields=['is_used'])
             return True
         return False
+
+
+class PasswordResetToken(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='reset_tokens')
+    token = models.UUIDField(default=uuid.uuid4, unique=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    is_used = models.BooleanField(default=False)
+
+    class Meta:
+        verbose_name = '密码重置令牌'
+
+    def is_valid(self):
+        if self.is_used:
+            return False
+        return timezone.now() < self.created_at + timedelta(minutes=30)

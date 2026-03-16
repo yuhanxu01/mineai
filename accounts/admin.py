@@ -97,7 +97,7 @@ class VerificationCodeAdmin(admin.ModelAdmin):
         cfg = SiteConfig.get()
         expired = (timezone.now() - obj.created_at).total_seconds() > cfg.code_expire_minutes * 60
         if obj.is_used:
-            return format_html('<span style="color:#5eb87a">✓ 已使用</span>')
+            return format_html('<span style="color:#5eb87a">已使用</span>')
         if expired:
             return format_html('<span style="color:#686460">⌛ 已过期</span>')
         return format_html('<span style="color:#c9a86c">● 有效</span>')

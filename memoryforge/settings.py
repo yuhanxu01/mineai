@@ -2,9 +2,9 @@ import os
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-SECRET_KEY = 'dev-secret-key-change-in-production'
-DEBUG = True
-ALLOWED_HOSTS = ['*']
+SECRET_KEY = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
+DEBUG = os.environ.get('DEBUG', 'True') == 'True'
+ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', '*').split(',')
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -25,7 +25,10 @@ INSTALLED_APPS = [
     'ocr_studio',
     'paper_lab',
     'knowledge_graph',
+    'code_agent',
+    'claude_bridge',
     'dashboard',
+    'scan_enhance',
 ]
 
 MEDIA_URL = '/media/'
@@ -71,15 +74,20 @@ DATABASES = {
 }
 
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_DIRS = [BASE_DIR / 'static']
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 REST_FRAMEWORK = {
-    'DEFAULT_PERMISSION_CLASSES': ['rest_framework.permissions.AllowAny'],
+    'DEFAULT_PERMISSION_CLASSES': ['rest_framework.permissions.IsAuthenticated'],
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework.authentication.TokenAuthentication',
     ],
 }
+
+# 单次上传最大 50 MB
+DATA_UPLOAD_MAX_MEMORY_SIZE = 50 * 1024 * 1024
+FILE_UPLOAD_MAX_MEMORY_SIZE = 50 * 1024 * 1024
 
 GLM_API_BASE = 'https://open.bigmodel.cn/api/paas/v4'
 GLM_CHAT_MODEL = 'glm-4.7-flash'
@@ -90,6 +98,8 @@ EMAIL_HOST = 'smtp.qq.com'
 EMAIL_PORT = 465
 EMAIL_USE_SSL = True
 EMAIL_USE_TLS = False
-EMAIL_HOST_USER = 'rqluo@qq.com'
-EMAIL_HOST_PASSWORD = 'gdobsnaiurjjfhab'
-DEFAULT_FROM_EMAIL = 'rqluo@qq.com'
+EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', 'rqluo@qq.com')
+EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
+DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
+
+SITE_URL = os.environ.get('SITE_URL', 'http://localhost:8000')

@@ -392,7 +392,7 @@ function Reader({ chapterId, novel, onClose, user, onLoginReq }) {
       <div className={`p-drawer ${pDrawerOpen ? 'open' : ''}`}>
         <div className="p-drawer-header">
           <h3>段落评论</h3>
-          <button className="btn btn-secondary" style={{padding:'4px 8px'}} onClick={()=>setPDrawerOpen(false)}>✕</button>
+          <button className="btn btn-secondary" style={{padding:'4px 8px'}} onClick={()=>setPDrawerOpen(false)}>关闭</button>
         </div>
         <div className="p-drawer-content">
           {activePIdx !== null && <div className="p-quote">"{paragraphs[activePIdx]?.substring(0,60)}..."</div>}

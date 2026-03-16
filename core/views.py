@@ -2,6 +2,7 @@ import json
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
+from rest_framework.permissions import IsAuthenticated
 from django.http import StreamingHttpResponse, JsonResponse
 from django.views import View
 from django.utils.decorators import method_decorator
@@ -26,21 +27,26 @@ class ConfigView(APIView):
         platform_configured = platform_config is not None
 
         user_api_key = ''
+        is_guest = False
         if request.user.is_authenticated:
             user_api_key = request.user.user_api_key or ''
+            is_guest = getattr(request.user, 'is_guest', False)
 
-        configured = platform_configured or bool(user_api_key)
+        platform_allowed = platform_configured and request.user.is_authenticated and not is_guest
+        configured = platform_allowed or bool(user_api_key)
 
         resp = {
             "configured": configured,
             "platform_configured": platform_configured,
+            "platform_allowed": platform_allowed,
             "user_key_configured": bool(user_api_key),
+            "is_guest": is_guest,
             "api_base": platform_config.api_base if platform_configured else 'https://open.bigmodel.cn/api/paas/v4',
             "chat_model": platform_config.chat_model if platform_configured else 'glm-4.7-flash',
         }
         if user_api_key:
             resp["api_key_preview"] = user_api_key[:8] + "..."
-        elif platform_configured:
+        elif platform_allowed:
             resp["api_key_preview"] = platform_config.api_key[:8] + "..."
         else:
             resp["api_key_preview"] = ""
@@ -60,6 +66,8 @@ class ConfigView(APIView):
 
 
 class LogsView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def get(self, request):
         project_id = request.query_params.get('project_id')
         limit = int(request.query_params.get('limit', 50))

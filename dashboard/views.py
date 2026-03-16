@@ -364,7 +364,7 @@ def app_create(request):
         name = request.POST.get('name', '').strip()
         slug = request.POST.get('slug', '').strip()
         description = request.POST.get('description', '').strip()
-        icon = request.POST.get('icon', '📦').strip()
+        icon = request.POST.get('icon', 'grid').strip()
         color = request.POST.get('color', '#c9a86c').strip()
         order = int(request.POST.get('order', 0) or 0)
         is_active = request.POST.get('is_active') == 'on'

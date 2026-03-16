@@ -27,10 +27,10 @@ def _token_auth(request):
 
 
 class ProjectListView(APIView):
-    permission_classes = [IsAuthenticatedOrReadOnly]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        projects = Project.objects.all()
+        projects = Project.objects.filter(user=request.user)
         return Response([{
             'id': p.id, 'title': p.title, 'genre': p.genre,
             'synopsis': p.synopsis[:200],
@@ -59,7 +59,7 @@ class ProjectListView(APIView):
 
 
 class ProjectDetailView(APIView):
-    permission_classes = [IsAuthenticatedOrReadOnly]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request, project_id):
         try:
@@ -107,7 +107,7 @@ class ProjectDetailView(APIView):
 
 
 class ChapterDetailView(APIView):
-    permission_classes = [IsAuthenticatedOrReadOnly]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request, chapter_id):
         try:

@@ -20,6 +20,8 @@ def _get_config():
         try:
             from accounts.models import User
             user = User.objects.get(id=user_id)
+            if getattr(user, 'is_guest', False) and not user.user_api_key:
+                raise ValueError("访客请先设置自己的API密钥，或登录使用平台密钥")
             if user.user_api_key:
                 platform = APIConfig.get_active()
                 return _UserConfig(
