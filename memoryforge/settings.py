@@ -29,6 +29,7 @@ INSTALLED_APPS = [
     'claude_bridge',
     'dashboard',
     'scan_enhance',
+    'question_bank',
 ]
 
 MEDIA_URL = '/media/'
@@ -103,3 +104,8 @@ EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 
 SITE_URL = os.environ.get('SITE_URL', 'http://localhost:8000')
+
+# 代码助手服务端存储限制（可按需修改）
+CODE_AGENT_SERVER_UPLOAD_MAX_FILES = int(os.environ.get('CA_MAX_FILES', 100))
+CODE_AGENT_SERVER_UPLOAD_MAX_TOTAL_MB = int(os.environ.get('CA_MAX_TOTAL_MB', 50))
+CODE_AGENT_SERVER_UPLOAD_MAX_FILE_KB = int(os.environ.get('CA_MAX_FILE_KB', 1024))

@@ -12,6 +12,19 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from accounts.models import User, VerificationCode, SiteConfig, PasswordResetToken
 
 
+class SiteConfigPublicView(APIView):
+    """公开接口：返回网站品牌配置，无需认证。"""
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        cfg = SiteConfig.get()
+        return Response({
+            'site_title': cfg.site_title,
+            'site_subtitle': cfg.site_subtitle,
+            'site_favicon': cfg.site_favicon,
+        })
+
+
 @method_decorator(csrf_exempt, name='dispatch')
 class UserAPIKeyView(APIView):
     permission_classes = [IsAuthenticated]

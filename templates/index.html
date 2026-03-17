@@ -1106,7 +1106,7 @@ function FloatingChat({user, onUsage}) {
   );
 }
 
-function AuthScreen({onAuth}) {
+function AuthScreen({onAuth, siteConfig}) {
   const [tab, setTab] = useState('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -1202,8 +1202,8 @@ function AuthScreen({onAuth}) {
   return (
     <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100vh',background:'var(--bg)'}}>
       <div style={{textAlign:'center',maxWidth:400,width:'100%',padding:'0 24px'}}>
-        <h1 style={{fontFamily:'var(--serif)',fontSize:34,color:'var(--gold2)',marginBottom:4,letterSpacing:2}}>应用平台</h1>
-        <p style={{color:'var(--fg3)',marginBottom:28,fontSize:12,letterSpacing:2}}>多功能应用集成工作台</p>
+        <h1 style={{fontFamily:'var(--serif)',fontSize:34,color:'var(--gold2)',marginBottom:4,letterSpacing:2}}>{siteConfig?.site_title || '应用平台'}</h1>
+        <p style={{color:'var(--fg3)',marginBottom:28,fontSize:12,letterSpacing:2}}>{siteConfig?.site_subtitle || '多功能应用集成工作台'}</p>
         <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:12,padding:28}}>
           {tab !== 'forgot' && (
             <div className="tabs" style={{marginBottom:20}}>
@@ -1316,7 +1316,7 @@ function AuthScreen({onAuth}) {
   );
 }
 
-function ResetPasswordScreen() {
+function ResetPasswordScreen({siteConfig}) {
   const token = new URLSearchParams(window.location.hash.split('?')[1] || '').get('token') || '';
   const [password, setPassword] = useState('');
   const [showPwd, setShowPwd] = useState(false);
@@ -1343,7 +1343,7 @@ function ResetPasswordScreen() {
   return (
     <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100vh',background:'var(--bg)'}}>
       <div style={{textAlign:'center',maxWidth:400,width:'100%',padding:'0 24px'}}>
-        <h1 style={{fontFamily:'var(--serif)',fontSize:34,color:'var(--gold2)',marginBottom:4,letterSpacing:2}}>应用平台</h1>
+        <h1 style={{fontFamily:'var(--serif)',fontSize:34,color:'var(--gold2)',marginBottom:4,letterSpacing:2}}>{siteConfig?.site_title || '应用平台'}</h1>
         <p style={{color:'var(--fg3)',marginBottom:28,fontSize:12,letterSpacing:2}}>重置密码</p>
         <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:12,padding:28}}>
           {!token ? (
@@ -2333,6 +2333,7 @@ const STATIC_APPS = [
   {name:'代码助手', slug:'code_agent', description:'AI辅助代码重构 · 行级Diff审查 · 记忆金字塔 · 版本历史 · 跨文件理解', icon:'code', color:'#5a8ac4'},
   {name:'Claude Bridge', slug:'claude_bridge', description:'本地 Claude Code 远程接入 · 全工具可视化 · 权限管控 · Diff预览 · 多端同步', icon:'zap', color:'#e85d2f'},
   {name:'扫描增强', slug:'scan_enhance', description:'浏览器端处理 · 曲面平整化 · 透视校正 · CLAHE增强 · 自适应二值化 · 纠偏 · 降噪 · 零服务器CPU', icon:'scan', color:'#5ac480'},
+  {name:'AI 题库', slug:'question_bank', description:'拍题OCR识别 · GLM-4.7解答 · 视觉模型几何题 · 最终答案沉淀 · 共享题库 · 点赞收藏评论', icon:'book', color:'#e8a05a'},
 ];
 
 function applyTheme(vars) {
@@ -2450,7 +2451,7 @@ function AppColorModal({app, appColors, onSave, onClose}) {
   );
 }
 
-function PlatformHome({user, onLogout}) {
+function PlatformHome({user, onLogout, siteConfig}) {
   const [apps, setApps] = useState([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
@@ -2620,7 +2621,7 @@ function PlatformHome({user, onLogout}) {
   return (
     <div className="dash-wrap">
       <nav className="dash-nav">
-        <div className="dash-logo"><Icon name="spark" size={14} /> 应用平台</div>
+        <div className="dash-logo"><Icon name="spark" size={14} /> {siteConfig?.site_title || '应用平台'}</div>
         <div className="dash-sw">
           <div className="dash-sw-ic"><Icon name="search" size={14} /></div>
           <input
@@ -2795,15 +2796,47 @@ function PlatformHome({user, onLogout}) {
   );
 }
 
+function applyFavicon(favicon) {
+  if (!favicon) return;
+  let link = document.getElementById('site-favicon');
+  if (!link) {
+    link = document.createElement('link');
+    link.id = 'site-favicon';
+    link.rel = 'icon';
+    document.head.appendChild(link);
+  }
+  if (favicon.startsWith('http') || favicon.startsWith('/') || favicon.startsWith('data:')) {
+    link.type = favicon.endsWith('.ico') ? 'image/x-icon' : 'image/png';
+    link.href = favicon;
+  } else {
+    // emoji — render as inline SVG
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">${favicon}</text></svg>`;
+    link.type = 'image/svg+xml';
+    link.href = `data:image/svg+xml,${encodeURIComponent(svg)}`;
+  }
+}
+
 function Root() {
   const [user, setUser] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [route, setRoute] = useState(window.location.hash || '#/');
+  const [siteConfig, setSiteConfig] = useState(null);
 
   useEffect(() => {
     const handler = () => setRoute(window.location.hash || '#/');
     window.addEventListener('hashchange', handler);
     return () => window.removeEventListener('hashchange', handler);
+  }, []);
+
+  useEffect(() => {
+    fetch(`${API}/auth/site-config/`)
+      .then(r => r.json())
+      .then(cfg => {
+        setSiteConfig(cfg);
+        if (cfg.site_title) document.title = cfg.site_title;
+        if (cfg.site_favicon) applyFavicon(cfg.site_favicon);
+      })
+      .catch(() => {});
   }, []);
 
   useEffect(() => { checkAuth(); }, []);
@@ -2879,11 +2912,11 @@ function Root() {
       window.setTimeout(() => { window.location.hash = '#/'; }, 0);
       return null;
     }
-    return <AuthScreen onAuth={handleAuth} />;
+    return <AuthScreen onAuth={handleAuth} siteConfig={siteConfig} />;
   }
 
   if (route.startsWith('#/reset-password')) {
-    return <ResetPasswordScreen />;
+    return <ResetPasswordScreen siteConfig={siteConfig} />;
   }
 
   if (route === '#/app/memoryforge') {
@@ -2914,7 +2947,11 @@ function Root() {
     return <ScanEnhanceApp user={user} onLogout={logout} onUpdateUser={setUser} />;
   }
 
-  return <PlatformHome user={user} onLogout={logout} />;
+  if (route === '#/app/question_bank') {
+    return <QuestionBankApp user={user} onLogout={logout} onUpdateUser={setUser} />;
+  }
+
+  return <PlatformHome user={user} onLogout={logout} siteConfig={siteConfig} />;
 }
 
 // ── OCR Studio 应用组件 ────────────────────────────────────────
@@ -2926,6 +2963,8 @@ function OCRStudioApp({user, onLogout, onUpdateUser}) {
   const [pages, setPages] = useState([]);   // [{id,name,dataUrl,status,result,error}]
   const [apiKey, setApiKey] = useState('');
   const [ocrPrompt, setOcrPrompt] = useState('');
+  // 'platform'=使用平台密钥(仅登录非访客用户可用), 'own'=用户自填密钥
+  const [keyMode, setKeyMode] = useState(() => (user && !user.is_guest) ? 'platform' : 'own');
   const [activePageIdx, setActivePageIdx] = useState(0);
   const [sbOpen, setSbOpen] = useState(false);
   const [pdfLoaded, setPdfLoaded] = useState(!!window.pdfjsLib);
@@ -2990,6 +3029,7 @@ function OCRStudioApp({user, onLogout, onUpdateUser}) {
             <OCRUpload
               pdfJs={pdfJsRef} pdfLoaded={pdfLoaded}
               apiKey={apiKey} setApiKey={setApiKey}
+              keyMode={keyMode} setKeyMode={setKeyMode}
               ocrPrompt={ocrPrompt} setOcrPrompt={setOcrPrompt}
               onPagesReady={(ps) => { setPages(ps); setActivePageIdx(0); setV('work'); }}
               user={user}
@@ -2998,7 +3038,7 @@ function OCRStudioApp({user, onLogout, onUpdateUser}) {
           {v === 'work' && pages.length > 0 && (
             <OCRWork
               pages={pages} setPages={setPages}
-              apiKey={apiKey} ocrPrompt={ocrPrompt}
+              apiKey={apiKey} keyMode={keyMode} ocrPrompt={ocrPrompt}
               activePageIdx={activePageIdx} setActivePageIdx={setActivePageIdx}
               setV={setV} onReset={resetProject} user={user}
             />
@@ -3015,7 +3055,7 @@ function OCRStudioApp({user, onLogout, onUpdateUser}) {
   );
 }
 
-function OCRUpload({pdfJs, pdfLoaded, apiKey, setApiKey, ocrPrompt, setOcrPrompt, onPagesReady, user}) {
+function OCRUpload({pdfJs, pdfLoaded, apiKey, setApiKey, keyMode, setKeyMode, ocrPrompt, setOcrPrompt, onPagesReady, user}) {
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState('');
   const [dragging, setDragging] = useState(false);
@@ -3071,15 +3111,42 @@ function OCRUpload({pdfJs, pdfLoaded, apiKey, setApiKey, ocrPrompt, setOcrPrompt
       </div>
 
       <div style={{display:'grid',gap:16,marginBottom:24}}>
+        {/* 密钥来源选择：登录非访客用户可选平台密钥 */}
         <div>
-          <label style={{display:'block',fontSize:11,color:'var(--fg2)',marginBottom:4}}>
+          <label style={{display:'block',fontSize:11,color:'var(--fg2)',marginBottom:6}}>
             OCR API 密钥 <span style={{color:'var(--red)'}}>*</span>
           </label>
-          <input type="password"
-            style={{width:'100%',padding:10,background:'var(--bg3)',border:'1px solid var(--border2)',borderRadius:6,color:'var(--fg)'}}
-            placeholder="输入您的 OCR API 密钥（不会上传服务器）..."
-            value={apiKey} onChange={e => setApiKey(e.target.value)}
-          />
+          {user && !user.is_guest ? (
+            <div style={{display:'flex',gap:8,marginBottom:keyMode==='own'?10:0}}>
+              {[
+                {v:'platform', label:'使用平台密钥', hint:'由平台提供，无需填写'},
+                {v:'own',      label:'使用自己的密钥', hint:'填写您的 GLM API Key'},
+              ].map(opt => (
+                <div key={opt.v}
+                  onClick={() => setKeyMode(opt.v)}
+                  style={{flex:1,cursor:'pointer',padding:'10px 14px',borderRadius:6,
+                    border:`1px solid ${keyMode===opt.v?'var(--gold)':'var(--border2)'}`,
+                    background:keyMode===opt.v?'rgba(201,168,108,.1)':'var(--bg3)',
+                    transition:'all .15s'}}>
+                  <div style={{display:'flex',alignItems:'center',gap:8}}>
+                    <div style={{width:14,height:14,borderRadius:'50%',flexShrink:0,
+                      border:`2px solid ${keyMode===opt.v?'var(--gold)':'var(--fg3)'}`,
+                      background:keyMode===opt.v?'var(--gold)':'transparent'}}/>
+                    <span style={{fontSize:13,fontWeight:500,color:keyMode===opt.v?'var(--gold2)':'var(--fg)'}}>{opt.label}</span>
+                  </div>
+                  <div style={{fontSize:11,color:'var(--fg3)',marginTop:4,paddingLeft:22}}>{opt.hint}</div>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          {/* 仅在"使用自己密钥"或未登录时显示输入框 */}
+          {(keyMode === 'own' || !user || user.is_guest) && (
+            <input type="password"
+              style={{width:'100%',padding:10,background:'var(--bg3)',border:'1px solid var(--border2)',borderRadius:6,color:'var(--fg)'}}
+              placeholder="输入您的 GLM / OCR API 密钥（不会上传服务器）..."
+              value={apiKey} onChange={e => setApiKey(e.target.value)}
+            />
+          )}
         </div>
         <div>
           <label style={{display:'block',fontSize:11,color:'var(--fg2)',marginBottom:4}}>提示词（可选）</label>
@@ -3127,7 +3194,7 @@ function OCRUpload({pdfJs, pdfLoaded, apiKey, setApiKey, ocrPrompt, setOcrPrompt
   );
 }
 
-function OCRWork({pages, setPages, apiKey, ocrPrompt, activePageIdx, setActivePageIdx, setV, onReset, user}) {
+function OCRWork({pages, setPages, apiKey, keyMode, ocrPrompt, activePageIdx, setActivePageIdx, setV, onReset, user}) {
   const [selected, setSelected] = useState(() => new Set(pages.map(p => p.id)));
   const [running, setRunning] = useState(false);
   const abortRef = useRef(false);
@@ -3140,9 +3207,15 @@ function OCRWork({pages, setPages, apiKey, ocrPrompt, activePageIdx, setActivePa
 
   const pendingSelected = [...selected].filter(id => pages.find(p => p.id===id && p.status!=='done')).length;
 
+  const buildOcrBody = (b64) => {
+    const body = {image_b64: b64, prompt: ocrPrompt};
+    if (keyMode === 'own') body.api_key = apiKey;  // 平台模式不传，后端自动取平台密钥
+    return body;
+  };
+
   const runOCR = async () => {
     if (!user) { alert('请先登录'); window.location.hash='#/login'; return; }
-    if (!apiKey.trim()) { alert('请先在导入页面填写 OCR API 密钥'); return; }
+    if (keyMode === 'own' && !apiKey.trim()) { alert('请先在导入页面填写 OCR API 密钥'); return; }
     const targets = pages.filter(p => selected.has(p.id) && p.status !== 'done');
     if (!targets.length) { alert('没有待处理页面（已完成的不会重复识别）'); return; }
     setRunning(true); abortRef.current = false;
@@ -3153,8 +3226,8 @@ function OCRWork({pages, setPages, apiKey, ocrPrompt, activePageIdx, setActivePa
       try {
         const resp = await fetch(`${API}/ocr/recognize/`, {
           method:'POST',
-          headers:{'Content-Type':'application/json','Authorization':`Token ${localStorage.getItem('token')}`},
-          body: JSON.stringify({image_b64:b64, api_key:apiKey, prompt:ocrPrompt}),
+          headers:{'Content-Type':'application/json','Authorization':`Token ${localStorage.getItem('mf_token')}`},
+          body: JSON.stringify(buildOcrBody(b64)),
         });
         const data = await resp.json();
         if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
@@ -3168,14 +3241,15 @@ function OCRWork({pages, setPages, apiKey, ocrPrompt, activePageIdx, setActivePa
 
   const retryPage = async (pageId) => {
     const page = pages.find(p => p.id===pageId);
-    if (!page || !apiKey.trim()) return;
+    if (!page) return;
+    if (keyMode === 'own' && !apiKey.trim()) return;
     setPages(prev => prev.map(p => p.id===pageId ? {...p, status:'processing', error:''} : p));
     const b64 = page.dataUrl.replace(/^data:image\/\w+;base64,/, '');
     try {
       const resp = await fetch(`${API}/ocr/recognize/`, {
         method:'POST',
-        headers:{'Content-Type':'application/json','Authorization':`Token ${localStorage.getItem('token')}`},
-        body: JSON.stringify({image_b64:b64, api_key:apiKey, prompt:ocrPrompt}),
+        headers:{'Content-Type':'application/json','Authorization':`Token ${localStorage.getItem('mf_token')}`},
+        body: JSON.stringify(buildOcrBody(b64)),
       });
       const data = await resp.json();
       if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
@@ -5785,6 +5859,7 @@ function FileTree({files, selectedId, onSelect, onDelete}) {
                   {f.language ? f.language[0].toUpperCase() : '?'}
                 </span>
                 <span style={{flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{name}</span>
+                {f.modified && <span style={{color:'var(--orange)',fontSize:10,flexShrink:0}} title="已修改未保存">●</span>}
                 <span style={{fontSize:10,color:'var(--fg3)'}}>{f.size>1024?`${(f.size/1024).toFixed(1)}k`:`${f.size}b`}</span>
                 {onDelete && <button onClick={e=>{e.stopPropagation();onDelete(f.id);}}
                   style={{background:'none',color:'var(--fg3)',fontSize:11,padding:'0 3px',lineHeight:1}} title="删除"><Icon name="x" size={11} /></button>}
@@ -5797,6 +5872,24 @@ function FileTree({files, selectedId, onSelect, onDelete}) {
     </div>
   );
 }
+
+// ---- 客户端 apply diffs（本地模式不走服务端）----
+function applyDiffsLocally(content, acceptedDiffs) {
+  let result = content;
+  let applied = 0;
+  for (const diff of acceptedDiffs) {
+    const idx = result.indexOf(diff.original);
+    if (idx !== -1) {
+      result = result.slice(0, idx) + diff.replacement + result.slice(idx + diff.original.length);
+      applied++;
+    }
+  }
+  return {content: result, applied};
+}
+
+// ---- 跳过目录名（本地扫描）----
+const SKIP_DIRS = new Set(['.git','node_modules','__pycache__','dist','build',
+  'venv','.venv','coverage','.next','.nuxt','target','.cache','vendor','bower_components']);
 
 // ---- Main CodeAgentApp ----
 function CodeAgentApp({user, onLogout, onUpdateUser}) {
@@ -5820,36 +5913,58 @@ function CodeAgentApp({user, onLogout, onUpdateUser}) {
   const [newProjData, setNewProjData] = useState({name:'',description:'',language:''});
   const [memStats, setMemStats] = useState(null);
   const [streaming, setStreaming] = useState('');
+
+  // ── 本地模式状态 ──
+  const [uploadMode, setUploadMode] = useState('local'); // 'local' | 'server'
+  const [dirHandle, setDirHandle] = useState(null);      // FSA 句柄
+  const [localFiles, setLocalFiles] = useState({});      // {path: {content, handle, modified}}
+  const [selLocalPath, setSelLocalPath] = useState(null);
+  const [scanning, setScanning] = useState(false);
+  const [scanProgress, setScanProgress] = useState(null); // {scanned, currentFile, skipped}
+  const [chatHistory, setChatHistory] = useState([]);     // 本地模式多轮历史
+  const [localContextPaths, setLocalContextPaths] = useState(new Set());
+  const [fsaSupported] = useState(() => 'showDirectoryPicker' in window);
+  const [serverLimits, setServerLimits] = useState({max_files:100,max_total_mb:50,max_file_kb:1024});
+  const [pendingDiskSave, setPendingDiskSave] = useState(false); // 本地模式是否有未写盘变更
+
   const chatEndRef = useRef(null);
+  const scanAbortRef = useRef(false);
   const token = localStorage.getItem('mf_token');
 
-  useEffect(() => { loadProjects(); }, []);
+  useEffect(() => { loadProjects(); loadServerLimits(); }, []);
   useEffect(() => { chatEndRef.current?.scrollIntoView({behavior:'smooth'}); }, [messages, streaming]);
 
   const loadProjects = async () => {
     try { setProjects(await F(`${API}/code/projects/`)); } catch {}
   };
 
+  const loadServerLimits = async () => {
+    try { setServerLimits(await F(`${API}/code/upload-limits/`)); } catch {}
+  };
+
   const openProject = async (p) => {
     setProj(p);
-    setSelFile(null); setFileContent(''); setDiffs([]); setDiffStates({}); setMessages([]);
+    setSelFile(null); setSelLocalPath(null); setFileContent('');
+    setDiffs([]); setDiffStates({}); setMessages([]); setChatHistory([]);
     setSession(null); setVersions([]);
     try {
       const detail = await F(`${API}/code/projects/${p.id}/`);
       setFiles(detail.files || []);
       setProj(detail);
-      // create or load session
-      const ss = await P(`${API}/code/projects/${p.id}/sessions/`, {title:'主对话'});
-      setSession(ss);
-      const sDetail = await F(`${API}/code/sessions/${ss.id}/`);
-      setMessages(sDetail.messages || []);
+      if (uploadMode === 'server') {
+        const ss = await P(`${API}/code/projects/${p.id}/sessions/`, {title:'主对话'});
+        setSession(ss);
+        const sDetail = await F(`${API}/code/sessions/${ss.id}/`);
+        setMessages(sDetail.messages || []);
+      }
     } catch {}
     setV('project');
     setSbOpen(false);
   };
 
+  // ── 服务端模式：选择文件 ──
   const selectFile = async (f) => {
-    setSelFile(f);
+    setSelFile(f); setSelLocalPath(null);
     setDiffs([]); setDiffStates({});
     try {
       const detail = await F(`${API}/code/files/${f.id}/`);
@@ -5858,29 +5973,147 @@ function CodeAgentApp({user, onLogout, onUpdateUser}) {
     } catch {}
   };
 
-  const saveFile = async () => {
-    if (!selFile) return;
-    try {
-      await U(`${API}/code/files/${selFile.id}/`, {content:fileContent, change_summary:'手动编辑'});
-      const updated = files.map(ff => ff.id === selFile.id ? {...ff, size:fileContent.length} : ff);
-      setFiles(updated);
-    } catch(e) { alert('保存失败: ' + e.message); }
+  // ── 本地模式：选择文件 ──
+  const selectLocalFile = (path) => {
+    setSelLocalPath(path); setSelFile(null);
+    setFileContent(localFiles[path]?.content || '');
+    setDiffs([]); setDiffStates({});
+    setPendingDiskSave(false);
   };
 
-  const uploadFiles = async (fileList) => {
-    const reads = await Promise.all(Array.from(fileList).slice(0,100).map(file =>
-      new Promise(res => {
-        const reader = new FileReader();
-        reader.onload = e => res({path: file.webkitRelativePath || file.name, content: e.target.result});
-        reader.readAsText(file);
-      })
-    ));
+  // ── 统一保存入口 ──
+  const saveFile = async () => {
+    if (uploadMode === 'server') {
+      if (!selFile) return;
+      try {
+        await U(`${API}/code/files/${selFile.id}/`, {content:fileContent, change_summary:'手动编辑'});
+        setFiles(files.map(ff => ff.id === selFile.id ? {...ff, size:fileContent.length} : ff));
+      } catch(e) { alert('保存失败: ' + e.message); }
+    } else {
+      // 本地模式：更新内存 state，并写回磁盘（如果有 FSA 句柄）
+      if (!selLocalPath) return;
+      const entry = localFiles[selLocalPath];
+      setLocalFiles(p => ({...p, [selLocalPath]: {...p[selLocalPath], content: fileContent, modified: false}}));
+      setPendingDiskSave(false);
+      if (entry?.handle) {
+        try {
+          const writable = await entry.handle.createWritable();
+          await writable.write(fileContent);
+          await writable.close();
+        } catch(e) { alert('写入磁盘失败: ' + e.message); }
+      }
+    }
+  };
+
+  // ── 下载当前文件（本地模式回退）──
+  const downloadLocalFile = () => {
+    if (!selLocalPath) return;
+    const blob = new Blob([fileContent], {type: 'text/plain'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = selLocalPath.split('/').pop();
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
+  // ── 本地模式：FSA API 递归扫描目录 ──
+  const scanDir = async (handle, basePath, depth, collected) => {
+    if (depth > 8 || Object.keys(collected).length >= 500 || scanAbortRef.current) return;
+    for await (const [name, entry] of handle.entries()) {
+      if (scanAbortRef.current) return;
+      const isHidden = name.startsWith('.');
+      if (entry.kind === 'directory') {
+        if (isHidden || SKIP_DIRS.has(name.toLowerCase())) continue;
+        const subPath = basePath ? `${basePath}/${name}` : name;
+        await scanDir(entry, subPath, depth + 1, collected);
+      } else {
+        const file = await entry.getFile();
+        const filePath = basePath ? `${basePath}/${name}` : name;
+        if (file.size > 1024 * 1024) continue; // skip >1MB
+        try {
+          const text = await file.text();
+          collected[filePath] = {content: text, handle: entry, modified: false};
+          setScanProgress({scanned: Object.keys(collected).length, currentFile: filePath});
+        } catch {}
+      }
+    }
+  };
+
+  // ── 本地模式：打开文件夹（FSA API）──
+  const openDirectory = async () => {
     try {
-      const res = await P(`${API}/code/projects/${proj.id}/files/batch/`, {files: reads});
-      const detail = await F(`${API}/code/projects/${proj.id}/`);
-      setFiles(detail.files || []);
-      loadMemStats();
-    } catch(e) { alert('上传失败: ' + e.message); }
+      const handle = await window.showDirectoryPicker({mode: 'readwrite'});
+      setDirHandle(handle);
+      setLocalFiles({});
+      setSelLocalPath(null);
+      setFileContent('');
+      setScanning(true);
+      setScanProgress({scanned: 0, currentFile: ''});
+      scanAbortRef.current = false;
+      const collected = {};
+      await scanDir(handle, '', 0, collected);
+      setLocalFiles(collected);
+      setScanProgress(null);
+      setScanning(false);
+    } catch(e) {
+      setScanning(false);
+      setScanProgress(null);
+      if (e.name !== 'AbortError') alert('打开目录失败: ' + e.message);
+    }
+  };
+
+  // ── webkitdirectory / 文件上传入口（服务端模式 + 本地回退）──
+  const uploadFiles = async (fileList) => {
+    const allFiles = Array.from(fileList);
+    if (uploadMode === 'local') {
+      // 本地模式：只加载到内存，不发到服务器
+      setScanning(true);
+      setScanProgress({scanned: 0, currentFile: ''});
+      const collected = {};
+      const maxCount = 500;
+      for (const file of allFiles.slice(0, maxCount)) {
+        if (scanAbortRef.current) break;
+        const path = file.webkitRelativePath || file.name;
+        if (file.size > 1024 * 1024) continue;
+        try {
+          const text = await file.text();
+          collected[path] = {content: text, handle: null, modified: false};
+          setScanProgress({scanned: Object.keys(collected).length, currentFile: path});
+        } catch {}
+      }
+      setLocalFiles(prev => ({...prev, ...collected}));
+      setScanProgress(null);
+      setScanning(false);
+    } else {
+      // 服务端模式：前端预检后 POST 到服务器
+      const maxCount = serverLimits.max_files;
+      const maxMB = serverLimits.max_total_mb;
+      const filtered = allFiles.slice(0, maxCount);
+      let totalSize = 0;
+      const reads = [];
+      for (const file of filtered) {
+        if (file.size > serverLimits.max_file_kb * 1024) continue;
+        totalSize += file.size;
+        if (totalSize > maxMB * 1024 * 1024) break;
+        reads.push(new Promise(res => {
+          const reader = new FileReader();
+          reader.onload = e => res({path: file.webkitRelativePath || file.name, content: e.target.result});
+          reader.onerror = () => res(null);
+          reader.readAsText(file);
+        }));
+      }
+      const resolved = (await Promise.all(reads)).filter(Boolean);
+      try {
+        const res = await P(`${API}/code/projects/${proj.id}/files/batch/`, {files: resolved});
+        if (res.rejected?.length) {
+          const rejMsg = res.rejected.slice(0, 5).map(r => `${r.path}: ${r.reason}`).join('\n');
+          alert(`${res.saved} 个文件已上传，${res.rejected.length} 个被拒绝：\n${rejMsg}`);
+        }
+        const detail = await F(`${API}/code/projects/${proj.id}/`);
+        setFiles(detail.files || []);
+        loadMemStats();
+      } catch(e) { alert('上传失败: ' + e.message); }
+    }
   };
 
   const deleteFile = async (fileId) => {
@@ -5920,21 +6153,41 @@ function CodeAgentApp({user, onLogout, onUpdateUser}) {
 
   // --- AI 对话（流式）---
   const sendChat = async () => {
-    if (!chatInput.trim() || !session || generating) return;
+    if (!chatInput.trim() || generating) return;
+    if (uploadMode === 'server' && !session) return;
     const msg = chatInput.trim();
     setChatInput('');
     setMessages(prev => [...prev, {id:Date.now(), role:'user', content:msg}]);
-    setGenerating(true);
-    setStreaming('');
-    setRightPanel('chat');
+    setGenerating(true); setStreaming(''); setRightPanel('chat');
     let full = '';
     try {
-      for await (const ev of streamSSE(`${API}/code/sessions/${session.id}/chat/`, {
-        message: msg, file_id: selFile?.id
-      }, token)) {
-        if (ev.type === 'chunk') { full += ev.text; setStreaming(full); }
-        if (ev.type === 'done') break;
-        if (ev.type === 'error') throw new Error(ev.message);
+      if (uploadMode === 'local') {
+        // 本地模式：调用无状态端点，内容在 body 中，不写 DB
+        const ctxFiles = Array.from(localContextPaths)
+          .filter(p => p !== selLocalPath)
+          .map(p => ({path: p, content: localFiles[p]?.content || ''}));
+        for await (const ev of streamSSE(`${API}/code/local/chat/`, {
+          message: msg,
+          current_file: selLocalPath ? {path: selLocalPath, content: fileContent} : null,
+          context_files: ctxFiles,
+          history: chatHistory.slice(-20),
+        }, token)) {
+          if (ev.type === 'chunk') { full += ev.text; setStreaming(full); }
+          if (ev.type === 'done') break;
+          if (ev.type === 'error') throw new Error(ev.message);
+        }
+        setChatHistory(prev => [...prev,
+          {role:'user', content:msg},
+          {role:'assistant', content:full}]);
+      } else {
+        // 服务端模式：原有逻辑
+        for await (const ev of streamSSE(`${API}/code/sessions/${session.id}/chat/`, {
+          message: msg, file_id: selFile?.id
+        }, token)) {
+          if (ev.type === 'chunk') { full += ev.text; setStreaming(full); }
+          if (ev.type === 'done') break;
+          if (ev.type === 'error') throw new Error(ev.message);
+        }
       }
       setMessages(prev => [...prev, {id:Date.now()+1, role:'assistant', content:full}]);
     } catch(e) {
@@ -5944,20 +6197,36 @@ function CodeAgentApp({user, onLogout, onUpdateUser}) {
 
   // --- 代码编辑建议（流式 Diff）---
   const suggestEdits = async () => {
-    if (!selFile || !editInstruction.trim() || generating) return;
-    setGenerating(true);
-    setDiffs([]); setDiffStates({});
-    setRightPanel('diffs');
-    setStreaming('');
+    const hasFile = uploadMode === 'local' ? !!selLocalPath : !!selFile;
+    if (!hasFile || !editInstruction.trim() || generating) return;
+    setGenerating(true); setDiffs([]); setDiffStates({});
+    setRightPanel('diffs'); setStreaming('');
     let raw = '';
     try {
-      for await (const ev of streamSSE(`${API}/code/files/${selFile.id}/suggest/`, {
-        instruction: editInstruction
-      }, token)) {
-        if (ev.type === 'chunk') { raw += ev.text; setStreaming(raw); }
-        if (ev.type === 'diffs') { setDiffs(ev.diffs); setStreaming(''); }
-        if (ev.type === 'done') break;
-        if (ev.type === 'error') throw new Error(ev.message);
+      if (uploadMode === 'local') {
+        const ctxFiles = Array.from(localContextPaths)
+          .filter(p => p !== selLocalPath)
+          .map(p => ({path: p, content: localFiles[p]?.content || ''}));
+        for await (const ev of streamSSE(`${API}/code/local/suggest/`, {
+          file_path: selLocalPath,
+          content: fileContent,
+          instruction: editInstruction,
+          context_files: ctxFiles,
+        }, token)) {
+          if (ev.type === 'chunk') { raw += ev.text; setStreaming(raw); }
+          if (ev.type === 'diffs') { setDiffs(ev.diffs); setStreaming(''); }
+          if (ev.type === 'done') break;
+          if (ev.type === 'error') throw new Error(ev.message);
+        }
+      } else {
+        for await (const ev of streamSSE(`${API}/code/files/${selFile.id}/suggest/`, {
+          instruction: editInstruction
+        }, token)) {
+          if (ev.type === 'chunk') { raw += ev.text; setStreaming(raw); }
+          if (ev.type === 'diffs') { setDiffs(ev.diffs); setStreaming(''); }
+          if (ev.type === 'done') break;
+          if (ev.type === 'error') throw new Error(ev.message);
+        }
       }
     } catch(e) {
       setMessages(prev => [...prev, {role:'assistant', content:`编辑建议失败: ${e.message}`}]);
@@ -5968,18 +6237,30 @@ function CodeAgentApp({user, onLogout, onUpdateUser}) {
   const applyDiffs = async () => {
     const accepted = diffs.filter((_, i) => diffStates[i] === 'accepted');
     if (!accepted.length) return alert('请先选择要接受的修改');
-    try {
-      const res = await P(`${API}/code/files/${selFile.id}/apply_diffs/`, {
-        diffs: accepted, change_summary: editInstruction || 'AI建议'
-      });
-      setFileContent(res.new_content);
-      setSelFile(prev => ({...prev, current_version: res.current_version}));
-      setDiffs([]); setDiffStates({});
-      setEditInstruction('');
-      setRightPanel('chat');
+
+    if (uploadMode === 'local') {
+      // 本地模式：在浏览器内直接 apply，不调用服务器
+      const {content: newContent, applied} = applyDiffsLocally(fileContent, accepted);
+      setFileContent(newContent);
+      if (selLocalPath) {
+        setLocalFiles(p => ({...p, [selLocalPath]: {...p[selLocalPath], content: newContent, modified: true}}));
+        setPendingDiskSave(true);
+      }
+      setDiffs([]); setDiffStates({}); setEditInstruction(''); setRightPanel('chat');
       setMessages(prev => [...prev, {id:Date.now(), role:'assistant',
-        content:`已应用 ${res.applied_count} 处修改，当前版本 v${res.current_version}`}]);
-    } catch(e) { alert('应用失败: ' + e.message); }
+        content:`已应用 ${applied} 处修改（本地预览，点击"写入磁盘"或"下载"保存）`}]);
+    } else {
+      try {
+        const res = await P(`${API}/code/files/${selFile.id}/apply_diffs/`, {
+          diffs: accepted, change_summary: editInstruction || 'AI建议'
+        });
+        setFileContent(res.new_content);
+        setSelFile(prev => ({...prev, current_version: res.current_version}));
+        setDiffs([]); setDiffStates({}); setEditInstruction(''); setRightPanel('chat');
+        setMessages(prev => [...prev, {id:Date.now(), role:'assistant',
+          content:`已应用 ${res.applied_count} 处修改，当前版本 v${res.current_version}`}]);
+      } catch(e) { alert('应用失败: ' + e.message); }
+    }
   };
 
   const createProject = async () => {
@@ -6074,50 +6355,139 @@ function CodeAgentApp({user, onLogout, onUpdateUser}) {
   }
 
   // ─── 项目工作区 ───
-  const pendingDiffs = diffs.filter((_,i) => !diffStates[i]);
   const acceptedCount = Object.values(diffStates).filter(s=>s==='accepted').length;
+
+  // 当前激活的文件路径（两种模式统一）
+  const activeFilePath = uploadMode === 'local' ? selLocalPath : selFile?.path;
+  const hasActiveFile = uploadMode === 'local' ? !!selLocalPath : !!selFile;
+
+  // 本地模式的文件列表（转换为 FileTree 兼容格式）
+  const localFileList = Object.entries(localFiles).map(([path, f]) => ({
+    id: path, path, language: detectLangLocal(path), size: f.content.length, modified: f.modified,
+  }));
+  function detectLangLocal(path) {
+    const extMap = {'.py':'python','.js':'javascript','.ts':'typescript','.tsx':'tsx','.jsx':'jsx',
+      '.java':'java','.go':'go','.rs':'rust','.cpp':'cpp','.c':'c','.cs':'csharp','.rb':'ruby',
+      '.php':'php','.swift':'swift','.kt':'kotlin','.sh':'bash','.yml':'yaml','.yaml':'yaml',
+      '.json':'json','.html':'html','.css':'css','.sql':'sql','.md':'markdown','.vue':'vue'};
+    const ext = path.slice(path.lastIndexOf('.')).toLowerCase();
+    return extMap[ext] || 'text';
+  }
 
   return (
     <div className="app">
       {/* ─ 侧边栏：文件树 ─ */}
-      <div className={`sb ${sbOpen?'open':''}`} style={{width:220}}>
+      <div className={`sb ${sbOpen?'open':''}`} style={{width:230}}>
         <div className="sb-hd">
-          <h1 style={{fontSize:16,cursor:'pointer'}} onClick={()=>{setV('home');setProj(null);setSbOpen(false);}}>← {proj?.name||'代码助手'}</h1>
+          <h1 style={{fontSize:15,cursor:'pointer'}} onClick={()=>{setV('home');setProj(null);setSbOpen(false);}}>← {proj?.name||'代码助手'}</h1>
           <p style={{fontSize:10,color:'var(--blue)'}}>{proj?.language||''}</p>
         </div>
 
-        {/* 上传文件 */}
-        <div style={{padding:'8px 10px',borderBottom:'1px solid var(--border)'}}>
-          <label style={{display:'block',background:'var(--bg4)',border:'1px dashed var(--border2)',borderRadius:6,
-            padding:'6px',textAlign:'center',cursor:'pointer',fontSize:11,color:'var(--fg2)'}}>
-            ↑ 上传文件
-            <input type="file" multiple style={{display:'none'}}
-              onChange={e=>uploadFiles(e.target.files)} accept="*/*"/>
-          </label>
-          <label style={{display:'block',background:'var(--bg4)',border:'1px dashed var(--border2)',borderRadius:6,
-            padding:'6px',textAlign:'center',cursor:'pointer',fontSize:11,color:'var(--fg2)',marginTop:4}}>
-            ↑ 上传目录
-            <input type="file" multiple webkitdirectory="" style={{display:'none'}}
-              onChange={e=>uploadFiles(e.target.files)} />
-          </label>
+        {/* 模式切换 */}
+        <div style={{padding:'6px 10px',borderBottom:'1px solid var(--border)',display:'flex',gap:4}}>
+          <button className={`btn btn-sm${uploadMode==='local'?' btn-p':' btn-s'}`}
+            style={{flex:1,fontSize:11}}
+            onClick={()=>setUploadMode('local')}>本地模式</button>
+          <button className={`btn btn-sm${uploadMode==='server'?' btn-p':' btn-s'}`}
+            style={{flex:1,fontSize:11}}
+            onClick={()=>setUploadMode('server')}>服务端</button>
         </div>
+
+        {/* 上传/打开文件夹 */}
+        <div style={{padding:'8px 10px',borderBottom:'1px solid var(--border)'}}>
+          {uploadMode === 'local' ? (
+            <>
+              {fsaSupported && (
+                <button className="btn btn-s" style={{width:'100%',fontSize:11,marginBottom:4,
+                  background:'var(--bg4)',border:'1px dashed var(--border2)',borderRadius:6}}
+                  onClick={openDirectory} disabled={scanning}>
+                  {scanning ? '扫描中…' : '打开本地文件夹'}
+                </button>
+              )}
+              <label style={{display:'block',background:'var(--bg4)',border:'1px dashed var(--border2)',
+                borderRadius:6,padding:'5px',textAlign:'center',cursor:'pointer',fontSize:11,color:'var(--fg2)'}}>
+                {fsaSupported ? '或 上传文件夹' : '选择文件夹'}
+                <input type="file" multiple webkitdirectory="" style={{display:'none'}}
+                  onChange={e=>uploadFiles(e.target.files)} disabled={scanning}/>
+              </label>
+              <label style={{display:'block',background:'var(--bg4)',border:'1px dashed var(--border2)',
+                borderRadius:6,padding:'5px',textAlign:'center',cursor:'pointer',fontSize:11,color:'var(--fg2)',marginTop:4}}>
+                上传文件
+                <input type="file" multiple style={{display:'none'}}
+                  onChange={e=>uploadFiles(e.target.files)} disabled={scanning}/>
+              </label>
+            </>
+          ) : (
+            <>
+              <div style={{fontSize:10,color:'var(--fg3)',marginBottom:4}}>
+                限制：≤{serverLimits.max_files} 文件 · ≤{serverLimits.max_total_mb}MB
+              </div>
+              <label style={{display:'block',background:'var(--bg4)',border:'1px dashed var(--border2)',
+                borderRadius:6,padding:'5px',textAlign:'center',cursor:'pointer',fontSize:11,color:'var(--fg2)'}}>
+                上传文件夹到服务器
+                <input type="file" multiple webkitdirectory="" style={{display:'none'}}
+                  onChange={e=>uploadFiles(e.target.files)}/>
+              </label>
+              <label style={{display:'block',background:'var(--bg4)',border:'1px dashed var(--border2)',
+                borderRadius:6,padding:'5px',textAlign:'center',cursor:'pointer',fontSize:11,color:'var(--fg2)',marginTop:4}}>
+                上传文件
+                <input type="file" multiple style={{display:'none'}}
+                  onChange={e=>uploadFiles(e.target.files)}/>
+              </label>
+            </>
+          )}
+        </div>
+
+        {/* 扫描进度 */}
+        {scanning && scanProgress && (
+          <div style={{padding:'10px',background:'var(--bg3)',borderBottom:'1px solid var(--border)'}}>
+            <div style={{fontSize:11,color:'var(--gold)',marginBottom:4}}>
+              正在扫描… 已发现 {scanProgress.scanned} 个文件
+            </div>
+            <div style={{fontSize:10,color:'var(--fg3)',overflow:'hidden',textOverflow:'ellipsis',
+              whiteSpace:'nowrap',maxWidth:180}} title={scanProgress.currentFile}>
+              {scanProgress.currentFile}
+            </div>
+            <button className="btn btn-sm btn-s" style={{marginTop:6,fontSize:10}}
+              onClick={()=>{scanAbortRef.current=true;setScanning(false);setScanProgress(null);}}>取消</button>
+          </div>
+        )}
 
         {/* 文件树 */}
         <div style={{flex:1,overflowY:'auto',padding:'6px 0'}}>
-          <FileTree files={files} selectedId={selFile?.id} onSelect={selectFile} onDelete={deleteFile} />
-        </div>
-
-        {/* 记忆统计 */}
-        <div style={{padding:'8px 10px',borderTop:'1px solid var(--border)',fontSize:11}}>
-          <div style={{color:'var(--fg3)',marginBottom:4,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-            <span>记忆金字塔</span>
-            <button style={{background:'none',color:'var(--gold)',fontSize:10}} onClick={loadMemStats}>刷新</button>
-          </div>
-          {memStats
-            ? <div style={{color:'var(--gold)',fontFamily:'var(--mono)'}}>{memStats.total_nodes} 节点 · {memStats.total_content_chars?.toLocaleString()||0} 字符</div>
-            : <div style={{color:'var(--fg3)'}}>点击刷新查看</div>
+          {uploadMode === 'local'
+            ? <FileTree
+                files={localFileList}
+                selectedId={selLocalPath}
+                onSelect={f => selectLocalFile(f.id)}
+                onDelete={null}
+              />
+            : <FileTree files={files} selectedId={selFile?.id} onSelect={selectFile} onDelete={deleteFile} />
           }
         </div>
+
+        {/* 服务端模式：记忆统计 */}
+        {uploadMode === 'server' && (
+          <div style={{padding:'8px 10px',borderTop:'1px solid var(--border)',fontSize:11}}>
+            <div style={{color:'var(--fg3)',marginBottom:4,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+              <span>记忆金字塔</span>
+              <button style={{background:'none',color:'var(--gold)',fontSize:10}} onClick={loadMemStats}>刷新</button>
+            </div>
+            {memStats
+              ? <div style={{color:'var(--gold)',fontFamily:'var(--mono)'}}>{memStats.total_nodes} 节点 · {memStats.total_content_chars?.toLocaleString()||0} 字符</div>
+              : <div style={{color:'var(--fg3)'}}>点击刷新查看</div>
+            }
+          </div>
+        )}
+
+        {/* 本地模式：文件统计 */}
+        {uploadMode === 'local' && localFileList.length > 0 && (
+          <div style={{padding:'8px 10px',borderTop:'1px solid var(--border)',fontSize:11,color:'var(--fg3)'}}>
+            {localFileList.length} 个文件
+            {dirHandle && <span style={{color:'var(--gold)',marginLeft:6}}>· {dirHandle.name}</span>}
+            <span style={{display:'block',fontSize:10,marginTop:2,color:'var(--gold)'}}>代码不上传服务器</span>
+          </div>
+        )}
 
         <div style={{padding:'8px 10px',borderTop:'1px solid var(--border)'}}>
           <button className="btn btn-s" style={{width:'100%',fontSize:11}}
@@ -6133,18 +6503,32 @@ function CodeAgentApp({user, onLogout, onUpdateUser}) {
         <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',borderRight:'1px solid var(--border)'}}>
           <div className="top" style={{justifyContent:'space-between'}}>
             <button className="menu-btn" onClick={()=>setSbOpen(!sbOpen)}><Icon name="menu" size={18} /></button>
-            <span style={{fontFamily:'var(--mono)',fontSize:12,color:selFile?'var(--fg)':'var(--fg3)',flex:1,marginLeft:8}}>
-              {selFile ? selFile.path : '← 选择文件'}
-              {selFile && <span style={{fontSize:10,color:'var(--fg3)',marginLeft:8}}>v{selFile.current_version}</span>}
+            <span style={{fontFamily:'var(--mono)',fontSize:12,color:hasActiveFile?'var(--fg)':'var(--fg3)',flex:1,marginLeft:8,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+              {hasActiveFile ? activeFilePath : '← 选择文件'}
+              {selFile && uploadMode==='server' && <span style={{fontSize:10,color:'var(--fg3)',marginLeft:8}}>v{selFile.current_version}</span>}
             </span>
-            {selFile && <>
+            {/* 模式标识 chip */}
+            <span style={{fontSize:10,padding:'2px 7px',borderRadius:10,marginRight:6,
+              background: uploadMode==='local' ? 'rgba(212,175,55,.15)' : 'rgba(255,255,255,.06)',
+              color: uploadMode==='local' ? 'var(--gold)' : 'var(--fg3)'}}>
+              {uploadMode==='local' ? '本地 · 不上传' : '服务端'}
+            </span>
+            {hasActiveFile && <>
               <button className="btn btn-sm btn-s" onClick={saveFile} title="保存 (Ctrl+S)">保存</button>
-              <button className="btn btn-sm btn-s" onClick={loadVersions}>历史</button>
+              {uploadMode === 'local' && (
+                <>
+                  {dirHandle && localFiles[selLocalPath]?.handle &&
+                    <button className="btn btn-sm btn-s" onClick={saveFile} title="写入磁盘" style={{color:'var(--gold)'}}>写盘</button>
+                  }
+                  <button className="btn btn-sm btn-s" onClick={downloadLocalFile} title="下载文件">下载</button>
+                </>
+              )}
+              {uploadMode === 'server' && <button className="btn btn-sm btn-s" onClick={loadVersions}>历史</button>}
             </>}
           </div>
 
           {/* 编辑指令栏 */}
-          {selFile && (
+          {hasActiveFile && (
             <div style={{padding:'6px 12px',borderBottom:'1px solid var(--border)',display:'flex',gap:6,background:'var(--bg2)'}}>
               <input value={editInstruction} onChange={e=>setEditInstruction(e.target.value)}
                 placeholder="输入修改指令，如：提取公共函数、添加错误处理、重命名变量…"
@@ -6153,26 +6537,41 @@ function CodeAgentApp({user, onLogout, onUpdateUser}) {
               <button className={`btn btn-sm btn-ai${generating?' generating':''}`} onClick={suggestEdits} disabled={generating}
                 style={{display:'inline-flex',alignItems:'center',gap:6}}>
                 <Icon name="spark" size={12} />
-                {generating?'生成中…':'AI修改建议'}
+                {generating?'生成中…':'AI建议'}
               </button>
-              <button className="btn btn-sm btn-s" onClick={()=>{setRightPanel('chat');setChatInput(editInstruction);}} title="转为对话询问"
+              <button className="btn btn-sm btn-s" onClick={()=>{setRightPanel('chat');setChatInput(editInstruction);}}
                 style={{display:'inline-flex',alignItems:'center',gap:6}}>
                 <Icon name="chat" size={12} /> 询问
               </button>
             </div>
           )}
 
+          {/* 未写盘提示条 */}
+          {uploadMode === 'local' && pendingDiskSave && selLocalPath && (
+            <div style={{padding:'4px 12px',background:'rgba(212,175,55,.1)',borderBottom:'1px solid var(--border)',
+              display:'flex',alignItems:'center',gap:8,fontSize:11}}>
+              <span style={{color:'var(--gold)'}}>● 已修改，尚未写入磁盘</span>
+              {dirHandle && localFiles[selLocalPath]?.handle && (
+                <button className="btn btn-sm" style={{background:'var(--gold)',color:'#000',padding:'2px 8px'}}
+                  onClick={saveFile}>写入磁盘</button>
+              )}
+              <button className="btn btn-sm btn-s" style={{padding:'2px 8px'}} onClick={downloadLocalFile}>下载</button>
+            </div>
+          )}
+
           {/* 代码文本编辑器 */}
-          {selFile
+          {hasActiveFile
             ? <div style={{flex:1,position:'relative',overflow:'hidden'}}>
-                {/* 显示 diff 高亮时的 streaming raw 预览 */}
                 {streaming && rightPanel==='diffs' && (
                   <div style={{position:'absolute',top:0,right:0,background:'var(--bg3)',border:'1px solid var(--border)',
                     borderRadius:6,padding:'6px 10px',zIndex:10,fontSize:11,color:'var(--fg3)',maxWidth:320,maxHeight:80,overflow:'hidden',margin:8}}>
                     <span style={{color:'var(--gold)'}}>AI分析中…</span> {streaming.slice(-80)}
                   </div>
                 )}
-                <textarea value={fileContent} onChange={e=>setFileContent(e.target.value)}
+                <textarea value={fileContent} onChange={e=>{
+                    setFileContent(e.target.value);
+                    if(uploadMode==='local'&&selLocalPath) setLocalFiles(p=>({...p,[selLocalPath]:{...p[selLocalPath],content:e.target.value,modified:true}}));
+                  }}
                   style={{width:'100%',height:'100%',background:'var(--bg)',color:'var(--fg)',
                     fontFamily:'var(--mono)',fontSize:13,lineHeight:1.6,padding:'12px 16px',
                     border:'none',outline:'none',resize:'none',tabSize:4}}
@@ -6185,7 +6584,11 @@ function CodeAgentApp({user, onLogout, onUpdateUser}) {
               </div>
             : <div className="empty" style={{margin:'auto'}}>
                 <h3 style={{fontSize:20}}>{'</>'}</h3>
-                <p>从左侧文件树选择文件<br/>或上传代码文件夹开始</p>
+                <p>
+                  {uploadMode === 'local'
+                    ? (fsaSupported ? '点击"打开本地文件夹"' : '点击"选择文件夹"') + '开始'
+                    : '从左侧文件树选择文件或上传代码文件夹'}
+                </p>
               </div>
           }
         </div>
@@ -6197,7 +6600,9 @@ function CodeAgentApp({user, onLogout, onUpdateUser}) {
             <div className={`tab${rightPanel==='diffs'?' on':''}`} onClick={()=>setRightPanel('diffs')}>
               Diff {diffs.length>0&&<span style={{fontSize:10,background:'var(--gold)',color:'#000',borderRadius:10,padding:'0 5px',marginLeft:4}}>{diffs.length}</span>}
             </div>
-            <div className={`tab${rightPanel==='versions'?' on':''}`} onClick={()=>{setRightPanel('versions');if(!versions.length&&selFile)loadVersions();}}>版本</div>
+            {uploadMode === 'server' && (
+              <div className={`tab${rightPanel==='versions'?' on':''}`} onClick={()=>{setRightPanel('versions');if(!versions.length&&selFile)loadVersions();}}>版本</div>
+            )}
           </div>
 
           {/* 对话面板 */}
@@ -6208,7 +6613,9 @@ function CodeAgentApp({user, onLogout, onUpdateUser}) {
                   <div style={{textAlign:'center',padding:'30px 10px',color:'var(--fg3)',fontSize:12}}>
                     <div style={{marginBottom:8}}><Icon name="chat" size={28} /></div>
                     <div>询问代码逻辑、重构建议、bug 排查</div>
-                    <div style={{marginTop:4,color:'var(--fg3)',fontSize:11}}>AI 会结合记忆中的全部代码作答</div>
+                    <div style={{marginTop:4,fontSize:11}}>
+                      {uploadMode==='local' ? '本地模式：代码不会存储到服务器' : 'AI 会结合记忆中的全部代码作答'}
+                    </div>
                   </div>
                 )}
                 {messages.map((m,i) => (
@@ -6219,7 +6626,7 @@ function CodeAgentApp({user, onLogout, onUpdateUser}) {
                     </div>
                   </div>
                 ))}
-                {streaming && (
+                {streaming && rightPanel==='chat' && (
                   <div className="cht-m a">
                     <div className="cht-lb">AI助手</div>
                     <div className="cht-bbl" style={{whiteSpace:'pre-wrap',wordBreak:'break-word'}}>{streaming}<span style={{animation:'blink 1s infinite',display:'inline-block',marginLeft:2}}>▌</span></div>
@@ -6247,7 +6654,7 @@ function CodeAgentApp({user, onLogout, onUpdateUser}) {
               )}
               {diffs.length === 0 && !streaming && (
                 <div className="empty" style={{padding:'30px 10px'}}>
-                  <p>在编辑器上方输入修改指令<br/>点击"AI修改建议"生成 Diff</p>
+                  <p>在编辑器上方输入修改指令<br/>点击"AI建议"生成 Diff</p>
                 </div>
               )}
               {diffs.length > 0 && (
@@ -6278,8 +6685,8 @@ function CodeAgentApp({user, onLogout, onUpdateUser}) {
             </div>
           )}
 
-          {/* 版本历史面板 */}
-          {rightPanel==='versions' && (
+          {/* 版本历史面板（仅服务端模式）*/}
+          {rightPanel==='versions' && uploadMode==='server' && (
             <div style={{flex:1,overflowY:'auto',padding:'10px 12px'}}>
               {!selFile && <div className="empty"><p>请先选择文件</p></div>}
               {selFile && versions.length === 0 && <div className="empty"><p>暂无历史版本</p></div>}
@@ -7618,6 +8025,135 @@ async function loadPdfjsLib(){
   });
 }
 
+// ── CameraCapture 组件（可复用模块）──────────────────────────
+// 使用 getUserMedia 显示实时取景器 + 拍照
+// fallback: 若浏览器不支持则退化为 <input capture> 直接调起原生相机
+function CameraCapture({ onCapture, onClose }) {
+  const videoRef    = useRef(null);
+  const streamRef   = useRef(null);
+  const [facing, setFacing]   = useState('environment'); // 'environment'=后摄 'user'=前摄
+  const [ready,  setReady]    = useState(false);
+  const [err,    setErr]      = useState('');
+  const [useNative, setUseNative] = useState(false); // fallback 模式
+
+  const stopStream = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+    }
+  };
+
+  const startCamera = useCallback(async (facingMode) => {
+    stopStream(); setReady(false); setErr('');
+    if (!navigator.mediaDevices?.getUserMedia) { setUseNative(true); return; }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode, width: { ideal: 1920 }, height: { ideal: 1080 } }
+      });
+      streamRef.current = stream;
+      if (videoRef.current) { videoRef.current.srcObject = stream; }
+      setReady(true);
+    } catch(e) {
+      // HTTPS 未开启 / 权限拒绝时退化为原生 input
+      if (e.name === 'NotAllowedError') setErr('摄像头权限被拒绝，请在浏览器设置中允许访问');
+      else setUseNative(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    startCamera(facing);
+    return () => stopStream();
+  }, [facing]); // eslint-disable-line
+
+  // 点击"拍照"：从 video 帧截取到 canvas → dataURL
+  const handleCapture = () => {
+    const video = videoRef.current;
+    if (!video || !video.videoWidth) return;
+    const cv = document.createElement('canvas');
+    cv.width = video.videoWidth; cv.height = video.videoHeight;
+    cv.getContext('2d').drawImage(video, 0, 0);
+    stopStream();
+    onCapture(cv.toDataURL('image/jpeg', 0.92));
+  };
+
+  // fallback：<input capture> 触发原生相机
+  const handleNativeCapture = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => onCapture(ev.target.result);
+    reader.readAsDataURL(file);
+  };
+
+  return (
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.95)',zIndex:2000,
+      display:'flex',flexDirection:'column'}}>
+      {/* 顶栏 */}
+      <div style={{display:'flex',alignItems:'center',padding:'12px 16px',
+        borderBottom:'1px solid var(--border)',flexShrink:0}}>
+        <span style={{flex:1,fontSize:14,color:'var(--fg)',fontWeight:500}}>相机拍照</span>
+        <button onClick={()=>{ stopStream(); onClose(); }}
+          style={{background:'none',color:'var(--fg2)',padding:'4px 8px',lineHeight:1}}>
+          <Icon name="x" size={18}/>
+        </button>
+      </div>
+
+      {/* 取景器 / 错误 / fallback */}
+      <div style={{flex:1,position:'relative',overflow:'hidden',
+        display:'flex',alignItems:'center',justifyContent:'center',background:'#000'}}>
+        {useNative ? (
+          <div style={{textAlign:'center',padding:24}}>
+            <div style={{color:'var(--fg2)',fontSize:13,marginBottom:20,lineHeight:1.6}}>
+              当前环境不支持实时取景（需要 HTTPS）<br/>点击下方按钮直接调起系统相机
+            </div>
+            <label className="btn btn-p" style={{padding:'12px 28px',fontSize:15,cursor:'pointer',
+              display:'inline-flex',alignItems:'center',gap:8}}>
+              <Icon name="scan" size={16}/> 打开相机
+              <input type="file" accept="image/*" capture="environment"
+                style={{display:'none'}} onChange={handleNativeCapture}/>
+            </label>
+          </div>
+        ) : err ? (
+          <div style={{color:'var(--red)',fontSize:13,padding:24,textAlign:'center',lineHeight:1.6}}>{err}</div>
+        ) : (
+          <video ref={videoRef} style={{maxWidth:'100%',maxHeight:'100%',objectFit:'contain'}}
+            playsInline muted autoPlay/>
+        )}
+        {/* 取景框辅助线 */}
+        {!useNative && !err && ready && (
+          <div style={{position:'absolute',inset:0,pointerEvents:'none',
+            display:'flex',alignItems:'center',justifyContent:'center'}}>
+            <div style={{width:'72%',aspectRatio:'1.414/1',border:'2px solid rgba(201,168,108,0.6)',
+              borderRadius:4,boxShadow:'0 0 0 9999px rgba(0,0,0,0.3)'}}/>
+          </div>
+        )}
+      </div>
+
+      {/* 底部操作栏 */}
+      {!useNative && (
+        <div style={{padding:'16px 20px',display:'flex',gap:12,justifyContent:'center',
+          alignItems:'center',borderTop:'1px solid var(--border)',flexShrink:0,flexWrap:'wrap'}}>
+          <button className="btn btn-s" onClick={()=>setFacing(f=>f==='environment'?'user':'environment')}
+            style={{display:'inline-flex',alignItems:'center',gap:6}}>
+            <Icon name="refresh" size={13}/> 切换摄像头
+          </button>
+          <button className="btn btn-p" onClick={handleCapture} disabled={!ready}
+            style={{padding:'11px 36px',fontSize:15,display:'inline-flex',alignItems:'center',gap:8,
+              borderRadius:'50px',minWidth:120}}>
+            <Icon name="scan" size={16}/> 拍照
+          </button>
+          {/* 也提供 input capture 备用 */}
+          <label className="btn btn-s" style={{cursor:'pointer',display:'inline-flex',alignItems:'center',gap:6}}>
+            <Icon name="upload" size={13}/> 调用系统相机
+            <input type="file" accept="image/*" capture="environment"
+              style={{display:'none'}} onChange={handleNativeCapture}/>
+          </label>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── ScanEnhanceApp React 组件 ─────────────────────────────────
 function ScanEnhanceApp({user, onLogout, onUpdateUser}) {
   // 本地页面数组：[{num, origDataUrl, procDataUrl}]
@@ -7633,6 +8169,7 @@ function ScanEnhanceApp({user, onLogout, onUpdateUser}) {
   const [dragging, setDragging]   = useState(false);
   const [sbOpen, setSbOpen]       = useState(false);
   const [loadingFile, setLoadingFile] = useState(false);
+  const [showCamera, setShowCamera] = useState(false);
   const sliderRef = useRef(null);
   const workerRef = useRef(null);
 
@@ -7681,6 +8218,15 @@ function ScanEnhanceApp({user, onLogout, onUpdateUser}) {
       }
     } catch(ex) { setErr('文件加载失败：' + ex.message); }
     setLoadingFile(false); setProgress('');
+  }, []);
+
+  // ── 接收相机拍照结果 ─────────────────────────────────────────
+  const handleCameraCapture = useCallback((dataUrl) => {
+    setShowCamera(false);
+    setErr(''); setPages([]); setLoadingFile(false);
+    setFileName('拍照_' + new Date().toISOString().slice(0,19).replace(/[:T]/g,'-') + '.jpg');
+    setPages([{num: 1, origDataUrl: dataUrl, procDataUrl: null}]);
+    setCurIdx(0);
   }, []);
 
   // 用于清空已处理结果（辅助）
@@ -7835,6 +8381,10 @@ function ScanEnhanceApp({user, onLogout, onUpdateUser}) {
                   <Icon name="download" size={12}/> 全部({processedCount})
                 </button>
               )}
+              <button className="btn btn-s btn-sm" onClick={()=>setShowCamera(true)}
+                style={{display:'inline-flex',alignItems:'center',gap:5}}>
+                <Icon name="scan" size={12}/> 拍照
+              </button>
               <label className="btn btn-p btn-sm" style={{cursor:loadingFile?'wait':'pointer'}}>
                 {loadingFile ? '加载中…' : '+ 换文件'}
                 <input type="file" style={{display:'none'}} accept=".pdf,.png,.jpg,.jpeg,.bmp,.tiff,.webp"
@@ -7883,6 +8433,15 @@ function ScanEnhanceApp({user, onLogout, onUpdateUser}) {
                     <div style={{color:'var(--fg3)',fontSize:11,marginTop:8}}>文件不会上传到服务器，完全本地处理</div></>
               }
             </label>
+
+            {/* 相机拍照入口 */}
+            <div style={{marginTop:12,display:'flex',justifyContent:'center'}}>
+              <button className="btn btn-s" onClick={e=>{e.preventDefault();setShowCamera(true);}}
+                style={{display:'inline-flex',alignItems:'center',gap:8,padding:'10px 24px',fontSize:13,
+                  borderColor:'var(--gold-dim)',color:'var(--gold)'}}>
+                <Icon name="scan" size={15}/> 使用相机拍照
+              </button>
+            </div>
 
             <div style={{marginTop:24,padding:'16px',background:'var(--bg2)',borderRadius:8,border:'1px solid var(--border)'}}>
               <div style={{fontSize:11,color:'var(--fg3)',letterSpacing:1,marginBottom:10}}>技术说明</div>
@@ -8049,6 +8608,1050 @@ function ScanEnhanceApp({user, onLogout, onUpdateUser}) {
           </div>
         )}
       </div>
+
+      {/* ── CameraCapture 弹层 ── */}
+      {showCamera && (
+        <CameraCapture
+          onCapture={handleCameraCapture}
+          onClose={() => setShowCamera(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── AI 题库 ──────────────────────────────────────────────────────────────────
+
+function QBMd({content}) {
+  const ref = React.useRef(null);
+  React.useEffect(() => {
+    if (!ref.current || !content) return;
+    ref.current.innerHTML = window.marked ? window.marked.parse(content) : content.replace(/\n/g,'<br>');
+    if (window.MathJax && window.MathJax.typesetPromise) {
+      window.MathJax.typesetPromise([ref.current]).catch(()=>{});
+    }
+  }, [content]);
+  return <div ref={ref} style={{lineHeight:1.7, fontSize:14}} className="md-body" />;
+}
+
+function QBModelBadge({model}) {
+  const isVision = model === 'glm-4v-flash';
+  return (
+    <span style={{
+      display:'inline-flex', alignItems:'center', gap:4, padding:'2px 7px',
+      borderRadius:10, fontSize:11,
+      background: isVision ? 'rgba(154,106,196,0.18)' : 'rgba(90,138,196,0.18)',
+      color: isVision ? 'var(--purple)' : 'var(--blue)',
+      border: `1px solid ${isVision ? 'rgba(154,106,196,0.35)' : 'rgba(90,138,196,0.35)'}`,
+    }}>
+      {isVision ? '👁 GLM-4V' : '💬 GLM-4.7'}
+    </span>
+  );
+}
+
+function QuestionBankApp({user, onLogout, onUpdateUser}) {
+  const token = localStorage.getItem('mf_token');
+  const [view, setView] = React.useState('list'); // list | edit | shared | shared-detail
+  const [questions, setQuestions] = React.useState([]);
+  const [currentQ, setCurrentQ] = React.useState(null);
+  const [sharedList, setSharedList] = React.useState([]);
+  const [currentShared, setCurrentShared] = React.useState(null);
+  const [sbOpen, setSbOpen] = React.useState(false);
+  const [loading, setLoading] = React.useState(false);
+  const [sharedSearch, setSharedSearch] = React.useState('');
+  const [sharedSubject, setSharedSubject] = React.useState('');
+
+  const headers = React.useMemo(() => ({
+    'Content-Type': 'application/json',
+    ...(token ? {'Authorization': `Token ${token}`} : {}),
+  }), [token]);
+
+  const authFetch = React.useCallback(async (url, opts = {}) => {
+    const r = await fetch(url, {...opts, headers: {...headers, ...(opts.headers||{})}});
+    if (!r.ok) throw new Error(await r.text());
+    return r.json();
+  }, [headers]);
+
+  const loadQuestions = React.useCallback(async () => {
+    if (!token) return;
+    try {
+      const data = await authFetch('/api/qbank/questions/');
+      setQuestions(data);
+    } catch {}
+  }, [authFetch, token]);
+
+  const loadShared = React.useCallback(async (search='', subject='') => {
+    try {
+      const params = new URLSearchParams();
+      if (search) params.set('q', search);
+      if (subject) params.set('subject', subject);
+      const r = await fetch(`/api/qbank/shared/?${params}`, {headers});
+      if (!r.ok) return;
+      setSharedList(await r.json());
+    } catch {}
+  }, [headers]);
+
+  React.useEffect(() => {
+    if (view === 'list') loadQuestions();
+    if (view === 'shared') loadShared(sharedSearch, sharedSubject);
+  }, [view, loadQuestions, loadShared, sharedSearch, sharedSubject]);
+
+  const openNew = () => {
+    setCurrentQ({
+      id: null, title: '', content: '', model_used: 'glm-4.7-flash',
+      tags: '', subject: '', has_image: false, image_data_url: '',
+      original_image: '', image_type: 'jpeg',
+      messages: [], final_answer_content: '',
+      standard_answer_md: '', standard_answer_image: '', is_published: false,
+    });
+    setView('edit');
+  };
+
+  const openQuestion = async (q) => {
+    setLoading(true);
+    try {
+      const data = await authFetch(`/api/qbank/questions/${q.id}/`);
+      setCurrentQ(data);
+      setView('edit');
+    } catch (e) { alert('加载失败: ' + e.message); }
+    setLoading(false);
+  };
+
+  const openSharedDetail = async (sq) => {
+    setLoading(true);
+    try {
+      const data = await authFetch(`/api/qbank/shared/${sq.id}/`);
+      setCurrentShared(data);
+      setView('shared-detail');
+    } catch (e) { alert('加载失败: ' + e.message); }
+    setLoading(false);
+  };
+
+  const deleteQuestion = async (q) => {
+    if (!confirm(`确认删除「${q.title}」？`)) return;
+    try {
+      await fetch(`/api/qbank/questions/${q.id}/`, {method:'DELETE', headers});
+      loadQuestions();
+    } catch {}
+  };
+
+  return (
+    <div style={{display:'flex', height:'100vh', overflow:'hidden', fontFamily:'var(--sans)'}}>
+      {/* 侧边栏 */}
+      <div className={`sb${sbOpen?' open':''}`} style={{position:'relative',zIndex:10}}>
+        <div className="sb-hd">
+          <h1>AI 题库</h1>
+          <p style={{fontSize:10,color:'var(--fg3)',marginTop:3,letterSpacing:2}}>QUESTION BANK</p>
+        </div>
+        <div className="sb-nav">
+          <div className="ns">
+            <div className="ns-t">功能</div>
+            {[
+              {v:'list', label:'我的题目', icon:'📝'},
+              {v:'shared', label:'共享题库', icon:'🌐'},
+            ].map(item => (
+              <div key={item.v}
+                className={`ni${view===item.v||(!['shared','shared-detail'].includes(view)&&item.v==='list'&&view==='list')?' on':''}`}
+                onClick={() => { setView(item.v); setSbOpen(false); }}>
+                <span>{item.icon}</span>
+                <span>{item.label}</span>
+              </div>
+            ))}
+          </div>
+          {view === 'edit' && currentQ && (
+            <div className="ns">
+              <div className="ns-t">当前题目</div>
+              <div className="ni on" style={{fontSize:12,wordBreak:'break-word',whiteSpace:'normal',lineHeight:1.4}}>
+                {currentQ.title || '新题目'}
+              </div>
+            </div>
+          )}
+        </div>
+        <div style={{padding:'10px 14px', borderTop:'1px solid var(--border)'}}>
+          <div style={{fontSize:11, color:'var(--fg3)', marginBottom:6}}>{user?.email || '访客'}</div>
+          <div style={{display:'flex', gap:6}}>
+            <button onClick={() => window.location.hash='#/'} style={{flex:1,background:'var(--bg3)',color:'var(--fg2)',padding:'5px 0',borderRadius:'var(--r)',fontSize:11}}>← 平台首页</button>
+            <button onClick={onLogout} style={{flex:1,background:'var(--bg3)',color:'var(--fg2)',padding:'5px 0',borderRadius:'var(--r)',fontSize:11}}>退出</button>
+          </div>
+        </div>
+      </div>
+
+      {/* 主内容 */}
+      <div style={{flex:1, display:'flex', flexDirection:'column', overflow:'hidden', minWidth:0}}>
+        {/* 顶栏 */}
+        <div style={{height:46,borderBottom:'1px solid var(--border)',display:'flex',alignItems:'center',padding:'0 16px',gap:10,background:'var(--bg2)',flexShrink:0}}>
+          <button style={{background:'transparent',border:'none',color:'var(--fg3)',cursor:'pointer',padding:'4px',display:'flex',alignItems:'center'}} onClick={()=>setSbOpen(o=>!o)}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+          </button>
+          <span style={{fontSize:14,fontWeight:500,color:'var(--fg)'}}>
+            {view==='list'?'我的题目':view==='edit'?(currentQ?.id?`编辑: ${currentQ.title||'题目'}` :'新建题目'):view==='shared'?'共享题库':'题目详情'}
+          </span>
+          {view === 'edit' && currentQ?.id && (
+            <button onClick={()=>setView('list')} style={{background:'transparent',color:'var(--fg3)',fontSize:12,marginLeft:8}}>← 返回列表</button>
+          )}
+          {view === 'shared-detail' && (
+            <button onClick={()=>setView('shared')} style={{background:'transparent',color:'var(--fg3)',fontSize:12,marginLeft:8}}>← 返回题库</button>
+          )}
+          {view === 'list' && (
+            <button className="btn btn-p btn-sm" style={{marginLeft:'auto'}} onClick={openNew}>+ 新建题目</button>
+          )}
+        </div>
+
+        {/* 内容区 */}
+        <div style={{flex:1,overflow:'auto',minHeight:0}}>
+          {loading && <div style={{textAlign:'center',padding:40,color:'var(--fg3)'}}>加载中…</div>}
+          {!loading && view === 'list' && (
+            <QBMyQuestions questions={questions} onOpen={openQuestion} onDelete={deleteQuestion} onNew={openNew} />
+          )}
+          {!loading && view === 'edit' && currentQ && (
+            <QBEditView
+              question={currentQ}
+              onSaved={(q) => { setCurrentQ(q); }}
+              onBack={() => { loadQuestions(); setView('list'); }}
+              token={token}
+              headers={headers}
+              authFetch={authFetch}
+              user={user}
+            />
+          )}
+          {!loading && view === 'shared' && (
+            <QBSharedList
+              list={sharedList}
+              search={sharedSearch}
+              subject={sharedSubject}
+              onSearchChange={setSharedSearch}
+              onSubjectChange={setSharedSubject}
+              onSearch={()=>loadShared(sharedSearch,sharedSubject)}
+              onOpen={openSharedDetail}
+              user={user}
+              headers={headers}
+            />
+          )}
+          {!loading && view === 'shared-detail' && currentShared && (
+            <QBSharedDetail
+              shared={currentShared}
+              onBack={() => setView('shared')}
+              token={token}
+              headers={headers}
+              authFetch={authFetch}
+              user={user}
+              onReload={async () => {
+                try { const d = await authFetch(`/api/qbank/shared/${currentShared.id}/`); setCurrentShared(d); } catch {}
+              }}
+            />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── 我的题目列表 ──────────────────────────────────────────────────────────────
+
+function QBMyQuestions({questions, onOpen, onDelete, onNew}) {
+  if (questions.length === 0) {
+    return (
+      <div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',height:'100%',gap:16,color:'var(--fg3)'}}>
+        <div style={{fontSize:48}}>📝</div>
+        <div style={{fontSize:16,color:'var(--fg2)'}}>还没有题目</div>
+        <div style={{fontSize:13}}>上传题目图片，用 OCR 或视觉模型识别，然后让 AI 解答</div>
+        <button className="btn btn-p" style={{marginTop:8}} onClick={onNew}>新建题目</button>
+      </div>
+    );
+  }
+  return (
+    <div style={{padding:'20px',display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))',gap:14}}>
+      {questions.map(q => (
+        <div key={q.id} style={{background:'var(--bg2)',borderRadius:8,border:'1px solid var(--border)',padding:'14px',cursor:'pointer',transition:'border .15s'}}
+          onMouseEnter={e=>e.currentTarget.style.borderColor='var(--gold-dim)'}
+          onMouseLeave={e=>e.currentTarget.style.borderColor='var(--border)'}>
+          <div style={{display:'flex',gap:8,alignItems:'flex-start',marginBottom:8}}>
+            <div style={{flex:1,minWidth:0}} onClick={()=>onOpen(q)}>
+              <div style={{fontWeight:500,color:'var(--fg)',marginBottom:4,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{q.title || '未命名题目'}</div>
+              <div style={{fontSize:12,color:'var(--fg3)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{q.content || '(无文字内容)'}</div>
+            </div>
+            <button onClick={e=>{e.stopPropagation();onDelete(q);}}
+              style={{background:'transparent',color:'var(--fg3)',fontSize:16,padding:'0 2px',lineHeight:1,flexShrink:0}}>×</button>
+          </div>
+          <div style={{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center'}} onClick={()=>onOpen(q)}>
+            <QBModelBadge model={q.model_used} />
+            {q.subject && <span style={{fontSize:11,color:'var(--fg3)',padding:'1px 6px',borderRadius:8,background:'var(--bg4)'}}>{q.subject}</span>}
+            {q.is_published && <span style={{fontSize:11,color:'var(--green)',padding:'1px 6px',borderRadius:8,background:'rgba(94,184,122,0.12)'}}>已发布</span>}
+            {q.has_final_answer && <span style={{fontSize:11,color:'var(--gold)',padding:'1px 6px',borderRadius:8,background:'rgba(201,168,108,0.12)'}}>有答案</span>}
+            {q.has_image && <span style={{fontSize:11,color:'var(--cyan)',padding:'1px 6px',borderRadius:8,background:'rgba(90,196,180,0.12)'}}>有图片</span>}
+          </div>
+          <div style={{fontSize:11,color:'var(--fg3)',marginTop:8,cursor:'pointer'}} onClick={()=>onOpen(q)}>
+            {new Date(q.created_at).toLocaleDateString('zh-CN')}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── 题目编辑视图 ──────────────────────────────────────────────────────────────
+
+function QBEditView({question, onSaved, onBack, token, headers, authFetch, user}) {
+  const [q, setQ] = React.useState(question);
+  const [tab, setTab] = React.useState('question'); // question | chat | answer | standard | publish
+  const [ocrLoading, setOcrLoading] = React.useState(false);
+  const [saving, setSaving] = React.useState(false);
+  const [model, setModel] = React.useState(question.model_used || 'glm-4.7-flash');
+  const [msgs, setMsgs] = React.useState(question.messages || []);
+  const [chatInput, setChatInput] = React.useState('');
+  const [streaming, setStreaming] = React.useState(false);
+  const [streamText, setStreamText] = React.useState('');
+  const [finalAnswer, setFinalAnswer] = React.useState(question.final_answer_content || '');
+  const [editingFinal, setEditingFinal] = React.useState(false);
+  const [stdMd, setStdMd] = React.useState(question.standard_answer_md || '');
+  const [stdImage, setStdImage] = React.useState('');
+  const [stdImageType, setStdImageType] = React.useState('jpeg');
+  const [stdPreview, setStdPreview] = React.useState(question.standard_answer_image || '');
+  const [publishing, setPublishing] = React.useState(false);
+  const chatEndRef = React.useRef(null);
+
+  React.useEffect(() => {
+    chatEndRef.current?.scrollIntoView({behavior:'smooth'});
+  }, [msgs, streamText]);
+
+  // 处理图片上传（题目图片）
+  const handleImageUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (ev) => {
+      const dataUrl = ev.target.result;
+      const [meta, b64] = dataUrl.split(',');
+      const imgType = meta.match(/image\/([^;]+)/)?.[1] || 'jpeg';
+      setQ(prev => ({...prev, image_data_url: dataUrl, original_image: b64, image_type: imgType, has_image: true}));
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // OCR 识别
+  const runOCR = async () => {
+    if (!q.original_image) return;
+    setOcrLoading(true);
+    try {
+      const resp = await fetch('/api/qbank/ocr/', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({image_b64: q.original_image, image_type: q.image_type}),
+      });
+      const data = await resp.json();
+      if (data.error) throw new Error(data.error);
+      setQ(prev => ({...prev, content: data.text || ''}));
+    } catch (e) { alert('OCR 失败: ' + e.message); }
+    setOcrLoading(false);
+  };
+
+  // 保存题目（新建或更新）
+  const saveQuestion = async () => {
+    setSaving(true);
+    try {
+      let saved;
+      if (!q.id) {
+        saved = await authFetch('/api/qbank/questions/', {
+          method: 'POST',
+          body: JSON.stringify({
+            title: q.title || q.content.slice(0,60) || '新题目',
+            content: q.content,
+            original_image: q.original_image,
+            image_type: q.image_type,
+            model_used: model,
+            tags: q.tags,
+            subject: q.subject,
+          }),
+        });
+      } else {
+        saved = await authFetch(`/api/qbank/questions/${q.id}/`, {
+          method: 'PUT',
+          body: JSON.stringify({
+            title: q.title || q.content.slice(0,60) || '新题目',
+            content: q.content,
+            original_image: q.original_image,
+            image_type: q.image_type,
+            model_used: model,
+            tags: q.tags,
+            subject: q.subject,
+          }),
+        });
+      }
+      setQ(prev => ({...prev, ...saved, image_data_url: prev.image_data_url}));
+      onSaved({...saved, image_data_url: q.image_data_url});
+      return saved;
+    } catch (e) { alert('保存失败: ' + e.message); return null; }
+    finally { setSaving(false); }
+  };
+
+  // 切换模型
+  const handleModelChange = (newModel) => {
+    setModel(newModel);
+    setQ(prev => ({...prev, model_used: newModel}));
+  };
+
+  // 发送消息 (SSE)
+  const sendMessage = async () => {
+    if (!chatInput.trim() || streaming) return;
+    let qid = q.id;
+    if (!qid) {
+      const saved = await saveQuestion();
+      if (!saved) return;
+      qid = saved.id;
+    }
+    const userMsg = chatInput.trim();
+    setChatInput('');
+    setMsgs(prev => [...prev, {role:'user', content:userMsg, model_used:model}]);
+    setStreaming(true);
+    setStreamText('');
+
+    const isVision = model === 'glm-4v-flash';
+    const includeImage = isVision && q.has_image && msgs.length === 0;
+
+    try {
+      const resp = await fetch(`/api/qbank/questions/${qid}/chat-stream/`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({message: userMsg, model, include_image: includeImage}),
+      });
+      if (!resp.ok) throw new Error(await resp.text());
+      const reader = resp.body.getReader();
+      const dec = new TextDecoder();
+      let buf = '';
+      let full = '';
+      while (true) {
+        const {done, value} = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, {stream:true});
+        const lines = buf.split('\n');
+        buf = lines.pop();
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const ev = JSON.parse(line.slice(6));
+            if (ev.content) { full += ev.content; setStreamText(full); }
+            if (ev.done) {
+              setMsgs(prev => [...prev, {role:'assistant', content:full, model_used:model}]);
+              setStreamText('');
+            }
+          } catch {}
+        }
+      }
+    } catch (e) {
+      setMsgs(prev => [...prev, {role:'assistant', content:`错误: ${e.message}`, model_used:model}]);
+    }
+    setStreaming(false);
+    setStreamText('');
+  };
+
+  // 保存最终答案
+  const saveFinal = async () => {
+    let qid = q.id;
+    if (!qid) { const s = await saveQuestion(); if (!s) return; qid = s.id; }
+    try {
+      await authFetch(`/api/qbank/questions/${qid}/final/`, {
+        method:'POST', body:JSON.stringify({content: finalAnswer}),
+      });
+      setEditingFinal(false);
+      setQ(prev => ({...prev, has_final_answer: true, final_answer_content: finalAnswer}));
+    } catch (e) { alert('保存失败: ' + e.message); }
+  };
+
+  // 将 AI 回答复制到最终答案编辑器
+  const importFromChat = (content) => {
+    setFinalAnswer(content);
+    setEditingFinal(true);
+    setTab('answer');
+  };
+
+  // 处理标准答案图片
+  const handleStdImage = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const dataUrl = ev.target.result;
+      const [meta, b64] = dataUrl.split(',');
+      const imgType = meta.match(/image\/([^;]+)/)?.[1] || 'jpeg';
+      setStdImage(b64);
+      setStdImageType(imgType);
+      setStdPreview(dataUrl);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // 保存标准答案
+  const saveStandard = async () => {
+    let qid = q.id;
+    if (!qid) { const s = await saveQuestion(); if (!s) return; qid = s.id; }
+    try {
+      await authFetch(`/api/qbank/questions/${qid}/standard/`, {
+        method:'POST',
+        body: JSON.stringify({content_md: stdMd, image: stdImage, image_type: stdImageType}),
+      });
+      setQ(prev => ({...prev, has_standard_answer: true}));
+      alert('标准答案已保存');
+    } catch (e) { alert('保存失败: ' + e.message); }
+  };
+
+  // 发布
+  const publish = async () => {
+    let qid = q.id;
+    if (!qid) { const s = await saveQuestion(); if (!s) return; qid = s.id; }
+    setPublishing(true);
+    try {
+      await authFetch(`/api/qbank/questions/${qid}/publish/`, {method:'POST', body:JSON.stringify({})});
+      setQ(prev => ({...prev, is_published: true}));
+      alert('发布成功！题目已出现在共享题库中。');
+    } catch (e) { alert('发布失败: ' + e.message); }
+    setPublishing(false);
+  };
+
+  // 取消发布
+  const unpublish = async () => {
+    if (!q.id) return;
+    if (!confirm('确认取消发布？')) return;
+    try {
+      await fetch(`/api/qbank/questions/${q.id}/publish/`, {method:'DELETE', headers});
+      setQ(prev => ({...prev, is_published: false}));
+    } catch (e) { alert('操作失败: ' + e.message); }
+  };
+
+  const tabStyle = (t) => ({
+    padding:'7px 14px', fontSize:13, cursor:'pointer', borderRadius:0,
+    background:'transparent', border:'none',
+    borderBottom: tab===t ? '2px solid var(--gold)' : '2px solid transparent',
+    color: tab===t ? 'var(--gold)' : 'var(--fg3)',
+    transition:'all .15s',
+  });
+
+  return (
+    <div style={{display:'flex',flexDirection:'column',height:'100%'}}>
+      {/* Tab 导航 */}
+      <div style={{display:'flex',borderBottom:'1px solid var(--border)',background:'var(--bg2)',flexShrink:0,paddingLeft:8}}>
+        <button style={tabStyle('question')} onClick={()=>setTab('question')}>📷 题目</button>
+        <button style={tabStyle('chat')} onClick={()=>setTab('chat')}>💬 AI 对话</button>
+        <button style={tabStyle('answer')} onClick={()=>setTab('answer')}>✏️ 最终答案</button>
+        <button style={tabStyle('standard')} onClick={()=>setTab('standard')}>📋 标准答案</button>
+        <button style={tabStyle('publish')} onClick={()=>setTab('publish')}>🌐 发布</button>
+        <button className="btn btn-p btn-sm" style={{marginLeft:'auto',marginRight:8,marginTop:4,marginBottom:4}} onClick={saveQuestion} disabled={saving}>
+          {saving ? '保存中…' : '保存'}
+        </button>
+      </div>
+
+      {/* Tab 内容 */}
+      <div style={{flex:1,overflow:'auto',padding:20}}>
+
+        {/* ── 题目面板 ─────────────────────────────────────────── */}
+        {tab === 'question' && (
+          <div style={{maxWidth:800,margin:'0 auto',display:'flex',flexDirection:'column',gap:16}}>
+            <div style={{display:'flex',gap:12,alignItems:'center',flexWrap:'wrap'}}>
+              <label style={{fontSize:13,color:'var(--fg2)'}}>模型选择：</label>
+              <button onClick={()=>handleModelChange('glm-4.7-flash')}
+                style={{padding:'5px 12px',borderRadius:20,border:`1px solid ${model==='glm-4.7-flash'?'var(--blue)':'var(--border2)'}`,
+                  background:model==='glm-4.7-flash'?'rgba(90,138,196,0.15)':'transparent',
+                  color:model==='glm-4.7-flash'?'var(--blue)':'var(--fg3)',fontSize:12,cursor:'pointer'}}>
+                💬 GLM-4.7（文字题）
+              </button>
+              <button onClick={()=>handleModelChange('glm-4v-flash')}
+                style={{padding:'5px 12px',borderRadius:20,border:`1px solid ${model==='glm-4v-flash'?'var(--purple)':'var(--border2)'}`,
+                  background:model==='glm-4v-flash'?'rgba(154,106,196,0.15)':'transparent',
+                  color:model==='glm-4v-flash'?'var(--purple)':'var(--fg3)',fontSize:12,cursor:'pointer'}}>
+                👁 GLM-4V（几何/图形题）
+              </button>
+            </div>
+
+            <div style={{display:'flex',gap:12,flexWrap:'wrap'}}>
+              <div style={{flex:'1 1 140px'}}>
+                <div style={{fontSize:12,color:'var(--fg3)',marginBottom:4}}>科目/标签</div>
+                <input value={q.subject} onChange={e=>setQ(p=>({...p,subject:e.target.value}))} placeholder="如：数学、物理…" style={{width:'100%'}} />
+              </div>
+              <div style={{flex:'2 1 200px'}}>
+                <div style={{fontSize:12,color:'var(--fg3)',marginBottom:4}}>题目标题</div>
+                <input value={q.title} onChange={e=>setQ(p=>({...p,title:e.target.value}))} placeholder="题目标题（可选，留空自动截取）" style={{width:'100%'}} />
+              </div>
+            </div>
+
+            {/* 图片上传区 */}
+            <div style={{border:'1px dashed var(--border2)',borderRadius:8,padding:16,textAlign:'center',background:'var(--bg3)'}}>
+              {q.image_data_url ? (
+                <div>
+                  <img src={q.image_data_url} alt="题目图片" style={{maxWidth:'100%',maxHeight:320,borderRadius:6,marginBottom:10}} />
+                  <div style={{display:'flex',gap:8,justifyContent:'center',flexWrap:'wrap'}}>
+                    {model !== 'glm-4v-flash' && (
+                      <button className="btn btn-p btn-sm" onClick={runOCR} disabled={ocrLoading}>
+                        {ocrLoading ? '识别中…' : '🔍 OCR 识别文字'}
+                      </button>
+                    )}
+                    <label className="btn btn-s btn-sm" style={{cursor:'pointer',display:'inline-flex',alignItems:'center',gap:4}}>
+                      🔄 换图片
+                      <input type="file" accept="image/*" style={{display:'none'}} onChange={handleImageUpload} />
+                    </label>
+                    <button className="btn btn-sm" style={{background:'var(--bg5)',color:'var(--fg3)'}}
+                      onClick={()=>setQ(p=>({...p,image_data_url:'',original_image:'',has_image:false}))}>
+                      ✕ 移除
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <label style={{cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',gap:8,padding:12}}>
+                  <div style={{fontSize:36}}>📷</div>
+                  <div style={{fontSize:14,color:'var(--fg2)'}}>点击上传题目图片</div>
+                  <div style={{fontSize:12,color:'var(--fg3)'}}>支持 JPG / PNG，上传后可 OCR 识别文字或直接用视觉模型解题</div>
+                  <input type="file" accept="image/*" style={{display:'none'}} onChange={handleImageUpload} />
+                </label>
+              )}
+            </div>
+
+            {/* 题目文字内容 */}
+            <div>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
+                <span style={{fontSize:12,color:'var(--fg3)'}}>
+                  题目文字内容
+                  {model !== 'glm-4v-flash' && <span style={{marginLeft:6,color:'var(--fg3)',fontSize:11}}>（OCR识别后可在此编辑）</span>}
+                  {model === 'glm-4v-flash' && <span style={{marginLeft:6,color:'var(--purple)',fontSize:11}}>（视觉模型将直接读取图片，文字可选填）</span>}
+                </span>
+              </div>
+              <textarea value={q.content} onChange={e=>setQ(p=>({...p,content:e.target.value}))}
+                placeholder={model === 'glm-4v-flash' ? '可选：用文字补充描述题目…' : '在此粘贴或编辑题目文字…'}
+                style={{width:'100%',minHeight:140,fontFamily:'var(--mono)',fontSize:13}} />
+            </div>
+
+            <div style={{display:'flex',justifyContent:'flex-end',gap:8}}>
+              <button className="btn btn-p" onClick={()=>{ saveQuestion().then(()=>setTab('chat')); }}>
+                保存并去 AI 对话 →
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── AI 对话面板 ──────────────────────────────────────── */}
+        {tab === 'chat' && (
+          <div style={{display:'flex',flexDirection:'column',height:'calc(100vh - 140px)',maxWidth:800,margin:'0 auto'}}>
+            {/* 模型切换提示 */}
+            <div style={{display:'flex',gap:8,alignItems:'center',marginBottom:12,padding:'8px 12px',background:'var(--bg3)',borderRadius:8,flexShrink:0}}>
+              <span style={{fontSize:12,color:'var(--fg3)',marginRight:4}}>当前模型：</span>
+              <button onClick={()=>handleModelChange('glm-4.7-flash')}
+                style={{padding:'3px 10px',borderRadius:14,border:`1px solid ${model==='glm-4.7-flash'?'var(--blue)':'var(--border2)'}`,
+                  background:model==='glm-4.7-flash'?'rgba(90,138,196,0.15)':'transparent',
+                  color:model==='glm-4.7-flash'?'var(--blue)':'var(--fg3)',fontSize:11,cursor:'pointer'}}>
+                💬 GLM-4.7
+              </button>
+              <button onClick={()=>handleModelChange('glm-4v-flash')}
+                style={{padding:'3px 10px',borderRadius:14,border:`1px solid ${model==='glm-4v-flash'?'var(--purple)':'var(--border2)'}`,
+                  background:model==='glm-4v-flash'?'rgba(154,106,196,0.15)':'transparent',
+                  color:model==='glm-4v-flash'?'var(--purple)':'var(--fg3)',fontSize:11,cursor:'pointer'}}>
+                👁 GLM-4V
+              </button>
+              <span style={{fontSize:11,color:'var(--fg3)',marginLeft:4}}>切换模型不会清空对话历史</span>
+              {msgs.length > 0 && (
+                <button style={{marginLeft:'auto',background:'transparent',color:'var(--fg3)',fontSize:12,cursor:'pointer',border:'1px solid var(--border2)',borderRadius:4,padding:'2px 8px'}}
+                  onClick={()=>{ if(confirm('确认清空对话历史？')) setMsgs([]); }}>
+                  清空对话
+                </button>
+              )}
+            </div>
+
+            {/* 消息列表 */}
+            <div style={{flex:1,overflow:'auto',display:'flex',flexDirection:'column',gap:12,paddingBottom:8}}>
+              {msgs.length === 0 && !streaming && (
+                <div style={{textAlign:'center',color:'var(--fg3)',padding:30}}>
+                  <div style={{fontSize:24,marginBottom:8}}>🤖</div>
+                  <div style={{fontSize:14,marginBottom:4}}>向 AI 提问</div>
+                  <div style={{fontSize:12}}>描述你的问题，或让 AI 解答题目图片中的内容</div>
+                  {q.content && (
+                    <button className="btn btn-p btn-sm" style={{marginTop:12}} onClick={()=>setChatInput(`请解答以下题目：\n\n${q.content}`)}>
+                      一键发送题目内容
+                    </button>
+                  )}
+                  {model === 'glm-4v-flash' && q.has_image && (
+                    <button className="btn btn-sm" style={{marginTop:8,marginLeft:8,background:'rgba(154,106,196,0.15)',color:'var(--purple)',border:'1px solid var(--purple)'}}
+                      onClick={()=>setChatInput('请解答这道题，请给出详细解题步骤。')}>
+                      让 GLM-4V 直接看图解题
+                    </button>
+                  )}
+                </div>
+              )}
+              {msgs.map((m, i) => (
+                <div key={i} style={{display:'flex',flexDirection:'column',alignItems:m.role==='user'?'flex-end':'flex-start'}}>
+                  <div style={{fontSize:11,color:'var(--fg3)',marginBottom:3,display:'flex',alignItems:'center',gap:6}}>
+                    <span>{m.role==='user'?'你':'AI'}</span>
+                    {m.model_used && <QBModelBadge model={m.model_used} />}
+                  </div>
+                  <div style={{
+                    maxWidth:'80%', padding:'10px 14px', borderRadius:8,
+                    background: m.role==='user' ? 'var(--bg4)' : 'var(--bg3)',
+                    border: '1px solid var(--border)',
+                    position:'relative',
+                  }}>
+                    {m.role === 'assistant' ? <QBMd content={m.content} /> : <span style={{fontSize:13,whiteSpace:'pre-wrap'}}>{m.content}</span>}
+                    {m.role === 'assistant' && (
+                      <button onClick={()=>importFromChat(m.content)}
+                        style={{marginTop:8,background:'transparent',color:'var(--gold)',fontSize:11,cursor:'pointer',
+                          border:'1px solid var(--gold-dim)',borderRadius:4,padding:'2px 8px',display:'block'}}>
+                        → 用作最终答案
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+              {streaming && streamText && (
+                <div style={{display:'flex',flexDirection:'column',alignItems:'flex-start'}}>
+                  <div style={{fontSize:11,color:'var(--fg3)',marginBottom:3,display:'flex',alignItems:'center',gap:6}}>
+                    <span>AI</span><QBModelBadge model={model} />
+                  </div>
+                  <div style={{maxWidth:'80%',padding:'10px 14px',borderRadius:8,background:'var(--bg3)',border:'1px solid var(--border)'}}>
+                    <QBMd content={streamText} />
+                    <span style={{animation:'blink 1s infinite'}}>▌</span>
+                  </div>
+                </div>
+              )}
+              {streaming && !streamText && <div style={{color:'var(--fg3)',fontSize:12,textAlign:'center'}}>AI 思考中…</div>}
+              <div ref={chatEndRef} />
+            </div>
+
+            {/* 输入框 */}
+            <div style={{display:'flex',gap:8,marginTop:8,flexShrink:0}}>
+              <textarea value={chatInput} onChange={e=>setChatInput(e.target.value)}
+                onKeyDown={e=>{ if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage();} }}
+                placeholder="输入消息… (Enter 发送, Shift+Enter 换行)"
+                style={{flex:1,minHeight:60,maxHeight:120,resize:'vertical',fontFamily:'var(--sans)',fontSize:13}} />
+              <button className="btn btn-p" style={{alignSelf:'flex-end'}} onClick={sendMessage} disabled={streaming||!chatInput.trim()}>
+                {streaming ? '…' : '发送'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── 最终答案面板 ────────────────────────────────────── */}
+        {tab === 'answer' && (
+          <div style={{maxWidth:800,margin:'0 auto',display:'flex',flexDirection:'column',gap:16}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              <h3 style={{fontSize:16,color:'var(--fg)'}}>最终答案（Markdown）</h3>
+              <div style={{display:'flex',gap:8}}>
+                {!editingFinal && finalAnswer && (
+                  <button className="btn btn-s btn-sm" onClick={()=>setEditingFinal(true)}>编辑</button>
+                )}
+                {editingFinal && (
+                  <button className="btn btn-p btn-sm" onClick={saveFinal}>保存答案</button>
+                )}
+              </div>
+            </div>
+            {editingFinal || !finalAnswer ? (
+              <div>
+                <textarea value={finalAnswer} onChange={e=>setFinalAnswer(e.target.value)}
+                  placeholder="在此编写最终答案（支持 Markdown 和 LaTeX 数学公式）"
+                  style={{width:'100%',minHeight:300,fontFamily:'var(--mono)',fontSize:13}} />
+                {!editingFinal && (
+                  <div style={{marginTop:8,display:'flex',gap:8}}>
+                    <button className="btn btn-p btn-sm" onClick={()=>{setEditingFinal(true);}} disabled={!finalAnswer.trim()}>
+                      保存为最终答案
+                    </button>
+                  </div>
+                )}
+                {editingFinal && (
+                  <div style={{marginTop:8,display:'flex',gap:8}}>
+                    <button className="btn btn-p btn-sm" onClick={saveFinal}>保存</button>
+                    <button className="btn btn-s btn-sm" onClick={()=>setEditingFinal(false)}>取消</button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div style={{background:'var(--bg2)',borderRadius:8,border:'1px solid var(--border)',padding:20}}>
+                <QBMd content={finalAnswer} />
+              </div>
+            )}
+            {!finalAnswer && msgs.length === 0 && (
+              <div style={{color:'var(--fg3)',fontSize:13,textAlign:'center',padding:20}}>
+                先在「AI 对话」标签页与 AI 交流，然后点击「→ 用作最终答案」将 AI 回答引入到此处进行编辑和完善。
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── 标准答案面板 ────────────────────────────────────── */}
+        {tab === 'standard' && (
+          <div style={{maxWidth:800,margin:'0 auto',display:'flex',flexDirection:'column',gap:16}}>
+            <h3 style={{fontSize:16,color:'var(--fg)'}}>标准答案（可选）</h3>
+            <div style={{fontSize:13,color:'var(--fg3)'}}>上传官方标准答案，支持图片或 Markdown 文字，发布后其他用户可查看。</div>
+
+            <div>
+              <div style={{fontSize:12,color:'var(--fg3)',marginBottom:6}}>文字标准答案（Markdown）</div>
+              <textarea value={stdMd} onChange={e=>setStdMd(e.target.value)}
+                placeholder="在此粘贴标准答案文字，支持 Markdown 和 LaTeX…"
+                style={{width:'100%',minHeight:160,fontFamily:'var(--mono)',fontSize:13}} />
+            </div>
+
+            <div style={{border:'1px dashed var(--border2)',borderRadius:8,padding:16,background:'var(--bg3)'}}>
+              <div style={{fontSize:12,color:'var(--fg3)',marginBottom:8}}>标准答案图片（可选）</div>
+              {stdPreview ? (
+                <div>
+                  <img src={stdPreview} alt="标准答案" style={{maxWidth:'100%',maxHeight:300,borderRadius:6,marginBottom:8}} />
+                  <div style={{display:'flex',gap:8}}>
+                    <label className="btn btn-s btn-sm" style={{cursor:'pointer'}}>
+                      换图片
+                      <input type="file" accept="image/*" style={{display:'none'}} onChange={handleStdImage} />
+                    </label>
+                    <button className="btn btn-sm" style={{background:'var(--bg5)',color:'var(--fg3)'}}
+                      onClick={()=>{ setStdImage(''); setStdPreview(''); }}>移除</button>
+                  </div>
+                </div>
+              ) : (
+                <label style={{cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',gap:6,padding:12}}>
+                  <div style={{fontSize:28}}>🖼</div>
+                  <div style={{fontSize:13,color:'var(--fg2)'}}>点击上传标准答案图片</div>
+                  <input type="file" accept="image/*" style={{display:'none'}} onChange={handleStdImage} />
+                </label>
+              )}
+            </div>
+
+            <button className="btn btn-p btn-sm" style={{width:'fit-content'}} onClick={saveStandard}>
+              保存标准答案
+            </button>
+          </div>
+        )}
+
+        {/* ── 发布面板 ─────────────────────────────────────────── */}
+        {tab === 'publish' && (
+          <div style={{maxWidth:600,margin:'0 auto',display:'flex',flexDirection:'column',gap:16,alignItems:'center',textAlign:'center',paddingTop:20}}>
+            <div style={{fontSize:48}}>🌐</div>
+            <h3 style={{fontSize:18,color:'var(--fg)'}}>发布到共享题库</h3>
+            <div style={{fontSize:13,color:'var(--fg3)',maxWidth:400,lineHeight:1.8}}>
+              发布后，所有用户可以查看题目内容、AI 解答和标准答案。
+              其他用户可以点赞、收藏和评论。
+            </div>
+            <div style={{display:'flex',gap:12,flexWrap:'wrap',justifyContent:'center'}}>
+              {[
+                {label:'题目内容', ok: !!q.content || !!q.original_image},
+                {label:'最终答案', ok: !!finalAnswer || q.has_final_answer},
+                {label:'标准答案', ok: q.has_standard_answer || !!stdMd},
+              ].map(item => (
+                <div key={item.label} style={{padding:'6px 14px',borderRadius:20,fontSize:12,
+                  background:item.ok?'rgba(94,184,122,0.12)':'var(--bg3)',
+                  color:item.ok?'var(--green)':'var(--fg3)',
+                  border:`1px solid ${item.ok?'rgba(94,184,122,0.3)':'var(--border2)'}`}}>
+                  {item.ok ? '✓' : '○'} {item.label}
+                </div>
+              ))}
+            </div>
+            {!q.id && <div style={{color:'var(--orange)',fontSize:13}}>请先保存题目</div>}
+            {q.is_published ? (
+              <div style={{display:'flex',flexDirection:'column',gap:12,alignItems:'center'}}>
+                <div style={{color:'var(--green)',fontSize:14}}>✓ 已发布到共享题库</div>
+                <div style={{display:'flex',gap:8}}>
+                  <button className="btn btn-p btn-sm" onClick={publish} disabled={publishing}>更新发布</button>
+                  <button className="btn btn-sm" style={{background:'rgba(196,90,90,0.15)',color:'var(--red)',border:'1px solid var(--red)'}}
+                    onClick={unpublish}>取消发布</button>
+                </div>
+              </div>
+            ) : (
+              <button className="btn btn-p" onClick={publish} disabled={publishing || !q.id} style={{padding:'10px 28px'}}>
+                {publishing ? '发布中…' : '发布到共享题库'}
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── 共享题库列表 ──────────────────────────────────────────────────────────────
+
+function QBSharedList({list, search, subject, onSearchChange, onSubjectChange, onSearch, onOpen, user, headers}) {
+  return (
+    <div style={{padding:20}}>
+      <div style={{display:'flex',gap:10,marginBottom:20,flexWrap:'wrap',alignItems:'center'}}>
+        <input value={search} onChange={e=>onSearchChange(e.target.value)}
+          onKeyDown={e=>e.key==='Enter'&&onSearch()}
+          placeholder="搜索题目…" style={{flex:'1 1 200px',maxWidth:300}} />
+        <input value={subject} onChange={e=>onSubjectChange(e.target.value)}
+          onKeyDown={e=>e.key==='Enter'&&onSearch()}
+          placeholder="科目筛选…" style={{flex:'1 1 120px',maxWidth:160}} />
+        <button className="btn btn-p btn-sm" onClick={onSearch}>搜索</button>
+        <span style={{fontSize:12,color:'var(--fg3)',marginLeft:'auto'}}>{list.length} 道题</span>
+      </div>
+      {list.length === 0 && (
+        <div style={{textAlign:'center',padding:40,color:'var(--fg3)'}}>
+          <div style={{fontSize:36,marginBottom:8}}>🌐</div>
+          <div>共享题库暂无内容</div>
+        </div>
+      )}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(300px,1fr))',gap:14}}>
+        {list.map(sq => (
+          <div key={sq.id} onClick={()=>onOpen(sq)}
+            style={{background:'var(--bg2)',borderRadius:8,border:'1px solid var(--border)',padding:14,cursor:'pointer',transition:'border .15s'}}
+            onMouseEnter={e=>e.currentTarget.style.borderColor='var(--gold-dim)'}
+            onMouseLeave={e=>e.currentTarget.style.borderColor='var(--border)'}>
+            <div style={{fontWeight:500,marginBottom:6,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',color:'var(--fg)'}}>
+              {sq.title || '无标题'}
+            </div>
+            <div style={{fontSize:12,color:'var(--fg3)',marginBottom:8,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+              {sq.content || '(无文字预览)'}
+            </div>
+            {sq.subject && <span style={{fontSize:11,color:'var(--fg3)',padding:'1px 6px',borderRadius:8,background:'var(--bg4)',marginRight:4}}>{sq.subject}</span>}
+            <div style={{display:'flex',gap:10,marginTop:8,fontSize:12,color:'var(--fg3)',alignItems:'center'}}>
+              <span>👍 {sq.like_count}</span>
+              <span>⭐ {sq.favorite_count}</span>
+              <span>💬 {sq.comment_count}</span>
+              <span style={{marginLeft:'auto'}}>{sq.author}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── 共享题目详情 ──────────────────────────────────────────────────────────────
+
+function QBSharedDetail({shared, onBack, token, headers, authFetch, user, onReload}) {
+  const [comment, setComment] = React.useState('');
+  const [submitting, setSubmitting] = React.useState(false);
+  const [liked, setLiked] = React.useState(shared.liked);
+  const [favorited, setFavorited] = React.useState(shared.favorited);
+  const [likeCount, setLikeCount] = React.useState(shared.like_count);
+  const [favCount, setFavCount] = React.useState(shared.favorite_count);
+  const [comments, setComments] = React.useState(shared.comments || []);
+  const [activeSection, setActiveSection] = React.useState('question'); // question | answer | standard
+
+  const toggleLike = async () => {
+    if (!user) { alert('请先登录'); return; }
+    try {
+      const d = await authFetch(`/api/qbank/shared/${shared.id}/like/`, {method:'POST', body:JSON.stringify({})});
+      setLiked(d.liked);
+      setLikeCount(d.count);
+    } catch {}
+  };
+
+  const toggleFav = async () => {
+    if (!user) { alert('请先登录'); return; }
+    try {
+      const d = await authFetch(`/api/qbank/shared/${shared.id}/favorite/`, {method:'POST', body:JSON.stringify({})});
+      setFavorited(d.favorited);
+      setFavCount(d.count);
+    } catch {}
+  };
+
+  const postComment = async () => {
+    if (!user) { alert('请先登录'); return; }
+    if (!comment.trim()) return;
+    setSubmitting(true);
+    try {
+      const c = await authFetch(`/api/qbank/shared/${shared.id}/comment/`, {method:'POST', body:JSON.stringify({content:comment})});
+      setComments(prev => [...prev, c]);
+      setComment('');
+    } catch (e) { alert('评论失败: ' + e.message); }
+    setSubmitting(false);
+  };
+
+  const sectionStyle = (s) => ({
+    padding:'6px 14px', fontSize:13, cursor:'pointer',
+    borderRadius:0, background:'transparent', border:'none',
+    borderBottom: activeSection===s ? '2px solid var(--gold)' : '2px solid transparent',
+    color: activeSection===s ? 'var(--gold)' : 'var(--fg3)',
+  });
+
+  return (
+    <div style={{maxWidth:860,margin:'0 auto',padding:'20px 20px 40px'}}>
+      {/* 标题栏 */}
+      <div style={{marginBottom:16}}>
+        <h2 style={{fontSize:18,color:'var(--fg)',marginBottom:6}}>{shared.title || '无标题'}</h2>
+        <div style={{display:'flex',gap:10,alignItems:'center',flexWrap:'wrap'}}>
+          {shared.subject && <span style={{fontSize:12,color:'var(--fg3)',padding:'2px 8px',borderRadius:8,background:'var(--bg4)'}}>{shared.subject}</span>}
+          <QBModelBadge model={shared.model_used} />
+          <span style={{fontSize:12,color:'var(--fg3)'}}>作者：{shared.author}</span>
+          <span style={{fontSize:12,color:'var(--fg3)'}}>👁 {shared.view_count} 次浏览</span>
+          {/* 互动按钮 */}
+          <div style={{marginLeft:'auto',display:'flex',gap:8}}>
+            <button onClick={toggleLike}
+              style={{padding:'5px 12px',borderRadius:20,border:`1px solid ${liked?'var(--red)':'var(--border2)'}`,
+                background:liked?'rgba(196,90,90,0.15)':'transparent',
+                color:liked?'var(--red)':'var(--fg3)',fontSize:12,cursor:'pointer'}}>
+              {liked?'❤️':'🤍'} {likeCount}
+            </button>
+            <button onClick={toggleFav}
+              style={{padding:'5px 12px',borderRadius:20,border:`1px solid ${favorited?'var(--gold)':'var(--border2)'}`,
+                background:favorited?'rgba(201,168,108,0.15)':'transparent',
+                color:favorited?'var(--gold)':'var(--fg3)',fontSize:12,cursor:'pointer'}}>
+              {favorited?'⭐':'☆'} {favCount}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* 内容区域 */}
+      <div style={{borderBottom:'1px solid var(--border)',marginBottom:16,display:'flex'}}>
+        <button style={sectionStyle('question')} onClick={()=>setActiveSection('question')}>📝 题目</button>
+        {shared.final_answer && <button style={sectionStyle('answer')} onClick={()=>setActiveSection('answer')}>✏️ AI 解答</button>}
+        {(shared.standard_answer_md || shared.standard_answer_image) && <button style={sectionStyle('standard')} onClick={()=>setActiveSection('standard')}>📋 标准答案</button>}
+        <button style={sectionStyle('comments')} onClick={()=>setActiveSection('comments')}>💬 评论 ({comments.length})</button>
+      </div>
+
+      {activeSection === 'question' && (
+        <div>
+          {shared.has_image && shared.image_data_url && (
+            <img src={shared.image_data_url} alt="题目图片" style={{maxWidth:'100%',maxHeight:400,borderRadius:8,marginBottom:14,display:'block'}} />
+          )}
+          {shared.content ? (
+            <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:8,padding:16}}>
+              <QBMd content={shared.content} />
+            </div>
+          ) : <div style={{color:'var(--fg3)',fontSize:13}}>（仅图片题目）</div>}
+        </div>
+      )}
+
+      {activeSection === 'answer' && shared.final_answer && (
+        <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:8,padding:16}}>
+          <QBMd content={shared.final_answer} />
+        </div>
+      )}
+
+      {activeSection === 'standard' && (
+        <div style={{display:'flex',flexDirection:'column',gap:14}}>
+          {shared.standard_answer_image && (
+            <img src={shared.standard_answer_image} alt="标准答案" style={{maxWidth:'100%',maxHeight:500,borderRadius:8,display:'block'}} />
+          )}
+          {shared.standard_answer_md && (
+            <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:8,padding:16}}>
+              <QBMd content={shared.standard_answer_md} />
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeSection === 'comments' && (
+        <div>
+          {/* 评论列表 */}
+          <div style={{display:'flex',flexDirection:'column',gap:10,marginBottom:16}}>
+            {comments.length === 0 && <div style={{color:'var(--fg3)',fontSize:13,textAlign:'center',padding:16}}>暂无评论</div>}
+            {comments.map(c => (
+              <div key={c.id} style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:8,padding:'10px 14px'}}>
+                <div style={{display:'flex',gap:10,marginBottom:4,alignItems:'center'}}>
+                  <span style={{fontSize:12,color:'var(--gold)'}}>{c.user}</span>
+                  <span style={{fontSize:11,color:'var(--fg3)'}}>{new Date(c.created_at).toLocaleString('zh-CN')}</span>
+                </div>
+                <div style={{fontSize:13,color:'var(--fg)',lineHeight:1.6}}>{c.content}</div>
+              </div>
+            ))}
+          </div>
+          {/* 评论输入 */}
+          {user ? (
+            <div style={{display:'flex',gap:8}}>
+              <textarea value={comment} onChange={e=>setComment(e.target.value)}
+                onKeyDown={e=>{ if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();postComment();} }}
+                placeholder="写下你的评论…" style={{flex:1,minHeight:72,fontFamily:'var(--sans)'}} />
+              <button className="btn btn-p" style={{alignSelf:'flex-end'}} onClick={postComment} disabled={submitting||!comment.trim()}>
+                {submitting ? '…' : '发送'}
+              </button>
+            </div>
+          ) : (
+            <div style={{textAlign:'center',color:'var(--fg3)',fontSize:13}}>
+              <a href="#/login" style={{color:'var(--gold)'}}>登录</a> 后可以评论
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

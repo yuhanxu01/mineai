@@ -137,6 +137,26 @@ class SiteConfig(models.Model):
         verbose_name='免费用户每日提交次数上限',
         help_text='免费用户每自然日最多提交的AI请求次数，默认 10 次',
     )
+    # 网站品牌
+    site_title = models.CharField(
+        max_length=100,
+        default='应用平台',
+        verbose_name='网站标题',
+        help_text='显示在浏览器标签页、导航栏和登录页的网站名称',
+    )
+    site_subtitle = models.CharField(
+        max_length=200,
+        default='多功能应用集成工作台',
+        verbose_name='网站副标题',
+        help_text='显示在登录页标题下方的描述文字',
+    )
+    site_favicon = models.CharField(
+        max_length=500,
+        blank=True,
+        default='',
+        verbose_name='网站图标',
+        help_text='浏览器标签页图标：填写图片URL（如 /static/favicon.ico）或直接填写 emoji（如 🚀）',
+    )
     updated_at = models.DateTimeField(auto_now=True, verbose_name='最后修改时间')
 
     class Meta:

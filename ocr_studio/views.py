@@ -34,11 +34,19 @@ class OCRRecognizeView(APIView):
 
         if not image_b64:
             return Response({'error': '请提供图片数据'}, status=status.HTTP_400_BAD_REQUEST)
-        if not api_key:
-            return Response({'error': '请提供 API 密钥'}, status=status.HTTP_400_BAD_REQUEST)
         if len(image_b64) > MAX_B64_SIZE:
             return Response({'error': '图片过大（>30 MB），请降低分辨率后重试'},
                             status=status.HTTP_400_BAD_REQUEST)
+
+        # 确定使用哪个 API Key：用户自带密钥 > 平台密钥（仅限非访客登录用户）
+        if not api_key:
+            if getattr(request.user, 'is_guest', False):
+                return Response({'error': '访客用户请填写自己的 OCR API 密钥'}, status=status.HTTP_400_BAD_REQUEST)
+            from core.models import APIConfig
+            platform_cfg = APIConfig.get_active()
+            if not platform_cfg or not platform_cfg.api_key:
+                return Response({'error': '平台 OCR API 未配置，请填写自己的密钥'}, status=status.HTTP_400_BAD_REQUEST)
+            api_key = platform_cfg.api_key
 
         payload = {"model": "glm-ocr", "file": f"data:image/png;base64,{image_b64}"}
         if prompt:

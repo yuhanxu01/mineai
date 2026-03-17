@@ -36,6 +36,14 @@ class TokenUsageAdmin(admin.ModelAdmin):
 class SiteConfigAdmin(admin.ModelAdmin):
     """单例配置页：禁止新增和删除，直接编辑唯一的一行。"""
     fieldsets = (
+        ('网站品牌', {
+            'description': '自定义浏览器标签页标题、图标，以及页面上的网站名称和副标题。修改后立即生效。',
+            'fields': (
+                'site_title',
+                'site_subtitle',
+                'site_favicon',
+            ),
+        }),
         ('验证码发送限制', {
             'description': '调整以下参数控制注册验证码的发送策略。修改后立即生效，无需重启服务。',
             'fields': (

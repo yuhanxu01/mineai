@@ -345,3 +345,118 @@ def generate_code_stream(memory_project_id: int, project_name: str, language: st
         yield f"data: {json.dumps({'type': 'chunk', 'text': chunk}, ensure_ascii=False)}\n\n"
 
     yield f"data: {json.dumps({'type': 'done'}, ensure_ascii=False)}\n\n"
+
+
+# ──────────────────────────────────────────────
+# 本地模式：无状态编辑建议（不写 DB，不走 memory pyramid）
+# 文件内容直接在请求体中传递，处理后不留存。
+# ──────────────────────────────────────────────
+def suggest_edits_stream_local(file_path: str, content: str, instruction: str,
+                                context_files: list = None, config=None):
+    """
+    本地模式：针对前端传入的文件内容生成编辑建议（流式 SSE）。
+    不依赖 memory pyramid，不创建任何 DB 记录。
+    context_files: list of {'path': str, 'content': str}，用户选择附带的上下文文件。
+    """
+    lang = _detect_language(file_path)
+
+    context_block = ""
+    if context_files:
+        parts = []
+        for cf in context_files[:5]:  # 最多 5 个上下文文件
+            cf_lang = _detect_language(cf.get('path', ''))
+            parts.append(f"### {cf.get('path', 'unknown')}\n```{cf_lang}\n{cf.get('content', '')[:3000]}\n```")
+        if parts:
+            context_block = "\n## 相关上下文文件\n" + "\n\n".join(parts)
+
+    code_diff_system = DIFF_SYSTEM_PROMPT + f"""
+
+补充规则（代码专用）：
+- 严格保留原有缩进和换行风格
+- 修改时保持语言 {lang} 的语法正确性
+- 不要修改不相关的代码，保持最小变更原则
+- 如需添加 import/依赖，将其作为单独的替换块"""
+
+    prompt = f"""## 当前文件: {file_path}
+```{lang}
+{content}
+```
+{context_block}
+
+## 修改要求
+{instruction}
+
+请使用带有 <<<< 和 ==== 和 >>>> 的搜索/替换块精确输出修改内容。"""
+
+    if config is None:
+        config = _llm_module._get_config()
+
+    full_content = []
+    for chunk in _llm_module.chat_stream(
+        [{"role": "user", "content": prompt}],
+        system=code_diff_system, temperature=0.3, max_tokens=4096,
+        config=config,
+    ):
+        full_content.append(chunk)
+        yield f"data: {json.dumps({'type': 'chunk', 'text': chunk}, ensure_ascii=False)}\n\n"
+
+    raw_response = ''.join(full_content)
+    diffs = parse_diff_blocks(raw_response)
+    yield f"data: {json.dumps({'type': 'diffs', 'diffs': diffs}, ensure_ascii=False)}\n\n"
+    yield f"data: {json.dumps({'type': 'done', 'diff_count': len(diffs)}, ensure_ascii=False)}\n\n"
+
+
+# ──────────────────────────────────────────────
+# 本地模式：无状态代码对话（不写 DB，不走 memory pyramid）
+# ──────────────────────────────────────────────
+def local_chat_stream(message: str, current_file: dict = None,
+                      context_files: list = None, history: list = None,
+                      config=None):
+    """
+    本地模式：代码对话（流式 SSE），不依赖 memory pyramid，不创建任何 DB 记录。
+    current_file: {'path': str, 'content': str}
+    context_files: list of {'path': str, 'content': str}
+    history: list of {'role': 'user'|'assistant', 'content': str}（前端维护的对话历史）
+    """
+    system = """你是专业的代码助手。用户将直接提供代码文件内容，请基于这些内容回答问题、提出建议或生成代码。
+当提出修改建议时，使用严格的 search/replace 差异格式（<<<< ==== >>>>），确保用户可以精确审查每处变更。"""
+
+    # 构建上下文注入
+    context_parts = []
+    if current_file and current_file.get('content'):
+        lang = _detect_language(current_file.get('path', ''))
+        context_parts.append(
+            f"## 当前文件: {current_file.get('path', 'unknown')}\n"
+            f"```{lang}\n{current_file['content'][:8000]}\n```"
+        )
+    if context_files:
+        for cf in context_files[:5]:
+            cf_lang = _detect_language(cf.get('path', ''))
+            context_parts.append(
+                f"## 参考文件: {cf.get('path', 'unknown')}\n"
+                f"```{cf_lang}\n{cf.get('content', '')[:3000]}\n```"
+            )
+
+    # 构建消息序列
+    full_messages = []
+    if context_parts:
+        full_messages.append({"role": "user", "content": "\n\n".join(context_parts)})
+        full_messages.append({"role": "assistant", "content": "好的，我已了解上述代码内容，请提问。"})
+
+    # 加入历史对话（最近 20 条）
+    if history:
+        full_messages.extend(history[-20:])
+
+    # 加入当前问题
+    full_messages.append({"role": "user", "content": message})
+
+    if config is None:
+        config = _llm_module._get_config()
+
+    for chunk in _llm_module.chat_stream(
+        full_messages, system=system, temperature=0.5, max_tokens=3000,
+        config=config,
+    ):
+        yield f"data: {json.dumps({'type': 'chunk', 'text': chunk}, ensure_ascii=False)}\n\n"
+
+    yield f"data: {json.dumps({'type': 'done'}, ensure_ascii=False)}\n\n"

@@ -29,4 +29,11 @@ urlpatterns = [
     path('files/<int:file_id>/explain/', views.ExplainCodeView.as_view(), name='ca-explain'),
     path('projects/<int:project_id>/analyze/', views.AnalyzeProjectView.as_view(), name='ca-analyze'),
     path('projects/<int:project_id>/memory/', views.MemoryStatsView.as_view(), name='ca-memory-stats'),
+
+    # Upload limits config
+    path('upload-limits/', views.UploadLimitsView.as_view(), name='ca-upload-limits'),
+
+    # 本地模式：无状态 SSE 端点（不存储文件）
+    path('local/suggest/', views.LocalSuggestView.as_view(), name='ca-local-suggest'),
+    path('local/chat/',    views.LocalChatView.as_view(),    name='ca-local-chat'),
 ]

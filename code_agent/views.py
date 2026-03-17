@@ -9,6 +9,7 @@ from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnl
 
 from .models import CodeProject, CodeFile, FileVersion, CodeSession, CodeMessage
 from . import agent as _agent
+from .security import validate_upload_file, validate_batch_upload, get_upload_limits
 from memory.pyramid import get_pyramid_stats
 
 
@@ -128,6 +129,10 @@ class FileListView(APIView):
         if not path:
             return Response({'error': '需要提供文件路径'}, status=400)
 
+        sec = validate_upload_file(path, content)
+        if not sec['valid']:
+            return Response({'error': sec['reason']}, status=400)
+
         file_obj, created = CodeFile.objects.get_or_create(
             project=project, path=path,
             defaults={'content': content, 'language': language}
@@ -166,12 +171,16 @@ class FileBatchUploadView(APIView):
         if not files_data:
             return Response({'error': '没有文件数据'}, status=400)
 
-        results = []
-        for item in files_data[:200]:  # hard cap
-            path = item.get('path', '').strip().lstrip('/')
-            content = item.get('content', '')
-            if not path:
-                continue
+        existing_count = CodeFile.objects.filter(project=project).count()
+        sec_result = validate_batch_upload(files_data, existing_count)
+
+        if sec_result['error']:
+            return Response({'error': sec_result['error']}, status=400)
+
+        saved = []
+        for item in sec_result['allowed']:
+            path = item['path']
+            content = item['content']
             language = _agent._detect_language(path)
             file_obj, created = CodeFile.objects.get_or_create(
                 project=project, path=path,
@@ -181,7 +190,10 @@ class FileBatchUploadView(APIView):
                 file_obj.content = content
                 file_obj.language = language
                 file_obj.save()
-            results.append({'path': path, 'created': created})
+            entry = {'path': path, 'created': created}
+            if item.get('warning'):
+                entry['warning'] = item['warning']
+            saved.append(entry)
 
         # Bulk index into memory
         try:
@@ -190,7 +202,11 @@ class FileBatchUploadView(APIView):
         except Exception:
             pass
 
-        return Response({'indexed': len(results), 'files': results})
+        response_data = {'saved': len(saved), 'files': saved}
+        if sec_result['rejected']:
+            response_data['rejected'] = sec_result['rejected']
+        status_code = 207 if sec_result['rejected'] else 200
+        return Response(response_data, status=status_code)
 
 
 class FileDetailView(APIView):
@@ -659,3 +675,123 @@ class MemoryStatsView(APIView):
             return Response({'error': '未找到'}, status=404)
         stats = get_pyramid_stats(project.memory_project_id)
         return Response(stats)
+
+
+class UploadLimitsView(APIView):
+    """返回当前服务端上传限制配置，供前端展示。"""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        return Response(get_upload_limits())
+
+
+# ─────────────────────────────────────────────
+# 本地模式：无状态 SSE 端点（文件内容不写入任何 DB）
+# ─────────────────────────────────────────────
+
+@method_decorator(csrf_exempt, name='dispatch')
+class LocalSuggestView(View):
+    """
+    本地模式 AI 编辑建议（SSE 流式）。
+    接收文件内容，返回 diff 建议，不存储任何内容。
+    """
+
+    def post(self, request):
+        user = _token_auth(request)
+        if not user:
+            return JsonResponse({'error': '需要认证'}, status=401)
+
+        data = json.loads(request.body or b'{}')
+        file_path = data.get('file_path', 'unknown').strip()
+        content = data.get('content', '')
+        instruction = data.get('instruction', '').strip()
+        context_files = data.get('context_files', [])
+
+        if not instruction:
+            return JsonResponse({'error': '需要提供修改指令'}, status=400)
+        if not content:
+            return JsonResponse({'error': '需要提供文件内容'}, status=400)
+
+        # 大小限制：当前文件 + 上下文文件总计不超过 1MB（防止滥用）
+        total_size = len(content.encode('utf-8', errors='replace'))
+        for cf in context_files[:5]:
+            total_size += len(cf.get('content', '').encode('utf-8', errors='replace'))
+        if total_size > 1024 * 1024:
+            return JsonResponse({'error': '文件内容总大小超过 1MB 限制'}, status=400)
+
+        from core.llm import _get_config
+        try:
+            config = _get_config()
+        except ValueError as e:
+            return JsonResponse({'error': str(e)}, status=400)
+
+        def generate():
+            try:
+                yield from _agent.suggest_edits_stream_local(
+                    file_path=file_path,
+                    content=content,
+                    instruction=instruction,
+                    context_files=context_files,
+                    config=config,
+                )
+            except Exception as e:
+                yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+        resp = StreamingHttpResponse(generate(), content_type='text/event-stream')
+        resp['Cache-Control'] = 'no-cache'
+        resp['X-Accel-Buffering'] = 'no'
+        return resp
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class LocalChatView(View):
+    """
+    本地模式代码对话（SSE 流式）。
+    接收文件内容和对话历史，返回 AI 回复，不存储任何内容。
+    """
+
+    def post(self, request):
+        user = _token_auth(request)
+        if not user:
+            return JsonResponse({'error': '需要认证'}, status=401)
+
+        data = json.loads(request.body or b'{}')
+        message = data.get('message', '').strip()
+        current_file = data.get('current_file')   # {'path': str, 'content': str}
+        context_files = data.get('context_files', [])
+        history = data.get('history', [])
+
+        if not message:
+            return JsonResponse({'error': '消息不能为空'}, status=400)
+
+        # 大小限制
+        total_size = len(message.encode('utf-8', errors='replace'))
+        if current_file:
+            total_size += len(current_file.get('content', '').encode('utf-8', errors='replace'))
+        for cf in context_files[:5]:
+            total_size += len(cf.get('content', '').encode('utf-8', errors='replace'))
+        if total_size > 1024 * 1024:
+            return JsonResponse({'error': '内容总大小超过 1MB 限制'}, status=400)
+
+        from core.llm import _get_config
+        try:
+            config = _get_config()
+        except ValueError as e:
+            return JsonResponse({'error': str(e)}, status=400)
+
+        def generate():
+            try:
+                yield from _agent.local_chat_stream(
+                    message=message,
+                    current_file=current_file,
+                    context_files=context_files,
+                    history=history,
+                    config=config,
+                )
+            except Exception as e:
+                yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+        resp = StreamingHttpResponse(generate(), content_type='text/event-stream')
+        resp['Cache-Control'] = 'no-cache'
+        resp['X-Accel-Buffering'] = 'no'
+        return resp

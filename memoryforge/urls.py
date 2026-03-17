@@ -18,6 +18,7 @@ urlpatterns = [
     path('api/code/', include('code_agent.urls')),
     path('api/bridge/', include('claude_bridge.urls')),
     path('api/scan/', include('scan_enhance.urls')),
+    path('api/qbank/', include('question_bank.urls')),
     path('share/', TemplateView.as_view(template_name='share_index.html')),
     path('dashboard/', include('dashboard.urls', namespace='dashboard')),
     path('', TemplateView.as_view(template_name='index.html')),

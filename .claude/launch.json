@@ -6,12 +6,6 @@
       "runtimeExecutable": "bash",
       "runtimeArgs": ["-c", "cd /Users/renqing/Desktop/mineai && python3 manage.py runserver 0.0.0.0:8000"],
       "port": 8000
-    },
-    {
-      "name": "Gunicorn (prod-like)",
-      "runtimeExecutable": "bash",
-      "runtimeArgs": ["-c", "cd /Users/renqing/Desktop/mineai && gunicorn --workers 2 --threads 2 --worker-class gthread --bind 0.0.0.0:8000 --timeout 120 --reload memoryforge.wsgi:application"],
-      "port": 8000
     }
   ]
 }
