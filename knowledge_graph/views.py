@@ -4,7 +4,7 @@ from django.http import StreamingHttpResponse, JsonResponse
 from django.views import View
 from django.db.models import Sum, Count, Avg
 from rest_framework.authentication import TokenAuthentication
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
@@ -14,6 +14,195 @@ from .traversal import (
     keyword_search_nodes, bfs_subgraph, find_path,
     compute_node_ranks, format_subgraph_as_text, get_node_neighbors
 )
+
+
+# ──────────────────────────── 平台默认知识图谱 ────────────────────────────
+# 用户视角的功能地图，帮助新用户了解平台各应用的具体功能
+
+_APP = '#5ac4b4'   # 应用节点 - 青色
+_FEAT = '#c9a86c'  # 普通功能节点 - 金色
+_AI = '#d49a5a'    # AI驱动功能 - 橙色
+
+PLATFORM_KG_NODES = [
+    # 网文写作
+    {'id':'a1','label':'网文写作','type':'entity','color':_APP,'desc':'专为长篇小说设计的智能写作工作台'},
+    {'id':'f1','label':'章节管理','type':'concept','color':_FEAT,'desc':'按章节组织故事内容，支持拖拽排序与快速跳转'},
+    {'id':'f2','label':'角色图鉴','type':'concept','color':_FEAT,'desc':'维护角色档案：外貌、性格、关系网络，写作时随时查阅'},
+    {'id':'f3','label':'无限记忆写作','type':'concept','color':_AI,'desc':'AI记住全书所有情节，续写时自动调用前文细节，不遗忘、不矛盾'},
+    {'id':'f4','label':'故事时间线','type':'concept','color':_FEAT,'desc':'可视化展示事件发生顺序，梳理剧情结构'},
+    {'id':'f5','label':'伏笔追踪','type':'concept','color':_FEAT,'desc':'标记和追踪全书伏笔，提醒何时需要回收'},
+    {'id':'f6','label':'剧情顾问 AI','type':'concept','color':_AI,'desc':'与 AI 共同讨论剧情走向、角色成长、冲突设计'},
+    # 学术研究站
+    {'id':'a2','label':'学术研究站','type':'entity','color':_APP,'desc':'文献管理与研究写作一体化工作台'},
+    {'id':'f7','label':'文献导入','type':'concept','color':_FEAT,'desc':'导入 PDF 论文，自动解析元数据与全文'},
+    {'id':'f8','label':'零幻觉引用','type':'concept','color':_AI,'desc':'AI回答时只引用已上传文献中的真实内容，不编造'},
+    {'id':'f9','label':'六类研究笔记','type':'concept','color':_FEAT,'desc':'注释、摘要、评论、问题、洞见、关联六种笔记类型'},
+    {'id':'f10','label':'知识探索','type':'concept','color':_AI,'desc':'在文献知识库中用自然语言提问，快速定位相关段落'},
+    {'id':'f11','label':'论文写作辅助','type':'concept','color':_AI,'desc':'基于读过的文献生成综述、摘要与论证段落'},
+    # 知识图谱
+    {'id':'a3','label':'知识图谱','type':'entity','color':_APP,'desc':'将知识可视化为节点和关系网络'},
+    {'id':'f12','label':'AI 自动提取','type':'concept','color':_AI,'desc':'粘贴任意文本，AI 自动识别概念、实体和关系建图'},
+    {'id':'f13','label':'交互图谱可视化','type':'concept','color':_FEAT,'desc':'力导向布局，鼠标悬停高亮关联，点击查看详情'},
+    {'id':'f14','label':'概念路径查找','type':'concept','color':_FEAT,'desc':'在两个概念之间寻找知识推导路径'},
+    {'id':'f15','label':'知识问答','type':'concept','color':_AI,'desc':'基于图谱内容回答问题，只说图谱里有的知识'},
+    {'id':'f16','label':'重要度排名','type':'concept','color':_FEAT,'desc':'PageRank 算法计算节点中心性，发现核心概念'},
+    # 代码助手
+    {'id':'a4','label':'代码助手','type':'entity','color':_APP,'desc':'本地代码库的 AI 重构与理解工具'},
+    {'id':'f17','label':'本地目录模式','type':'concept','color':_FEAT,'desc':'直接上传整个项目文件夹，无需逐文件操作'},
+    {'id':'f18','label':'AI 重构建议','type':'concept','color':_AI,'desc':'AI 分析代码后给出重构方案，说明原因与改动点'},
+    {'id':'f19','label':'逐行 Diff 审查','type':'concept','color':_FEAT,'desc':'AI 提出修改时以 Diff 展示，可逐块接受或拒绝'},
+    {'id':'f20','label':'版本历史回溯','type':'concept','color':_FEAT,'desc':'每次修改自动保存快照，随时回到任意历史版本'},
+    {'id':'f21','label':'跨文件理解','type':'concept','color':_AI,'desc':'AI 理解多文件间的调用关系，给出全局优化建议'},
+    # Claude Bridge
+    {'id':'a5','label':'Claude Bridge','type':'entity','color':_APP,'desc':'让 Claude AI 直接操作你的本地电脑'},
+    {'id':'f22','label':'远程接入本地','type':'concept','color':_FEAT,'desc':'通过浏览器让 Claude 访问本机文件和终端'},
+    {'id':'f23','label':'工具调用可视化','type':'concept','color':_FEAT,'desc':'实时展示 AI 正在调用哪些工具、传入什么参数'},
+    {'id':'f24','label':'操作权限管控','type':'concept','color':_FEAT,'desc':'自定义允许/禁止 AI 执行的操作类型'},
+    {'id':'f25','label':'Diff 预览','type':'concept','color':_FEAT,'desc':'AI 修改文件前先展示变更内容，确认后再写入'},
+    # 扫描增强
+    {'id':'a6','label':'扫描增强','type':'entity','color':_APP,'desc':'手机拍摄的文档图片专业级增强处理'},
+    {'id':'f26','label':'曲面平整化','type':'concept','color':_FEAT,'desc':'修正书页弯曲变形，将曲面文字还原为平面'},
+    {'id':'f27','label':'透视校正','type':'concept','color':_FEAT,'desc':'自动检测并矫正拍摄角度偏斜导致的梯形变形'},
+    {'id':'f28','label':'自动纠偏','type':'concept','color':_FEAT,'desc':'检测文字倾斜角度并旋转至水平，提升可读性'},
+    {'id':'f29','label':'智能降噪','type':'concept','color':_FEAT,'desc':'去除纸张纹理、光斑和拍摄噪点'},
+    {'id':'f30','label':'文档二值化','type':'concept','color':_FEAT,'desc':'自适应阈值将图片转为黑白，使文字清晰印刷级'},
+    {'id':'f31','label':'对比度增强','type':'concept','color':_FEAT,'desc':'提升文字与背景的对比度，改善打印和识别效果'},
+    {'id':'f32','label':'隐私保护处理','type':'concept','color':_FEAT,'desc':'在本地完成所有处理，图片不上传至任何服务器'},
+    # OCR 工作室
+    {'id':'a7','label':'OCR 工作室','type':'entity','color':_APP,'desc':'图片和 PDF 文字识别提取工具'},
+    {'id':'f33','label':'图片文字识别','type':'concept','color':_AI,'desc':'AI 识别照片或截图中的文字，支持中英文混排'},
+    {'id':'f34','label':'PDF 文本提取','type':'concept','color':_FEAT,'desc':'从 PDF 文件中精确提取可编辑文本内容'},
+    {'id':'f35','label':'多格式输出','type':'concept','color':_FEAT,'desc':'识别结果可导出为纯文本、Markdown 或 Word 格式'},
+    # AI 题库
+    {'id':'a8','label':'AI 题库','type':'entity','color':_APP,'desc':'拍照解题并沉淀知识的学习工具'},
+    {'id':'f36','label':'拍题识别','type':'concept','color':_AI,'desc':'拍摄题目图片，AI 自动识别题目内容'},
+    {'id':'f37','label':'多模型解答','type':'concept','color':_AI,'desc':'同时向多个 AI 模型提问，对比不同解题思路'},
+    {'id':'f38','label':'最终答案沉淀','type':'concept','color':_FEAT,'desc':'确认最佳答案后保存至题库，便于复习'},
+    {'id':'f39','label':'共享题库','type':'concept','color':_FEAT,'desc':'浏览其他用户分享的题目与解答，共同积累知识'},
+]
+
+PLATFORM_KG_EDGES = [
+    # 网文写作
+    {'s':'a1','t':'f1','r':'has_method'}, {'s':'a1','t':'f2','r':'has_method'},
+    {'s':'a1','t':'f3','r':'has_method'}, {'s':'a1','t':'f4','r':'has_method'},
+    {'s':'a1','t':'f5','r':'has_method'}, {'s':'a1','t':'f6','r':'has_method'},
+    {'s':'f3','t':'f6','r':'extends'},   # 无限记忆写作 → 剧情顾问
+    {'s':'f4','t':'f5','r':'related_to'},# 时间线 → 伏笔
+    # 学术研究站
+    {'s':'a2','t':'f7','r':'has_method'}, {'s':'a2','t':'f8','r':'has_method'},
+    {'s':'a2','t':'f9','r':'has_method'}, {'s':'a2','t':'f10','r':'has_method'},
+    {'s':'a2','t':'f11','r':'has_method'},
+    {'s':'f7','t':'f8','r':'leads_to'},  # 文献导入 → 零幻觉引用
+    {'s':'f10','t':'f9','r':'leads_to'}, # 知识探索 → 研究笔记
+    # 知识图谱
+    {'s':'a3','t':'f12','r':'has_method'}, {'s':'a3','t':'f13','r':'has_method'},
+    {'s':'a3','t':'f14','r':'has_method'}, {'s':'a3','t':'f15','r':'has_method'},
+    {'s':'a3','t':'f16','r':'has_method'},
+    {'s':'f12','t':'f13','r':'leads_to'}, # 自动提取 → 可视化
+    {'s':'f16','t':'f14','r':'extends'},  # 重要度排名 → 路径查找
+    # 代码助手
+    {'s':'a4','t':'f17','r':'has_method'}, {'s':'a4','t':'f18','r':'has_method'},
+    {'s':'a4','t':'f19','r':'has_method'}, {'s':'a4','t':'f20','r':'has_method'},
+    {'s':'a4','t':'f21','r':'has_method'},
+    {'s':'f17','t':'f21','r':'leads_to'}, # 目录模式 → 跨文件理解
+    {'s':'f18','t':'f19','r':'leads_to'}, # 重构建议 → Diff 审查
+    # Claude Bridge
+    {'s':'a5','t':'f22','r':'has_method'}, {'s':'a5','t':'f23','r':'has_method'},
+    {'s':'a5','t':'f24','r':'has_method'}, {'s':'a5','t':'f25','r':'has_method'},
+    {'s':'f22','t':'f23','r':'leads_to'}, {'s':'f24','t':'f25','r':'extends'},
+    # 扫描增强
+    {'s':'a6','t':'f26','r':'has_method'}, {'s':'a6','t':'f27','r':'has_method'},
+    {'s':'a6','t':'f28','r':'has_method'}, {'s':'a6','t':'f29','r':'has_method'},
+    {'s':'a6','t':'f30','r':'has_method'}, {'s':'a6','t':'f31','r':'has_method'},
+    {'s':'a6','t':'f32','r':'has_method'},
+    {'s':'f27','t':'f28','r':'leads_to'}, {'s':'f29','t':'f30','r':'leads_to'},
+    # OCR 工作室
+    {'s':'a7','t':'f33','r':'has_method'}, {'s':'a7','t':'f34','r':'has_method'},
+    {'s':'a7','t':'f35','r':'has_method'},
+    {'s':'f33','t':'f35','r':'leads_to'},
+    # AI 题库
+    {'s':'a8','t':'f36','r':'has_method'}, {'s':'a8','t':'f37','r':'has_method'},
+    {'s':'a8','t':'f38','r':'has_method'}, {'s':'a8','t':'f39','r':'has_method'},
+    {'s':'f36','t':'f37','r':'leads_to'}, {'s':'f37','t':'f38','r':'leads_to'},
+    # 跨应用工作流
+    {'s':'a6','t':'a7','r':'leads_to'},  # 扫描增强 → OCR 工作室
+    {'s':'a7','t':'a2','r':'leads_to'},  # OCR 工作室 → 学术研究站
+    {'s':'a2','t':'a3','r':'leads_to'},  # 学术研究站 → 知识图谱
+    {'s':'a8','t':'a6','r':'related_to'},# AI题库 → 扫描增强（拍题）
+]
+
+
+def _build_platform_elements():
+    nodes = []
+    for n in PLATFORM_KG_NODES:
+        nodes.append({
+            'data': {
+                'id': n['id'], 'label': n['label'],
+                'type': n['type'], 'color': n['color'],
+                'description': n['desc'], 'importance': 0.8 if n['id'].startswith('a') else 0.5,
+            }
+        })
+    edges = []
+    for i, e in enumerate(PLATFORM_KG_EDGES):
+        edges.append({
+            'data': {'id': f'pe{i}', 'source': e['s'], 'target': e['t'], 'relation': e['r']}
+        })
+    return nodes, edges
+
+
+class PlatformKGOverviewView(APIView):
+    """平台默认功能图谱 — 无需认证，任何人可访问"""
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        nodes, edges = _build_platform_elements()
+        return Response({'nodes': nodes, 'edges': edges})
+
+
+class PlatformKGCloneView(APIView):
+    """将平台图谱克隆为当前用户的个人可编辑副本"""
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        nodes, edges = _build_platform_elements()
+        proj = KGProject.objects.create(
+            user=request.user,
+            title='平台功能图谱（副本）',
+            description='从平台内置图谱克隆，可自由编辑',
+            source_app='manual',
+            is_platform_default=False,
+        )
+        # 建立节点
+        node_map = {}
+        for nd in nodes:
+            d = nd['data']
+            obj = KGNode.objects.create(
+                kg_project=proj,
+                label=d['label'],
+                node_type=d['type'],
+                description=d.get('description', ''),
+                importance=d.get('importance', 0.5),
+                metadata={'color': d.get('color', '')},
+            )
+            node_map[d['id']] = obj.id
+        # 建立边
+        for ed in edges:
+            d = ed['data']
+            src_id = node_map.get(d['source'])
+            tgt_id = node_map.get(d['target'])
+            if src_id and tgt_id:
+                KGEdge.objects.create(
+                    kg_project=proj,
+                    source_id=src_id,
+                    target_id=tgt_id,
+                    relation_type=d.get('relation', 'related_to'),
+                )
+        proj.node_count = len(nodes)
+        proj.edge_count = len(edges)
+        proj.save(update_fields=['node_count', 'edge_count'])
+        return Response({'id': proj.id, 'title': proj.title}, status=201)
 
 
 # ──────────────────────────── 图谱项目 ────────────────────────────

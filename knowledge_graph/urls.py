@@ -2,6 +2,10 @@ from django.urls import path
 from . import views
 
 urlpatterns = [
+    # 平台默认图谱
+    path('platform/', views.PlatformKGOverviewView.as_view()),
+    path('platform/clone/', views.PlatformKGCloneView.as_view()),
+
     # 图谱项目
     path('projects/', views.KGProjectListView.as_view()),
     path('projects/<int:kg_id>/', views.KGProjectDetailView.as_view()),

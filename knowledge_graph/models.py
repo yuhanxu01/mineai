@@ -17,6 +17,7 @@ class KGProject(models.Model):
     source_app = models.CharField(max_length=32, choices=SOURCE_APP_CHOICES, default='manual')
     source_project_id = models.IntegerField(null=True, blank=True, verbose_name='来源项目ID')
     is_shared = models.BooleanField(default=False, verbose_name='是否共享')
+    is_platform_default = models.BooleanField(default=False, verbose_name='是否平台默认图谱')
     node_count = models.IntegerField(default=0, verbose_name='节点数缓存')
     edge_count = models.IntegerField(default=0, verbose_name='边数缓存')
     metadata = models.JSONField(default=dict, blank=True)
