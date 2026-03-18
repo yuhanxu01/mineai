@@ -366,13 +366,9 @@ svg.icon{display:inline-block;vertical-align:middle;flex-shrink:0}
 .stat-bar{height:3px;background:var(--bg4);border-radius:2px;margin-top:8px;overflow:hidden}.stat-fill{height:100%;border-radius:2px;max-width:100%;transition:width .4s}
 .sec-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}.sec-title{font-size:11px;letter-spacing:2px;color:var(--fg3);text-transform:uppercase}
 .apps-grid2{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;margin-bottom:16px}
-.ac2{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:20px;cursor:pointer;transition:all .2s cubic-bezier(0.16, 1, 0.3, 1);display:flex;flex-direction:column;gap:10px}
-.ac2:hover{transform:translateY(-6px) scale(1.01);box-shadow:0 12px 40px rgba(0,0,0,0.5);border-color:var(--gold-dim)!important}
-.ac2-ico{width:42px;height:42px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:transform .2s ease}
-.ac2:hover .ac2-ico{transform:scale(1.1)}
-.ac2-name{font-family:var(--serif);font-size:16px;color:var(--fg);transition:color .2s ease}
-.ac2:hover .ac2-name{color:var(--gold2)}
-.ac2-desc{font-size:12px;color:var(--fg2);line-height:1.6;flex:1}
+.ac2{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:20px;cursor:pointer;transition:all .18s;display:flex;flex-direction:column;gap:10px}
+.ac2:hover{transform:translateY(-2px);box-shadow:0 6px 24px rgba(0,0,0,.35)}
+.ac2-ico{width:42px;height:42px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0}.ac2-name{font-family:var(--serif);font-size:16px;color:var(--fg)}.ac2-desc{font-size:12px;color:var(--fg2);line-height:1.6;flex:1}
 .ac2-foot{display:flex;align-items:center;justify-content:space-between;margin-top:2px}
 .ac2-edit{opacity:0;background:var(--bg4);color:var(--fg3);padding:3px 8px;border-radius:4px;font-size:11px;border:1px solid var(--border);cursor:pointer;transition:opacity .15s}.ac2:hover .ac2-edit{opacity:1}
 .ai-rec{background:var(--bg2);border:1px solid var(--gold-dim);border-radius:10px;padding:14px;margin-top:8px}.ai-rec-hd{font-size:11px;color:var(--gold);letter-spacing:1px;margin-bottom:8px;display:flex;align-items:center;gap:6px}.ai-rec-txt{font-size:13px;color:var(--fg2);line-height:1.75;white-space:pre-wrap}
@@ -2749,6 +2745,11 @@ function PlatformHome({user, onLogout, siteConfig}) {
                     </div>
                     <div className="ac2-desc">{app.description}</div>
                     <div className="ac2-foot">
+                      <button className="btn btn-sm"
+                        style={{background:color, color:isLight(color)?'#111':'#fff', fontSize:12, padding:'4px 12px'}}
+                        onClick={e => { e.stopPropagation(); goApp(app); }}>
+                        进入 →
+                      </button>
                       {/* 3-dot menu */}
                       <div className="app-menu-wrap" onClick={e => e.stopPropagation()}>
                         <button className="app-menu-btn"
@@ -7577,24 +7578,21 @@ function mergeCh(R,G,B,w,h){
 
 // ── 可分离盒式模糊（O(W*H)） ──────────────────────────────────
 function boxBlur(g,w,h,r){
-  if(r<=0)return new Uint8Array(g);
   const t=new Float32Array(w*h),o=new Uint8Array(w*h),inv=1/(2*r+1);
   for(let y=0;y<h;y++){
-    let s=g[y*w]*r;
+    let s=0;
     for(let x=0;x<=r;x++)s+=g[y*w+Math.min(x,w-1)];
     for(let x=0;x<w;x++){
+      if(x>0){s+=g[y*w+Math.min(x+r,w-1)];s-=g[y*w+Math.max(x-r-1,0)];}
       t[y*w+x]=s*inv;
-      s+=g[y*w+Math.min(x+r+1,w-1)];
-      s-=g[y*w+Math.max(x-r,0)];
     }
   }
   for(let x=0;x<w;x++){
-    let s=t[x]*r;
+    let s=0;
     for(let y=0;y<=r;y++)s+=t[Math.min(y,h-1)*w+x];
     for(let y=0;y<h;y++){
+      if(y>0){s+=t[Math.min(y+r,h-1)*w+x];s-=t[Math.max(y-r-1,0)*w+x];}
       o[y*w+x]=s*inv;
-      s+=t[Math.min(y+r+1,h-1)*w+x];
-      s-=t[Math.max(y-r,0)*w+x];
     }
   }
   return o;
@@ -7744,9 +7742,7 @@ function op_brightness_contrast(d,w,h,{brightness=0,contrast=1}){
 }
 
 function op_denoise(d,w,h,{strength=10}){
-  // 强度 1-30，映射到半径 1-8
-  const r = Math.max(1, Math.round(strength * 0.25));
-  return{data:boxBlurRgba(d,w,h,r),w,h};
+  return{data:boxBlurRgba(d,w,h,Math.max(1,Math.round(strength/4))),w,h};
 }
 
 function op_sharpen(d,w,h,{amount=1}){
@@ -8033,6 +8029,375 @@ async function loadPdfjsLib(){
 // 使用 getUserMedia 显示实时取景器 + 拍照
 // fallback: 若浏览器不支持则退化为 <input capture> 直接调起原生相机
 function CameraCapture({ onCapture, onClose }) {
+
+// ── OpenCV.js 动态加载（图片拼接用） ───────────────────────────
+const OPENCV_CDN_URLS = [
+  'https://docs.opencv.org/4.8.0/opencv.js',
+  'https://docs.opencv.org/4.9.0/opencv.js'
+];
+let opencvLoadPromise = null;
+async function loadOpenCV() {
+  if (window.cv && cv.Mat) return window.cv;
+  if (opencvLoadPromise) return opencvLoadPromise;
+  opencvLoadPromise = (async () => {
+    for (const url of OPENCV_CDN_URLS) {
+      try {
+        await new Promise((res, rej) => {
+          const s = document.createElement('script');
+          s.src = url;
+          s.onload = res;
+          s.onerror = rej;
+          document.head.appendChild(s);
+        });
+        let attempts = 0;
+        while (!window.cv || !cv.Mat) {
+          await new Promise(r => setTimeout(r, 100));
+          if (++attempts > 80) throw new Error('OpenCV load timeout');
+        }
+        return window.cv;
+      } catch (e) {
+        console.warn(`OpenCV load failed from ${url}:`, e);
+        continue;
+      }
+    }
+    throw new Error('Failed to load OpenCV.js from all mirrors');
+  })();
+  return opencvLoadPromise;
+}
+
+// ── 图片拼接 Web Worker ─────────────────────────────────────────
+const STITCH_WORKER_CODE = `'use strict';
+let cv=null;
+self.onmessage=async(e)=>{
+  const{type,taskId,images,order}=e.data;
+  try{
+    if(type==='init'){
+      const{cvUrl}=e.data;
+      importScripts(cvUrl);
+      cv=self.cv;
+      self.postMessage({type:'ready',taskId});
+      return;
+    }
+    if(type==='stitch'){
+      if(!cv)throw new Error('OpenCV not initialized');
+      self.postMessage({type:'progress',taskId,stage:'A',progress:2,msg:'正在加载图片...'});
+      const imgs=order.map(i=>cv.imread(images[i].canvas));
+      self.postMessage({type:'progress',taskId,stage:'B',progress:28,msg:'检测特征点...'});
+      const detector=new cv.AKAZE();
+      const descriptors=imgs.map(img=>{
+        const kp=new cv.KeyPointVector();
+        const desc=new cv.Mat();
+        detector.detectAndCompute(img,new cv.Mat(),kp,desc);
+        return{kp,desc};
+      });
+      self.postMessage({type:'progress',taskId,stage:'C',progress:42,msg:'匹配特征点...'});
+      const matcher=new cv.BFMatcher(cv.NORM_HAMMING,true);
+      const pairs=[];
+      for(let i=0;i<order.length-1;i++){
+        const matches=new cv.DMatchVector();
+        matcher.match(descriptors[i].desc,descriptors[i+1].desc,matches);
+        if(matches.size>=4)pairs.push({i:i+1,matches});
+      }
+      if(pairs.length===0)throw new Error('图片重叠不足，无法拼接');
+      self.postMessage({type:'progress',taskId,stage:'D',progress:50,msg:'计算变换矩阵...'});
+      const homographies=[new cv.Mat()];
+      for(let i=0;i<pairs.length;i++){
+        const{kp:kp1,desc:desc1}=descriptors[pairs[i].i-1];
+        const{kp:kp2,desc:desc2}=descriptors[pairs[i].i];
+        const srcPts=new cv.Mat(),dstPts=new cv.Mat();
+        const matches=pairs[i].matches;
+        for(let j=0;j<matches.size;j++){
+          srcPts.push_back(kp1.get(matches.get(j).queryIdx).pt);
+          dstPts.push_back(kp2.get(matches.get(j).trainIdx).pt);
+        }
+        const H=cv.findHomography(srcPts,dstPts,cv.RANSAC,5);
+        const H2=new cv.Mat();
+        cv.gemm(H,homographies[homographies.length-1],1,new cv.Mat(),0,H2);
+        homographies.push(H2);
+        srcPts.delete();dstPts.delete();H.delete();
+      }
+      self.postMessage({type:'progress',taskId,stage:'E',progress:66,msg:'融合图像...'});
+      const minX=[0],maxX=[imgs[0].cols],minY=[0],maxY=[imgs[0].rows];
+      for(let i=1;i<order.length;i++){
+        const corners=new cv.Mat();
+        const p=new cv.Mat(4,1,cv.CV_32FC2);
+        p.data32F.set([0,0,imgs[i].cols,0,imgs[i].cols,imgs[i].rows,0,imgs[i].rows],0);
+        cv.perspectiveTransform(p,corners,homographies[i]);
+        for(let j=0;j<4;j++){
+          const x=corners.data32F[j*2],y=corners.data32F[j*2+1];
+          minX[0]=Math.min(minX[0],Math.floor(x));
+          maxX[0]=Math.max(maxX[0],Math.ceil(x));
+          minY[0]=Math.min(minY[0],Math.floor(y));
+          maxY[0]=Math.max(maxY[0],Math.ceil(y));
+        }
+        corners.delete();p.delete();
+      }
+      const w=maxX[0]-minX[0],h=maxY[0]-minY[0];
+      const pan=new cv.Mat(h,w,cv.CV_8UC3,new cv.Scalar(0,0,0));
+      const trans=cv.Mat.eye(3,3,cv.CV_64F);
+      trans.data64F.set([1,0,-minX[0],0,1,-minY[0],0,0,1],0);
+      self.postMessage({type:'progress',taskId,stage:'F',progress:80,msg:'生成全景图...'});
+      for(let i=0;i<order.length;i++){
+        const T=new cv.Mat();
+        cv.gemm(trans,homographies[i],1,new cv.Mat(),0,T);
+        const warped=new cv.Mat();
+        cv.warpPerspective(imgs[i],warped,T,new cv.Size(w,h));
+        const mask=new cv.Mat();
+        cv.warpPerspective(new cv.Mat(imgs[i].rows,imgs[i].cols,cv.CV_8UC1,new cv.Scalar(1)),mask,T,new cv.Size(w,h));
+        const alpha=new cv.Mat();
+        cv.distanceTransform(mask,alpha,cv.DIST_L2,5);
+        const weight=new cv.Mat();
+        alpha.convertTo(weight,cv.CV_32F,1.0/50);
+        for(let y=0;y<h;y++){
+          for(let x=0;x<w;x++){
+            const idx=y*w+x;
+            if(mask.data[idx]===0)continue;
+            const wgt=Math.min(1,weight.data32F[idx]);
+            const panPtr=pan.data8S+(y*w+x)*3;
+            const warpedPtr=warped.data8S+(y*w+x)*3;
+            for(let c=0;c<3;c++){
+              panPtr[c]=Math.round(panPtr[c]*(1-wgt)+warpedPtr[c]*wgt);
+            }
+          }
+        }
+        warped.delete();mask.delete();alpha.delete();weight.delete();T.delete();
+      }
+      self.postMessage({type:'progress',taskId,stage:'G',progress:96,msg:'完成...'});
+      const result=new cv.Mat();
+      cv.cvtColor(pan,result,cv.COLOR_BGR2RGB);
+      const buf=new Uint8Array(w*h*3);
+      for(let i=0;i<w*h*3;i++)buf[i]=result.data8S[i];
+      self.postMessage({type:'done',taskId,data:buf,width:w,height:h},[buf.buffer]);
+      imgs.forEach(m=>m.delete());
+      descriptors.forEach(d=>{d.kp.delete();d.desc.delete();});
+      homographies.forEach(m=>m.delete());
+      pan.delete();result.delete();trans.delete();
+    }
+  }catch(err){
+    self.postMessage({type:'error',taskId,error:err.message});
+  }
+};
+`;
+
+function createStitchWorker(cvUrl){
+  const blob=new Blob([STITCH_WORKER_CODE],{type:'application/javascript'});
+  const url=URL.createObjectURL(blob);
+  const w=new Worker(url);
+  w.postMessage({type:'init',taskId:0,cvUrl},[]);
+  return w;
+}
+
+// ── StitchPanel 组件（图片拼接）──────────────────────────────────
+function StitchPanel({token}){
+  const[files,setFiles]=useState([]);
+  const[order,setOrder]=useState([]);
+  const[stitching,setStitching]=useState(false);
+  const[progress,setProgress]=useState('');
+  const[result,setResult]=useState(null);
+  const[err,setErr]=useState('');
+  const workerRef=useRef(null);
+  useEffect(()=>{
+    return ()=>{
+      if(workerRef.current){
+        workerRef.current.terminate();
+        workerRef.current=null;
+      }
+    };
+  },[]);
+  const handleFiles=useCallback(async (fileList)=>{
+    const newFiles=[];
+    for(let i=0;i<fileList.length;i++){
+      const f=fileList[i];
+      if(!f.type.startsWith('image/'))continue;
+      const dataUrl=await new Promise(res=>{
+        const r=new FileReader();
+        r.onload=e=>res(e.target.result);
+        r.readAsDataURL(f);
+      });
+      newFiles.push({name:f.name,url:dataUrl});
+    }
+    if(newFiles.length){
+      const all=[...files,...newFiles];
+      setFiles(all);
+      setOrder(all.map((_,i)=>i));
+    }
+  },[files]);
+  const handleDrop=useCallback(e=>{
+    e.preventDefault();
+    if(e.dataTransfer.files?.length)handleFiles(e.dataTransfer.files);
+  },[handleFiles]);
+  const moveItem=useCallback((fromIdx,toIdx)=>{
+    const newOrder=[...order];
+    const[newFrom]=newOrder.splice(fromIdx,1);
+    newOrder.splice(toIdx,0,newFrom);
+    setOrder(newOrder);
+  },[order]);
+  const handleStitch=useCallback(async ()=>{
+    if(files.length<2){setErr('请至少上传2张照片');return;}
+    setErr('');setStitching(true);setResult(null);
+    const imagePromises=order.map(async idx=>{
+      const f=files[idx];
+      return new Promise((res,rej)=>{
+        const img=new Image();
+        img.onload=()=>{
+          const cv=document.createElement('canvas');
+          cv.width=img.width;cv.height=img.height;
+          cv.getContext('2d').drawImage(img,0,0);
+          res({canvas:cv,width:img.width,height:img.height});
+        };
+        img.onerror=rej;
+        img.src=f.url;
+      });
+    });
+    try{
+      const images=await Promise.all(imagePromises);
+      const cv=await loadOpenCV();
+      workerRef.current=createStitchWorker(OPENCV_CDN_URLS[0]);
+      const taskId=Date.now();
+      workerRef.current.onmessage=e=>{
+        const{type,stage,progress:prog,msg,data,width,height,error}=e.data;
+        if(type==='progress'){
+          const stageNames={A:'加载',B:'特征',C:'匹配',D:'变换',E:'画布',F:'融合',G:'完成'};
+          setProgress(`${stageNames[stage]||''} ${prog||''}%`);
+        }else if(type==='done'){
+          const cv=document.createElement('canvas');
+          cv.width=width;cv.height=height;
+          const ctx=cv.getContext('2d');
+          const imgData=new ImageData(new Uint8ClampedArray(data),width,height);
+          ctx.putImageData(imgData,0,0);
+          setResult(cv.toDataURL('image/jpeg',0.95));
+          setStitching(false);setProgress('');
+        }else if(type==='error'){
+          setErr('拼接失败：'+error);
+          setStitching(false);setProgress('');
+        }
+      };
+      workerRef.current.postMessage({type:'stitch',taskId,images,order});
+    }catch(ex){
+      setErr('处理出错：'+ex.message);
+      setStitching(false);setProgress('');
+    }
+  },[files,order]);
+  const handleDownload=useCallback(()=>{
+    if(!result)return;
+    const a=document.createElement('a');
+    a.href=result;
+    a.download='panorama_'+new Date().toISOString().slice(0,10)+'.jpg';
+    a.click();
+  },[result]);
+  const removeFile=useCallback(idx=>{
+    const newFiles=files.filter((_,i)=>i!==idx);
+    setFiles(newFiles);
+    setOrder(newFiles.map((_,i)=>i));
+  },[files]);
+  return React.createElement('div',{style:{height:'100%',display:'flex',flexDirection:'column'}},
+    React.createElement('div',{style:{padding:'24px',flex:1,overflowY:'auto'}},
+      err && React.createElement('div',{style:{
+        background:'rgba(196,90,90,.15)',border:'1px solid var(--red)',
+        borderRadius:4,padding:'8px 14px',marginBottom:16,fontSize:12,color:'var(--red)'
+      }},err,React.createElement('button',{
+        onClick:()=>setErr(''),
+        style:{background:'none',color:'var(--red)',float:'right'}
+      },React.createElement(Icon,{name:'x',size:11}))),
+      !result && React.createElement('div',null,
+        React.createElement('div',{style:{marginBottom:16,color:'var(--fg2)',fontSize:13}},
+          '上传 2-5 张有重叠的照片（建议重叠 30-50%），按顺序排列后点击拼接。'),
+        files.length===0 && React.createElement('label',{
+          style:{
+            display:'block',border:'2px dashed var(--border2)',borderRadius:8,
+            padding:'48px 20px',textAlign:'center',cursor:'pointer',
+            background:'var(--bg2)',transition:'border-color 0.2s'
+          },
+          onDragOver:e=>{e.preventDefault();e.currentTarget.style.borderColor='var(--gold)';},
+          onDragLeave:e=>{e.currentTarget.style.borderColor='var(--border2)';},
+          onDrop:handleDrop
+        },
+          React.createElement('input',{type:'file',multiple:true,accept:'image/*',
+            style:{display:'none'},
+            onChange:e=>{if(e.target.files?.length)handleFiles(e.target.files);}}),
+          React.createElement('div',{style:{marginBottom:10}},
+            React.createElement(Icon,{name:'layers',size:32})),
+          React.createElement('div',{style:{color:'var(--fg)',fontWeight:500,marginBottom:6}},
+            '点击上传或拖拽照片到这里'),
+          React.createElement('div',{style:{color:'var(--fg3)',fontSize:12}},
+            '支持 PNG · JPG · WEBP · BMP')
+        ),
+        files.length>0 && React.createElement('div',null,
+          React.createElement('div',{style:{display:'flex',flexWrap:'wrap',gap:12,marginBottom:20}},
+            order.map((imgIdx,i)=>React.createElement('div',{
+              key:files[imgIdx].name,
+              style:{
+                position:'relative',width:120,height:90,borderRadius:6,overflow:'hidden',
+                border:'2px solid var(--border2)',cursor:'move',
+                background:\`url(\${files[imgIdx].url}) center/cover\`
+              },
+              draggable:true,
+              onDragOver:e=>{e.preventDefault();},
+              onDrop:e=>{
+                e.preventDefault();
+                const fromIdx=parseInt(e.dataTransfer.getData('text/plain'));
+                if(!isNaN(fromIdx))moveItem(fromIdx,i);
+              },
+              onDragStart:e=>{e.dataTransfer.setData('text/plain',String(i));}
+            },
+              React.createElement('div',{style:{
+                position:'absolute',bottom:0,left:0,right:0,
+                background:'rgba(0,0,0,0.6)',color:'#fff',
+                fontSize:11,padding:'4px 8px',textAlign:'center'
+              }},i+1),
+              React.createElement('button',{
+                onClick:()=>removeFile(imgIdx),
+                style:{
+                  position:'absolute',top:4,right:4,
+                  background:'rgba(0,0,0,0.6)',border:'none',
+                  color:'#fff',borderRadius:50,width:20,height:20,
+                  cursor:'pointer',fontSize:12
+                }
+              },'×')
+            ))
+          ),
+          files.length<5 && React.createElement('label',{
+            className:'btn btn-s',
+            style:{cursor:'pointer',display:'inline-flex',alignItems:'center',gap:6}
+          },
+            '+ 添加更多',
+            React.createElement('input',{type:'file',multiple:true,accept:'image/*',
+              style:{display:'none'},
+              onChange:e=>{if(e.target.files?.length)handleFiles(e.target.files);}})
+          ),
+          React.createElement('button',{
+            className:'btn btn-p',
+            onClick:handleStitch,
+            disabled:stitching||files.length<2,
+            style:{marginLeft:12,display:'inline-flex',alignItems:'center',gap:6}
+          },stitching?(progress||'处理中...'):'开始拼接')
+        )
+      ),
+      result && React.createElement('div',null,
+        React.createElement('div',{style:{marginBottom:12,textAlign:'center'}},
+          React.createElement('h3',{style:{fontSize:16,fontWeight:500,color:'var(--fg)'}},
+            '拼接完成'),
+          React.createElement('p',{style:{fontSize:12,color:'var(--fg3)',marginTop:4}},
+            '右键点击图片可另存为，或点击下方按钮下载')
+        ),
+        React.createElement('div',{style:{textAlign:'center',marginBottom:16}},
+          React.createElement('img',{src:result,alt:'拼接结果',
+            style:{maxWidth:'100%',maxHeight:400,borderRadius:8,border:'1px solid var(--border)'}})),
+        React.createElement('div',{style:{textAlign:'center',gap:8,display:'flex',justifyContent:'center'}},
+          React.createElement('button',{className:'btn btn-p',onClick:handleDownload},
+            React.createElement(Icon,{name:'download',size:12}),
+            ' 下载高清图'),
+          React.createElement('button',{className:'btn btn-s',onClick:()=>{
+            setResult(null);setProgress('');
+          }},'重新拼接'),
+          React.createElement('button',{className:'btn btn-s',onClick:()=>{
+            setFiles([]);setOrder([]);setResult(null);
+          }},'清空重置')
+        )
+      )
+    )
+  );
+}
   const videoRef    = useRef(null);
   const streamRef   = useRef(null);
   const [facing, setFacing]   = useState('environment'); // 'environment'=后摄 'user'=前摄
@@ -8158,1014 +8523,8 @@ function CameraCapture({ onCapture, onClose }) {
   );
 }
 
-// ══════════════════════════════════════════════════════════════
-//  图片拼接 — OpenCV.js WASM Web Worker
-//  算法：AKAZE → BFMatcher/Lowe → 自动排序 → 中心锚点链式单应矩阵
-//        → estimateGains色温校准 → 距离变换羽化融合
-// ══════════════════════════════════════════════════════════════
-const OPENCV_CDN_URLS = [
-  'https://docs.opencv.org/4.8.0/opencv.js',
-  'https://docs.opencv.org/4.9.0/opencv.js',
-];
-
-const STITCH_WORKER_CODE = `
-'use strict';
-/* ── OpenCV.js 加载 ── */
-var cvReady = false, cvError = null, cvQueue = [];
-function loadCv(urls) {
-  var idx = 0;
-  function tryNext() {
-    if (idx >= urls.length) { cvError = 'OpenCV.js 所有 CDN 均加载失败'; notifyQueued(); return; }
-    importScripts(urls[idx++]);
-    // Module.onRuntimeInitialized 由 OpenCV.js 内部调用
-  }
-  self.Module = {
-    onRuntimeInitialized: function() {
-      cvReady = true;
-      notifyQueued();
-    }
-  };
-  try { tryNext(); } catch(e) { tryNext(); }
-}
-function notifyQueued() {
-  var q = cvQueue.slice(); cvQueue = [];
-  q.forEach(function(fn) { try { fn(); } catch(e) { self.postMessage({type:'error',msg:e.message||String(e)}); } });
-}
-function withCv(fn) {
-  if (cvReady) fn();
-  else cvQueue.push(fn);
-}
-
-/* ── 工具函数 ── */
-var MAX_IN  = 1600; // 检测阶段最大边长
-var MAX_OUT = 8000; // 输出画布最大边长
-
-function prg(msg, pct) { self.postMessage({type:'progress', msg:msg, pct:pct}); }
-
-function imgToMat(imgData) {
-  // imgData: {data: Uint8ClampedArray, width, height}
-  var mat = new cv.Mat(imgData.height, imgData.width, cv.CV_8UC4);
-  mat.data.set(imgData.data);
-  return mat; // RGBA
-}
-
-function scaleDown(mat, maxDim) {
-  var sc = Math.min(1, maxDim / Math.max(mat.rows, mat.cols));
-  if (sc >= 1) return mat.clone();
-  var dst = new cv.Mat();
-  cv.resize(mat, dst, new cv.Size(Math.round(mat.cols*sc), Math.round(mat.rows*sc)), 0, 0, cv.INTER_AREA);
-  return dst;
-}
-
-function toGray(rgba) {
-  var gray = new cv.Mat();
-  cv.cvtColor(rgba, gray, cv.COLOR_RGBA2GRAY);
-  return gray;
-}
-
-/* ── AKAZE 特征检测 ── */
-function detectAKAZE(gray) {
-  var akaze = new cv.AKAZE();
-  akaze.setThreshold(0.0003);   // 默认 0.001，降低 = 更多特征点，拼接更鲁棒
-  var kps   = new cv.KeyPointVector();
-  var descs = new cv.Mat();
-  akaze.detectAndCompute(gray, new cv.Mat(), kps, descs);
-  akaze.delete();
-  return {kps: kps, descs: descs};
-}
-
-/* ── BFMatcher + Lowe 比率测试 ── */
-function loweMatch(d1, d2) {
-  var bf = new cv.BFMatcher(cv.NORM_HAMMING, false);
-  var knnM = new cv.DMatchVectorVector();
-  bf.knnMatch(d1, d2, knnM, 2);
-  bf.delete();
-  var good = [];
-  for (var i = 0; i < knnM.size(); i++) {
-    var m = knnM.get(i);
-    if (m.size() < 2) continue;
-    var m0 = m.get(0), m1 = m.get(1);
-    if (m0.distance < 0.70 * m1.distance) good.push({qi: m0.queryIdx, ti: m0.trainIdx});
-  }
-  knnM.delete();
-  return good;
-}
-
-/* ── RANSAC 单应矩阵 ── */
-function computeH(kps1, kps2, matches) {
-  if (matches.length < 4) return null;
-  var src = [], dst = [];
-  matches.forEach(function(m) {
-    var p1 = kps1.get(m.qi).pt, p2 = kps2.get(m.ti).pt;
-    src.push(p1.x); src.push(p1.y);
-    dst.push(p2.x); dst.push(p2.y);
-  });
-  var srcM = cv.matFromArray(matches.length, 1, cv.CV_32FC2, src);
-  var dstM = cv.matFromArray(matches.length, 1, cv.CV_32FC2, dst);
-  var mask = new cv.Mat();
-  var H = cv.findHomography(srcM, dstM, cv.RANSAC, 2.5, mask);
-  if (H && !H.empty()) {
-    // 统计内点数，内点太少说明单应矩阵不可靠
-    var inliers = 0;
-    for (var i2 = 0; i2 < mask.rows; i2++) { if (mask.data[i2]) inliers++; }
-    if (inliers < 8) { H.delete(); H = null; }
-  }
-  srcM.delete(); dstM.delete(); mask.delete();
-  if (!H || H.empty()) return null;
-  return H;
-}
-
-/* ── 贪心自动排序（找最优拼接顺序） ── */
-function autoOrder(cnts, N) {
-  // cnts[i][j] = i与j匹配点数；找从最高匹配对出发的链式路径
-  var best = 0, bi = 0, bj = 1;
-  for (var i = 0; i < N; i++) for (var j = i+1; j < N; j++) {
-    if (cnts[i][j] > best) { best = cnts[i][j]; bi = i; bj = j; }
-  }
-  var ord = [bi, bj], used = {};
-  used[bi] = used[bj] = true;
-  while (ord.length < N) {
-    var leftBest = -1, leftIdx = -1;
-    for (var k = 0; k < N; k++) {
-      if (used[k]) continue;
-      if (cnts[k][ord[0]] > leftBest) { leftBest = cnts[k][ord[0]]; leftIdx = k; }
-    }
-    var rightBest = -1, rightIdx = -1;
-    for (var k = 0; k < N; k++) {
-      if (used[k]) continue;
-      if (cnts[ord[ord.length-1]][k] > rightBest) { rightBest = cnts[ord[ord.length-1]][k]; rightIdx = k; }
-    }
-    if (leftBest >= rightBest && leftIdx >= 0) { ord.unshift(leftIdx); used[leftIdx] = true; }
-    else if (rightIdx >= 0) { ord.push(rightIdx); used[rightIdx] = true; }
-    else break;
-  }
-  return ord;
-}
-
-/* ── 透视投影单点 ── */
-function tPt(d, x, y) {
-  var w = d[6]*x + d[7]*y + d[8];
-  return [(d[0]*x + d[1]*y + d[2])/w, (d[3]*x + d[4]*y + d[5])/w];
-}
-
-/* ── 2-pass Manhattan 距离变换（用于羽化权重） ── */
-function fastDT(mask, w, h) {
-  var dt = new Float32Array(w * h);
-  var INF = w + h;
-  // forward pass
-  for (var y = 0; y < h; y++) for (var x = 0; x < w; x++) {
-    var i = y * w + x;
-    if (!mask[i]) { dt[i] = 0; continue; }
-    var up   = y > 0     ? dt[(y-1)*w+x] + 1 : INF;
-    var left = x > 0     ? dt[y*w+x-1]   + 1 : INF;
-    dt[i] = Math.min(up, left);
-  }
-  // backward pass
-  for (var y = h-1; y >= 0; y--) for (var x = w-1; x >= 0; x--) {
-    var i = y * w + x;
-    var down  = y < h-1 ? dt[(y+1)*w+x] + 1 : INF;
-    var right = x < w-1 ? dt[y*w+x+1]   + 1 : INF;
-    dt[i] = Math.min(dt[i], down, right);
-  }
-  return dt;
-}
-
-/* ══════════════════════════════════════════════════════════════
-   estimateGains — 低分辨率预变形 + 逐通道均值比 + 链式传播
-   解决不同照片白平衡/亮度不一致导致的拼缝割裂问题
-   ══════════════════════════════════════════════════════════════ */
-function estimateGains(mats, H_fin, ord, c, N, outW, outH) {
-  var sc   = 0.25;                           // 低分辨率比例 (1/4)
-  var lrW  = Math.max(4, Math.round(outW * sc));
-  var lrH  = Math.max(4, Math.round(outH * sc));
-  var lrSize = new cv.Size(lrW, lrH);
-
-  // 生成每张图的低分辨率变形结果
-  var lrWarped = [];
-  for (var ii = 0; ii < N; ii++) {
-    var idx = ord[ii];
-    var rgba = mats[idx];                    // 已缩放的 RGBA cv.Mat
-    var H = H_fin[ii];
-    // H_lr = S · H · S^{-1}，其中 S = diag(sc, sc, 1)
-    var d = H.data64F;
-    var Hs = [d[0],d[1],d[2]*sc, d[3],d[4],d[5]*sc, d[6]/sc,d[7]/sc,d[8]];
-    var hMat = cv.matFromArray(3, 3, cv.CV_64F, Hs);
-    var warped = new cv.Mat();
-    cv.warpPerspective(rgba, warped, hMat, lrSize, cv.INTER_LINEAR, cv.BORDER_CONSTANT, new cv.Scalar(0,0,0,0));
-    hMat.delete();
-    lrWarped.push(warped);
-  }
-
-  /* pairGain(refIdx, tgtIdx): 在重叠区计算 tgt 相对 ref 的逐通道增益
-     令 g = mean_ref / mean_tgt（均值比），然后把 g 应用到 lrWarped[tgtIdx] 上（in-place） */
-  function pairGain(refI, tgtI) {
-    var ref = lrWarped[refI], tgt = lrWarped[tgtI];
-    var sumR_ref = 0, sumG_ref = 0, sumB_ref = 0;
-    var sumR_tgt = 0, sumG_tgt = 0, sumB_tgt = 0;
-    var cnt = 0;
-    var n = lrW * lrH;
-    for (var p = 0; p < n; p++) {
-      var aRef = ref.data[p*4+3], aTgt = tgt.data[p*4+3];
-      if (aRef > 64 && aTgt > 64) {
-        sumR_ref += ref.data[p*4];   sumG_ref += ref.data[p*4+1]; sumB_ref += ref.data[p*4+2];
-        sumR_tgt += tgt.data[p*4];   sumG_tgt += tgt.data[p*4+1]; sumB_tgt += tgt.data[p*4+2];
-        cnt++;
-      }
-    }
-    if (cnt < 30) return [1, 1, 1]; // 重叠太少，不调整
-    var gR = Math.max(0.25, Math.min(4, sumR_ref / (sumR_tgt || 1)));
-    var gG = Math.max(0.25, Math.min(4, sumG_ref / (sumG_tgt || 1)));
-    var gB = Math.max(0.25, Math.min(4, sumB_ref / (sumB_tgt || 1)));
-    // 把增益 in-place 应用到 tgt 低分辨率变形结果（供后续相邻图参考）
-    for (var p = 0; p < n; p++) {
-      tgt.data[p*4]   = Math.min(255, Math.round(tgt.data[p*4]   * gR));
-      tgt.data[p*4+1] = Math.min(255, Math.round(tgt.data[p*4+1] * gG));
-      tgt.data[p*4+2] = Math.min(255, Math.round(tgt.data[p*4+2] * gB));
-    }
-    return [gR, gG, gB];
-  }
-
-  // gains[ii] 对应 ord[ii] 这张图的 [gR, gG, gB]
-  var gains = new Array(N);
-  // 中心图 = 基准，增益 = 1
-  gains[c] = [1, 1, 1];
-
-  // 向左传播：c-1 … 0
-  for (var ii = c - 1; ii >= 0; ii--) {
-    var g = pairGain(ii + 1, ii);
-    var pg = gains[ii + 1];
-    gains[ii] = [
-      Math.max(0.25, Math.min(4, pg[0] * g[0])),
-      Math.max(0.25, Math.min(4, pg[1] * g[1])),
-      Math.max(0.25, Math.min(4, pg[2] * g[2]))
-    ];
-  }
-  // 向右传播：c+1 … N-1
-  for (var ii = c + 1; ii < N; ii++) {
-    var g = pairGain(ii - 1, ii);
-    var pg = gains[ii - 1];
-    gains[ii] = [
-      Math.max(0.25, Math.min(4, pg[0] * g[0])),
-      Math.max(0.25, Math.min(4, pg[1] * g[1])),
-      Math.max(0.25, Math.min(4, pg[2] * g[2]))
-    ];
-  }
-
-  // 释放低分辨率变形结果
-  lrWarped.forEach(function(m) { m.delete(); });
-  return gains;
-}
-
-/* ══════════════════════════════════════════════════════════════
-   doStitch — 主拼接流程
-   ══════════════════════════════════════════════════════════════ */
-function doStitch(data) {
-  var imgs = data.imgs;   // [{data:Uint8ClampedArray, width, height}]
-  var N = imgs.length;
-  if (N < 2) throw new Error('至少需要 2 张图片');
-
-  /* Stage A (2-28%): 图像解码 + 缩放 + AKAZE 检测 */
-  prg('加载 OpenCV & 检测特征点…', 2);
-  var mats = [], grays = [], feats = [];
-  for (var i = 0; i < N; i++) {
-    prg('AKAZE 检测第 ' + (i+1) + '/' + N + ' 张…', 2 + Math.round(26 * i / N));
-    var rgba = imgToMat(imgs[i]);
-    var small = scaleDown(rgba, MAX_IN);
-    rgba.delete();
-    var gray  = toGray(small);
-    mats.push(small);
-    grays.push(gray);
-    feats.push(detectAKAZE(gray));
-  }
-
-  /* Stage B (30-42%): 全匹配矩阵 */
-  prg('匹配所有图片对…', 30);
-  var cnts = [], allM = [];
-  for (var i = 0; i < N; i++) { cnts.push(new Array(N).fill(0)); allM.push(new Array(N).fill(null)); }
-  for (var i = 0; i < N; i++) for (var j = i+1; j < N; j++) {
-    var m = loweMatch(feats[i].descs, feats[j].descs);
-    cnts[i][j] = cnts[j][i] = m.length;
-    allM[i][j] = m;
-    allM[j][i] = m.map(function(x) { return {qi: x.ti, ti: x.qi}; });
-  }
-
-  /* Stage C (42-50%): 自动排序 */
-  prg('自动排序…', 42);
-  var ord = autoOrder(cnts, N);
-  var c = Math.floor((N-1)/2); // 中心锚点索引（在 ord 里的位置）
-
-  /* Stage D (50-64%): 链式单应矩阵（以中心图为基准） */
-  prg('计算单应矩阵（RANSAC）…', 50);
-  // H_tw[ii] = ord[ii] → ord[ii+1] 或 ord[ii-1] 的单应，取决于方向
-  var H_tot  = new Array(N); // ord[ii] 到 canvas 坐标的变换（相对中心图）
-  var H_fin  = new Array(N); // 最终加上平移的变换
-  // 中心图：单位矩阵
-  H_tot[c] = cv.matFromArray(3, 3, cv.CV_64F, [1,0,0, 0,1,0, 0,0,1]);
-
-  function gMul(A, B) { // 矩阵乘法
-    var R = new cv.Mat(); cv.gemm(A, B, 1, new cv.Mat(), 0, R); return R;
-  }
-
-  // 向左：ord[c-1], ord[c-2], … ord[0]
-  // computeH(i0, i1) → H 把 ord[ii] 的坐标映射到 ord[ii+1] 坐标空间
-  for (var ii = c - 1; ii >= 0; ii--) {
-    var i1 = ord[ii+1], i0 = ord[ii];
-    var matches = allM[i0][i1];
-    var H = computeH(feats[i0].kps, feats[i1].kps, matches);
-    if (!H) H = cv.matFromArray(3, 3, cv.CV_64F, [1,0,0, 0,1,0, 0,0,1]);
-    H_tot[ii] = gMul(H_tot[ii+1], H);
-    H.delete();
-  }
-  // 向右：ord[c+1], ord[c+2], … ord[N-1]
-  // computeH(i1, i0) → H 把 ord[ii] 的坐标映射到 ord[ii-1] 坐标空间（与左侧方向相反）
-  for (var ii = c + 1; ii < N; ii++) {
-    var i0 = ord[ii-1], i1 = ord[ii];
-    var matches = allM[i1][i0];
-    var H = computeH(feats[i1].kps, feats[i0].kps, matches);
-    if (!H) H = cv.matFromArray(3, 3, cv.CV_64F, [1,0,0, 0,1,0, 0,0,1]);
-    H_tot[ii] = gMul(H_tot[ii-1], H);
-    H.delete();
-  }
-
-  // 清理特征点
-  feats.forEach(function(f) { f.kps.delete(); f.descs.delete(); });
-  grays.forEach(function(g) { g.delete(); });
-
-  /* Stage E (64-66%): 计算输出画布范围 */
-  prg('计算画布范围…', 64);
-  var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  for (var ii = 0; ii < N; ii++) {
-    var m = mats[ord[ii]], d = H_tot[ii].data64F;
-    [[0,0],[m.cols,0],[m.cols,m.rows],[0,m.rows]].forEach(function(pt) {
-      var p = tPt(d, pt[0], pt[1]);
-      if (p[0] < minX) minX = p[0]; if (p[0] > maxX) maxX = p[0];
-      if (p[1] < minY) minY = p[1]; if (p[1] > maxY) maxY = p[1];
-    });
-  }
-  var outW = Math.min(MAX_OUT, Math.ceil(maxX - minX));
-  var outH = Math.min(MAX_OUT, Math.ceil(maxY - minY));
-  var sc   = Math.min(1, MAX_OUT / Math.max(outW, outH));
-  outW = Math.round(outW * sc); outH = Math.round(outH * sc);
-
-  // 平移矩阵 T（将所有像素移到正坐标）
-  var tx = -minX * sc, ty = -minY * sc;
-  var T = [sc,0,tx, 0,sc,ty, 0,0,1];
-
-  // H_fin = T · H_tot
-  var Tmat = cv.matFromArray(3, 3, cv.CV_64F, T);
-  for (var ii = 0; ii < N; ii++) {
-    H_fin[ii] = gMul(Tmat, H_tot[ii]);
-    H_tot[ii].delete();
-  }
-  Tmat.delete();
-
-  /* Stage E2 (66-68%): 色温/亮度自动校准 */
-  prg('色温亮度校准…', 66);
-  var gains = estimateGains(mats, H_fin, ord, c, N, outW, outH);
-
-  /* Stage F+G (68-96%): 逐张扭曲 + 距离变换权重羽化融合 */
-  var accR  = new Float32Array(outW * outH);
-  var accG  = new Float32Array(outW * outH);
-  var accB  = new Float32Array(outW * outH);
-  var accWt = new Float32Array(outW * outH);
-  var outSize = new cv.Size(outW, outH);
-
-  for (var ii = 0; ii < N; ii++) {
-    prg('融合第 ' + (ii+1) + '/' + N + ' 张…', 68 + Math.round(28 * ii / N));
-    var mat = mats[ord[ii]];
-    var warped = new cv.Mat();
-    cv.warpPerspective(mat, warped, H_fin[ii], outSize, cv.INTER_LINEAR, cv.BORDER_CONSTANT, new cv.Scalar(0,0,0,0));
-    H_fin[ii].delete();
-
-    // 构造 alpha mask，计算距离变换权重
-    var mask = new Uint8Array(outW * outH);
-    var wd   = warped.data;
-    for (var p = 0; p < outW * outH; p++) { mask[p] = wd[p*4+3] > 10 ? 1 : 0; }
-    var dt = fastDT(mask, outW, outH);
-
-    // 应用增益 + 距离权重融合
-    var g = gains[ii];
-    for (var p = 0; p < outW * outH; p++) {
-      var wt = dt[p];
-      if (wt <= 0) continue;
-      accR[p]  += Math.min(255, wd[p*4]   * g[0]) * wt;
-      accG[p]  += Math.min(255, wd[p*4+1] * g[1]) * wt;
-      accB[p]  += Math.min(255, wd[p*4+2] * g[2]) * wt;
-      accWt[p] += wt;
-    }
-    warped.delete();
-  }
-
-  // 清理输入 mats
-  mats.forEach(function(m) { m.delete(); });
-
-  /* Stage H (96-100%): 归一化输出 */
-  prg('输出结果…', 96);
-  var out = new Uint8ClampedArray(outW * outH * 4);
-  for (var p = 0; p < outW * outH; p++) {
-    var wt = accWt[p];
-    if (wt > 0) {
-      out[p*4]   = Math.round(accR[p]  / wt);
-      out[p*4+1] = Math.round(accG[p]  / wt);
-      out[p*4+2] = Math.round(accB[p]  / wt);
-      out[p*4+3] = 255;
-    }
-  }
-  prg('完成', 100);
-  self.postMessage({type:'done', data: out.buffer, width: outW, height: outH}, [out.buffer]);
-}
-
-/* ── Worker 入口 ── */
-self.onmessage = function(e) {
-  if (e.data.type === 'init') {
-    loadCv(e.data.urls);
-    return;
-  }
-  if (e.data.type === 'stitch') {
-    withCv(function() {
-      try { doStitch(e.data); }
-      catch(err) { self.postMessage({type:'error', msg: err.message || String(err)}); }
-    });
-  }
-};
-`;
-
-function createStitchWorker() {
-  const blob = new Blob([STITCH_WORKER_CODE], {type: 'application/javascript'});
-  const url  = URL.createObjectURL(blob);
-  const w    = new Worker(url);
-  setTimeout(() => URL.revokeObjectURL(url), 15000); // WASM 加载需要时间
-  return w;
-}
-
-// ══════════════════════════════════════════════════════════════
-//  CloudUploadPanel — 云端图片上传 + 历史记录
-// ══════════════════════════════════════════════════════════════
-const UPLOAD_ALLOWED_EXTS = new Set(['.jpg','.jpeg','.png','.webp','.gif','.bmp','.tiff','.tif']);
-const UPLOAD_MAX_MB = 50;
-
-function CloudUploadPanel({ onSendToStitch }) {
-  const [uploads,    setUploads]    = useState([]);
-  const [loading,    setLoading]    = useState(true);
-  const [uploading,  setUploading]  = useState(false);
-  const [uploadPct,  setUploadPct]  = useState(0);
-  const [err,        setErr]        = useState('');
-  const [success,    setSuccess]    = useState('');
-  const dropRef = useRef(null);
-
-  // ── 加载历史记录 ──────────────────────────────────────────
-  const loadUploads = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await F('/api/scan/uploads/');
-      setUploads(data);
-    } catch(e) { setErr('加载记录失败：' + e.message); }
-    setLoading(false);
-  }, []);
-
-  useEffect(() => { loadUploads(); }, []);
-
-  // ── 前端预校验 ─────────────────────────────────────────────
-  function validateFile(file) {
-    const ext = ('.' + file.name.split('.').pop()).toLowerCase();
-    if (!UPLOAD_ALLOWED_EXTS.has(ext))
-      return `不支持的格式：${ext}（仅允许图片格式）`;
-    if (file.size > UPLOAD_MAX_MB * 1024 * 1024)
-      return `文件过大：${(file.size/1024/1024).toFixed(1)} MB（限 ${UPLOAD_MAX_MB} MB）`;
-    return null;
-  }
-
-  // ── 上传 ──────────────────────────────────────────────────
-  const handleUpload = async (file) => {
-    setErr(''); setSuccess('');
-    const pre = validateFile(file);
-    if (pre) { setErr(pre); return; }
-    setUploading(true); setUploadPct(0);
-
-    try {
-      const form = new FormData();
-      form.append('file', file);
-      // XMLHttpRequest 以获取上传进度
-      const result = await new Promise((res, rej) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open('POST', '/api/scan/uploads/');
-        // Django Token Auth — Get from localStorage
-        const token = localStorage.getItem('mf_token');
-        if (token) xhr.setRequestHeader('Authorization', `Token ${token}`);
-        // CSRF fallback
-        const csrf = document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '';
-        xhr.setRequestHeader('X-CSRFToken', csrf);
-        
-        xhr.upload.onprogress = e => { if (e.lengthComputable) setUploadPct(Math.round(e.loaded/e.total*90)); };
-        xhr.onload = () => {
-          if (xhr.status === 201) res(JSON.parse(xhr.responseText));
-          else { try { rej(JSON.parse(xhr.responseText)); } catch { rej({error: '上传失败 ' + xhr.status}); } }
-        };
-        xhr.onerror = () => rej({error: '网络错误'});
-        xhr.send(form);
-      });
-      setUploadPct(100);
-      setSuccess(`上传成功：${result.original_name}`);
-      setUploads(prev => [result, ...prev]);
-    } catch(e) {
-      setErr(e.error || '上传失败');
-    }
-    setUploading(false); setTimeout(() => setUploadPct(0), 800);
-  };
-
-  // ── 删除 ──────────────────────────────────────────────────
-  const handleDelete = async (id) => {
-    try {
-      const token = localStorage.getItem('mf_token');
-      const headers = {};
-      if (token) headers['Authorization'] = `Token ${token}`;
-      const csrf = document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '';
-      headers['X-CSRFToken'] = csrf;
-
-      const r = await fetch(`/api/scan/uploads/${id}/`, {
-        method: 'DELETE',
-        headers: headers,
-      });
-      if (r.status === 204) setUploads(prev => prev.filter(u => u.id !== id));
-      else setErr('删除失败');
-    } catch { setErr('网络错误'); }
-  };
-
-  const formatSize = (bytes) => bytes >= 1048576
-    ? (bytes/1048576).toFixed(1) + ' MB'
-    : (bytes/1024).toFixed(0) + ' KB';
-
-  const onZoneDrop = (e) => {
-    e.preventDefault();
-    if (dropRef.current) dropRef.current.style.borderColor = 'var(--border2)';
-    const file = e.dataTransfer.files[0];
-    if (file) handleUpload(file);
-  };
-
-  return (
-    <div style={{flex:1, display:'flex', overflow:'hidden', minHeight:0}}>
-
-      {/* 左侧面板 */}
-      <div style={{width:260, borderRight:'1px solid var(--border)', display:'flex',
-        flexDirection:'column', background:'var(--bg2)', flexShrink:0, overflow:'hidden'}}>
-
-        <div style={{padding:'10px 14px', borderBottom:'1px solid var(--border)',
-          fontSize:11, color:'var(--fg3)', letterSpacing:2}}>上传图片</div>
-
-        {/* 拖拽上传区 */}
-        <label ref={dropRef}
-          onDragOver={e => { e.preventDefault(); dropRef.current.style.borderColor='var(--gold)'; }}
-          onDragLeave={() => { dropRef.current.style.borderColor='var(--border2)'; }}
-          onDrop={onZoneDrop}
-          style={{margin:'12px 10px', borderRadius:8, border:'2px dashed var(--border2)',
-            minHeight:120, display:'flex', flexDirection:'column', alignItems:'center',
-            justifyContent:'center', gap:8, cursor: uploading ? 'wait' : 'pointer',
-            transition:'border-color .2s', background:'var(--bg3)', padding:'14px 10px', textAlign:'center'}}>
-          <Icon name="upload" size={24}/>
-          <div style={{fontSize:11, fontWeight:500, color:'var(--fg2)'}}>
-            {uploading ? '上传中…' : '点击 / 拖拽图片'}
-          </div>
-          <div style={{fontSize:9, color:'var(--fg3)', lineHeight:1.5}}>
-            最大 50 MB · JPG PNG WEBP GIF BMP
-          </div>
-          <input type="file" accept="image/*" style={{display:'none'}} disabled={uploading}
-            onChange={e => e.target.files[0] && handleUpload(e.target.files[0])}/>
-        </label>
-
-        {/* 进度条 */}
-        {uploading && (
-          <div style={{padding:'0 12px 8px'}}>
-            <div style={{height:4, background:'var(--bg4)', borderRadius:2, overflow:'hidden'}}>
-              <div style={{height:'100%', background:'var(--gold)', width: uploadPct + '%',
-                transition:'width .3s', boxShadow:'0 0 6px var(--gold)'}}/>
-            </div>
-            <div style={{fontSize:9, color:'var(--cyan)', marginTop:3, textAlign:'right'}}>{uploadPct}%</div>
-          </div>
-        )}
-
-        {/* 消息 */}
-        {err && (
-          <div style={{margin:'0 10px 6px', padding:'5px 10px', borderRadius:4,
-            background:'rgba(196,90,90,.15)', border:'1px solid var(--red)', fontSize:10, color:'var(--red)'}}>
-            {err} <button onClick={() => setErr('')} style={{float:'right', background:'none', border:'none', color:'var(--red)', cursor:'pointer'}}>×</button>
-          </div>
-        )}
-        {success && (
-          <div style={{margin:'0 10px 6px', padding:'5px 10px', borderRadius:4,
-            background:'rgba(94,184,122,.12)', border:'1px solid var(--green)', fontSize:10, color:'var(--green)'}}>
-            {success} <button onClick={() => setSuccess('')} style={{float:'right', background:'none', border:'none', color:'var(--green)', cursor:'pointer'}}>×</button>
-          </div>
-        )}
-
-        <div style={{padding:'4px 12px 4px', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-          <span style={{fontSize:10, color:'var(--fg3)'}}>上传记录 {uploads.length}/200</span>
-          <button onClick={loadUploads} style={{background:'none', border:'none', color:'var(--fg3)',
-            fontSize:10, cursor:'pointer', padding:'2px 4px'}}>刷新</button>
-        </div>
-
-        <div style={{padding:'10px 10px', borderTop:'1px solid var(--border)'}}>
-          <div style={{fontSize:9, color:'var(--fg3)', lineHeight:1.7}}>
-            上传到云端后可在任意设备访问<br/>
-            文件加密存储 · 不会被他人看到<br/>
-            点击「→ 送入拼接」可直接拼图
-          </div>
-        </div>
-      </div>
-
-      {/* 右侧历史列表 */}
-      <div style={{flex:1, overflow:'auto', padding:'16px 20px', background:'var(--bg)'}}>
-        {loading ? (
-          <div style={{textAlign:'center', paddingTop:40, color:'var(--fg3)'}}>
-            <Icon name="refresh" size={28}/>
-            <div style={{marginTop:10, fontSize:12}}>加载中…</div>
-          </div>
-        ) : uploads.length === 0 ? (
-          <div style={{textAlign:'center', paddingTop:60, color:'var(--fg3)'}}>
-            <div style={{marginBottom:12}}><Icon name="image" size={48}/></div>
-            <div style={{fontSize:14, color:'var(--gold2)', marginBottom:8}}>云端图库为空</div>
-            <div style={{fontSize:11, lineHeight:1.8}}>
-              上传图片后在此查看记录<br/>
-              上传的图片可直接用于图片拼接
-            </div>
-          </div>
-        ) : (
-          <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(160px, 1fr))', gap:14}}>
-            {uploads.map(u => (
-              <div key={u.id} style={{borderRadius:8, overflow:'hidden', border:'1px solid var(--border2)',
-                background:'var(--bg2)', display:'flex', flexDirection:'column'}}>
-                <div style={{aspectRatio:'4/3', overflow:'hidden', background:'#111'}}>
-                  <img src={u.url} alt={u.original_name}
-                    style={{width:'100%', height:'100%', objectFit:'cover'}}
-                    loading="lazy"
-                    onError={e => { e.currentTarget.style.display='none'; }}/>
-                </div>
-                <div style={{padding:'8px 10px', flex:1, display:'flex', flexDirection:'column', gap:4}}>
-                  <div style={{fontSize:10, color:'var(--fg2)', overflow:'hidden',
-                    textOverflow:'ellipsis', whiteSpace:'nowrap', fontWeight:500}}
-                    title={u.original_name}>{u.original_name}</div>
-                  <div style={{fontSize:9, color:'var(--fg3)'}}>
-                    {formatSize(u.file_size)} · {new Date(u.created_at).toLocaleDateString('zh-CN')}
-                  </div>
-                  <div style={{display:'flex', gap:5, marginTop:2}}>
-                    {onSendToStitch && (
-                      <button onClick={() => onSendToStitch(u.url, u.original_name)}
-                        style={{flex:1, fontSize:9, padding:'3px 0', borderRadius:3, cursor:'pointer',
-                          background:'var(--gold)', color:'#1a180e', border:'none', fontWeight:600}}>
-                        → 送入拼接
-                      </button>
-                    )}
-                    <button onClick={() => handleDelete(u.id)}
-                      style={{fontSize:9, padding:'3px 6px', borderRadius:3, cursor:'pointer',
-                        background:'rgba(196,90,90,.15)', color:'var(--red)', border:'1px solid var(--red)'}}>
-                      删除
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ══════════════════════════════════════════════════════════════
-//  StitchPanel — 图片拼接 React 组件
-// ══════════════════════════════════════════════════════════════
-function StitchPanel({ addRef }) {
-  const [images,    setImages]    = useState([]);
-  const [stitching, setStitching] = useState(false);
-  const [progress,  setProgress]  = useState({msg:'', pct:0});
-  const [resultUrl, setResultUrl] = useState(null);
-  const [resultSize,setResultSize]= useState(null);
-  const [err,       setErr]       = useState('');
-  const workerRef  = useRef(null);
-  const dragIndex  = useRef(null);
-  const dropRef    = useRef(null);
-
-  // 暴露 addFromUrl 给云图库使用
-  useEffect(() => {
-    if (!addRef) return;
-    addRef.current = async (url, name) => {
-      try {
-        const resp = await fetch(url);
-        const blob = await resp.blob();
-        const reader = new FileReader();
-        reader.onload = ev => setImages(prev => prev.length >= 10 ? prev : [...prev, {url: ev.target.result, name: name || 'cloud.jpg'}]);
-        reader.readAsDataURL(blob);
-      } catch(e) { console.warn('addFromUrl failed', e); }
-    };
-  }, [addRef]);
-
-  /* ── 文件处理 ── */
-  const addImages = useCallback((files) => {
-    const arr = Array.from(files).filter(f => /\.(jpe?g|png|webp|bmp|tiff?)$/i.test(f.name));
-    if (!arr.length) return;
-    arr.forEach(f => {
-      const reader = new FileReader();
-      reader.onload = ev => setImages(prev => prev.length >= 10 ? prev : [...prev, {url: ev.target.result, name: f.name}]);
-      reader.readAsDataURL(f);
-    });
-  }, []);
-
-  const removeImage = (i) => setImages(prev => prev.filter((_, idx) => idx !== i));
-
-  const handleReset = () => {
-    if (workerRef.current) { workerRef.current.terminate(); workerRef.current = null; }
-    setImages([]); setResultUrl(null); setResultSize(null);
-    setErr(''); setStitching(false); setProgress({msg:'', pct:0});
-  };
-
-  /* ── 拖动排序 ── */
-  const handleDragStart = (i) => { dragIndex.current = i; };
-  const handleDragOver  = (e, i) => {
-    e.preventDefault();
-    const from = dragIndex.current;
-    if (from === null || from === i) return;
-    setImages(prev => {
-      const a = [...prev]; const [item] = a.splice(from, 1); a.splice(i, 0, item);
-      dragIndex.current = i; return a;
-    });
-  };
-  const handleDrop = (e) => { e.preventDefault(); dragIndex.current = null; };
-
-  /* ── 区域拖拽上传 ── */
-  const onZoneDragOver = (e) => { e.preventDefault(); if(dropRef.current) dropRef.current.style.borderColor='var(--gold)'; };
-  const onZoneDragLeave= ()  => { if(dropRef.current) dropRef.current.style.borderColor='var(--border2)'; };
-  const onZoneDrop     = (e) => { e.preventDefault(); if(dropRef.current) dropRef.current.style.borderColor='var(--border2)'; addImages(e.dataTransfer.files); };
-
-  /* ── 拼接主流程 ── */
-  const handleStitch = useCallback(async () => {
-    if (images.length < 2) { setErr('请至少上传 2 张图片'); return; }
-    setErr(''); setResultUrl(null); setResultSize(null);
-    setStitching(true); setProgress({msg:'准备中…', pct:1});
-
-    let imgDatas = [];
-    try {
-      imgDatas = await Promise.all(images.map(im => new Promise((res, rej) => {
-        const img = new Image();
-        img.onload = () => {
-          const cv2 = document.createElement('canvas');
-          cv2.width = img.naturalWidth; cv2.height = img.naturalHeight;
-          cv2.getContext('2d').drawImage(img, 0, 0);
-          const id = cv2.getContext('2d').getImageData(0, 0, cv2.width, cv2.height);
-          res({data: id.data.buffer, width: cv2.width, height: cv2.height});
-        };
-        img.onerror = rej; img.src = im.url;
-      })));
-    } catch(ex) { setErr('图片解码失败：' + ex.message); setStitching(false); return; }
-
-    if (workerRef.current) { workerRef.current.terminate(); }
-    const w = createStitchWorker();
-    workerRef.current = w;
-
-    w.onmessage = (e) => {
-      const d = e.data;
-      if (d.type === 'progress') { setProgress({msg: d.msg, pct: d.pct}); return; }
-      if (d.type === 'done') {
-        const arr = new Uint8ClampedArray(d.data);
-        const cv2 = document.createElement('canvas');
-        cv2.width = d.width; cv2.height = d.height;
-        cv2.getContext('2d').putImageData(new ImageData(arr, d.width, d.height), 0, 0);
-        setResultUrl(cv2.toDataURL('image/jpeg', 0.92));
-        setResultSize({w: d.width, h: d.height});
-        setStitching(false); setProgress({msg:'', pct:0}); return;
-      }
-      if (d.type === 'error') {
-        setErr('拼接失败：' + (d.msg || '未知错误'));
-        setStitching(false); setProgress({msg:'', pct:0});
-      }
-    };
-    w.onerror = (e) => { setErr('Worker 错误：' + e.message); setStitching(false); setProgress({msg:'', pct:0}); };
-
-    w.postMessage({type: 'init', urls: OPENCV_CDN_URLS});
-    w.postMessage({type: 'stitch', imgs: imgDatas.map(d => ({data: new Uint8ClampedArray(d.data), width: d.width, height: d.height}))});
-    setProgress({msg:'正在加载 OpenCV.js（首次约 9MB）…', pct:3});
-  }, [images]);
-
-  const handleDownload = () => {
-    if (!resultUrl) return;
-    const a = document.createElement('a'); a.href = resultUrl;
-    a.download = 'panorama_' + Date.now() + '.jpg'; a.click();
-  };
-
-  /* ── 渲染 ── */
-  return (
-    <div style={{flex:1, display:'flex', overflow:'hidden', minHeight:0}}>
-
-      {/* 左侧面板 */}
-      <div style={{width:260, borderRight:'1px solid var(--border)', display:'flex',
-        flexDirection:'column', background:'var(--bg2)', flexShrink:0, overflow:'hidden'}}>
-
-        <div style={{padding:'10px 14px', borderBottom:'1px solid var(--border)',
-          fontSize:11, color:'var(--fg3)', letterSpacing:2}}>上传图片</div>
-
-        {/* 大拖拽区 */}
-        <label ref={dropRef}
-          onDragOver={onZoneDragOver} onDragLeave={onZoneDragLeave} onDrop={onZoneDrop}
-          style={{margin:'12px 10px', borderRadius:8, border:'2px dashed var(--border2)',
-            minHeight:140, display:'flex', flexDirection:'column', alignItems:'center',
-            justifyContent:'center', gap:8, cursor:'pointer', transition:'border-color .2s',
-            background:'var(--bg3)', color:'var(--fg3)', textAlign:'center', padding:'16px 12px'}}>
-          <Icon name="upload" size={28}/>
-          <div style={{fontSize:12, fontWeight:500, color:'var(--fg2)'}}>点击选择 / 拖拽到此</div>
-          <div style={{fontSize:10, color:'var(--fg3)', lineHeight:1.5}}>
-            JPG · PNG · WEBP · BMP<br/>最多 10 张，建议 30-50% 重叠
-          </div>
-          <input type="file" multiple accept=".jpg,.jpeg,.png,.webp,.bmp,.tiff"
-            style={{display:'none'}} onChange={e => addImages(e.target.files)}/>
-        </label>
-
-        <div style={{padding:'4px 12px 8px', display:'flex', alignItems:'center', justifyContent:'space-between'}}>
-          <span style={{fontSize:11, color:'var(--fg3)'}}>已选 {images.length} / 10 张</span>
-          {images.length > 0 && (
-            <button onClick={() => setImages([])} style={{background:'none', color:'var(--fg3)',
-              fontSize:11, padding:'2px 6px', border:'1px solid var(--border2)', borderRadius:3, cursor:'pointer'}}>
-              清空
-            </button>
-          )}
-        </div>
-
-        {/* 缩略图列表 */}
-        <div style={{flex:1, overflowY:'auto', padding:'0 10px 8px'}}>
-          {images.length === 0 ? (
-            <div style={{fontSize:10, color:'var(--fg3)', textAlign:'center', paddingTop:8, lineHeight:1.6}}>
-              上传后在此显示<br/>可拖动调整拼接顺序
-            </div>
-          ) : (
-            images.map((im, i) => (
-              <div key={i} draggable
-                onDragStart={() => handleDragStart(i)}
-                onDragOver={e => handleDragOver(e, i)}
-                onDrop={handleDrop}
-                style={{display:'flex', alignItems:'center', gap:8, padding:'5px 6px',
-                  borderRadius:5, marginBottom:4, cursor:'grab', border:'1px solid var(--border)',
-                  background:'var(--bg3)', userSelect:'none'}}>
-                <div style={{width:44, height:34, borderRadius:3, overflow:'hidden', flexShrink:0,
-                  position:'relative', border:'1px solid var(--border2)'}}>
-                  <img src={im.url} alt={im.name}
-                    style={{width:'100%', height:'100%', objectFit:'cover', pointerEvents:'none'}}/>
-                  <div style={{position:'absolute', bottom:0, left:0, right:0, textAlign:'center',
-                    background:'rgba(0,0,0,.55)', color:'var(--gold)', fontSize:8, lineHeight:'14px'}}>
-                    {i + 1}
-                  </div>
-                </div>
-                <div style={{flex:1, minWidth:0}}>
-                  <div style={{fontSize:10, color:'var(--fg2)', overflow:'hidden',
-                    textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{im.name}</div>
-                  <div style={{fontSize:9, color:'var(--fg3)'}}>拖动可排序</div>
-                </div>
-                <button onClick={() => removeImage(i)}
-                  style={{background:'none', color:'var(--fg3)', padding:'2px 4px',
-                    fontSize:14, cursor:'pointer', flexShrink:0, lineHeight:1, border:'none'}}>×</button>
-              </div>
-            ))
-          )}
-        </div>
-
-        {/* 错误 */}
-        {err && (
-          <div style={{margin:'0 10px 8px', padding:'6px 10px', borderRadius:4,
-            background:'rgba(196,90,90,.15)', border:'1px solid var(--red)',
-            fontSize:11, color:'var(--red)', lineHeight:1.4}}>
-            {err}
-            <button onClick={() => setErr('')} style={{float:'right', background:'none',
-              color:'var(--red)', border:'none', cursor:'pointer', fontSize:12}}>×</button>
-          </div>
-        )}
-
-        {/* 进度条（小） */}
-        {stitching && (
-          <div style={{padding:'8px 12px', borderTop:'1px solid var(--border)'}}>
-            <div style={{display:'flex', justifyContent:'space-between', fontSize:10,
-              color:'var(--cyan)', marginBottom:4}}>
-              <span style={{overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', flex:1,
-                fontSize:9}}>{progress.msg}</span>
-              <span style={{marginLeft:4, flexShrink:0}}>{progress.pct}%</span>
-            </div>
-            <div style={{height:4, background:'var(--bg4)', borderRadius:2, overflow:'hidden'}}>
-              <div style={{height:'100%', background:'var(--gold)', width: progress.pct + '%',
-                transition:'width .4s ease', boxShadow:'0 0 6px var(--gold)'}}/>
-            </div>
-          </div>
-        )}
-
-        {/* 操作按钮 */}
-        <div style={{padding:'10px 10px', borderTop:'1px solid var(--border)', display:'flex', flexDirection:'column', gap:6}}>
-          <button className="btn btn-p" style={{width:'100%', fontSize:13}}
-            onClick={handleStitch} disabled={stitching || images.length < 2}>
-            {stitching ? <><Icon name="refresh" size={13}/> 拼接计算中…</> : '▶ 开始拼接'}
-          </button>
-          {(resultUrl || images.length > 0) && !stitching && (
-            <button className="btn btn-s" style={{width:'100%', fontSize:12}}
-              onClick={handleReset}>↺ 重新开始</button>
-          )}
-          {resultUrl && !stitching && (
-            <button className="btn btn-s" style={{width:'100%', fontSize:12,
-              display:'inline-flex', alignItems:'center', justifyContent:'center', gap:5}}
-              onClick={handleDownload}>
-              <Icon name="download" size={12}/> 下载全景图
-            </button>
-          )}
-        </div>
-
-        <div style={{padding:'8px 12px', borderTop:'1px solid var(--border)',
-          fontSize:9, color:'var(--fg3)', lineHeight:1.6}}>
-          首次加载 OpenCV.js ~9MB，之后缓存<br/>全程本地计算，图片不离开设备
-        </div>
-      </div>
-
-      {/* 右侧内容区 */}
-      <div style={{flex:1, overflow:'auto', background:'var(--bg)', display:'flex',
-        flexDirection:'column', alignItems:'center',
-        justifyContent: resultUrl || stitching ? 'flex-start' : 'center',
-        padding:'32px 24px'}}>
-
-        {/* 空状态 */}
-        {!resultUrl && !stitching && (
-          <div style={{textAlign:'center', maxWidth:500}}>
-            <div style={{marginBottom:16}}><Icon name="image" size={56}/></div>
-            <div style={{fontSize:18, color:'var(--gold2)', marginBottom:8, fontFamily:'var(--serif)'}}>
-              图片拼接 · 全景合成
-            </div>
-            <div style={{fontSize:12, color:'var(--fg3)', marginBottom:24, lineHeight:2}}>
-              将多张不同角度拍摄的照片<br/>
-              自动对齐合成为高分辨率全景图<br/>
-              <span style={{color:'var(--green)'}}>相邻图片建议有 30% ~ 50% 重叠区域</span>
-            </div>
-            <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, textAlign:'left'}}>
-              {[
-                ['AKAZE 特征检测','旋转+尺度不变，特征点覆盖全图'],
-                ['RANSAC 2.5px','严格剔除误匹配，减少重影'],
-                ['中心锚点链式变换','以中间图为基准，两侧误差不累积'],
-                ['自动白平衡校准','逐通道均值比校准，消除色差'],
-                ['距离变换羽化融合','拼缝处权重渐变，无锯齿色块'],
-                ['全程浏览器计算','不上传服务器，数据不离开设备'],
-              ].map(([t,d]) => (
-                <div key={t} style={{background:'var(--bg2)', borderRadius:6, padding:'10px 12px',
-                  border:'1px solid var(--border)'}}>
-                  <div style={{fontWeight:600, color:'var(--gold)', fontSize:11, marginBottom:3}}>{t}</div>
-                  <div style={{color:'var(--fg3)', fontSize:10, lineHeight:1.5}}>{d}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* 进度（大） */}
-        {stitching && (
-          <div style={{width:'100%', maxWidth:520, textAlign:'center'}}>
-            <div style={{marginBottom:20}}><Icon name="refresh" size={44}/></div>
-            <div style={{fontSize:14, color:'var(--fg)', marginBottom:8}}>{progress.msg || '处理中…'}</div>
-            <div style={{height:8, background:'var(--bg3)', borderRadius:4, overflow:'hidden', marginBottom:8}}>
-              <div style={{height:'100%', background:'var(--gold)', width: progress.pct + '%',
-                transition:'width .5s ease', boxShadow:'0 0 12px var(--gold)'}}/>
-            </div>
-            <div style={{fontSize:11, color:'var(--fg3)', marginBottom:4}}>{progress.pct}% 完成</div>
-            <div style={{fontSize:10, color:'var(--fg3)'}}>
-              首次加载 OpenCV.js (~9MB)，之后浏览器缓存，无需重复下载
-            </div>
-          </div>
-        )}
-
-        {/* 结果 */}
-        {resultUrl && !stitching && (
-          <div style={{width:'100%'}}>
-            <div style={{display:'flex', alignItems:'center', justifyContent:'space-between',
-              marginBottom:14, flexWrap:'wrap', gap:8}}>
-              <span style={{color:'var(--green)', display:'inline-flex', alignItems:'center',
-                gap:5, fontSize:13}}>
-                <Icon name="check" size={14}/> 拼接完成 · {resultSize?.w} × {resultSize?.h} px
-              </span>
-              <div style={{display:'flex', gap:8}}>
-                <button className="btn btn-s btn-sm" onClick={handleReset}
-                  style={{display:'inline-flex', alignItems:'center', gap:5}}>
-                  ↺ 重新拼接
-                </button>
-                <button className="btn btn-p btn-sm" onClick={handleDownload}
-                  style={{display:'inline-flex', alignItems:'center', gap:5}}>
-                  <Icon name="download" size={12}/> 下载 JPEG
-                </button>
-              </div>
-            </div>
-            <div style={{border:'1px solid var(--border2)', borderRadius:8, overflow:'hidden',
-              background:'#111', textAlign:'center'}}>
-              <img src={resultUrl} alt="panorama"
-                style={{maxWidth:'100%', maxHeight:'75vh', objectFit:'contain',
-                  display:'block', margin:'0 auto'}}/>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-
-
 // ── ScanEnhanceApp React 组件 ─────────────────────────────────
-function ScanEnhanceApp({user, onLogout, onUpdateUser}) {
+function ScanEnhanceApp({user, onLogout, onUpdateUser, token}) {
   // 本地页面数组：[{num, origDataUrl, procDataUrl}]
   const [pages, setPages]         = useState([]);
   const [curIdx, setCurIdx]       = useState(0);
@@ -9180,9 +8539,7 @@ function ScanEnhanceApp({user, onLogout, onUpdateUser}) {
   const [sbOpen, setSbOpen]       = useState(false);
   const [loadingFile, setLoadingFile] = useState(false);
   const [showCamera, setShowCamera] = useState(false);
-  const [mode, setMode] = useState('enhance'); // 'enhance' | 'stitch' | 'cloud'
-  // 从云图库「送入拼接」时存储待添加图片
-  const stitchAddRef = useRef(null); // 回调引用
+  const [mode, setMode]           = useState('enhance');  // 'enhance' | 'stitch'
   const sliderRef = useRef(null);
   const workerRef = useRef(null);
 
@@ -9342,79 +8699,51 @@ function ScanEnhanceApp({user, onLogout, onUpdateUser}) {
           <p style={{fontSize:10,color:'var(--green)',marginTop:4}}>● 浏览器端处理 · 零服务器占用</p>
         </div>
         <div className="sb-nav">
-          {mode === 'stitch' ? (
+        <div className="sb-nav">
+          <div className="ns">
+            <div className="ns-t">工作模式</div>
+            <div className={`ni${mode==='enhance'?' on':''}`} onClick={()=>setMode('enhance')}>
+              <i><Icon name="scan" size={12} /></i> 扫描增强
+            </div>
+            <div className={`ni${mode==='stitch'?' on':''}`} onClick={()=>setMode('stitch')}>
+              <i><Icon name="layers" size={12} /></i> 图片拼接
+            </div>
+          </div>
+          {mode === 'enhance' && (
+          <div className="ns">
+            <div className="ns-t">WORKSPACE</div>
+            <div className={`ni${view==='home'?' on':''}`} onClick={()=>{ if(view==='editor'){ setPages([]); setCurIdx(0); } }}>
+              <i><Icon name="upload" size={12} /></i> 打开文件
+            </div>
+            {curPage && (
+              <div className="ni on">
+                <i><Icon name="file" size={12} /></i>
+                <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',fontSize:11}}>{fileName || '当前文件'}</span>
+              </div>
+            )}
+          </div>
+          )}
+          {mode === 'enhance' && pages.length > 1 && (
             <div className="ns">
-              <div className="ns-t">图片拼接</div>
-              <div className="ni on"><i><Icon name="image" size={12}/></i> 上传并拼接</div>
-              <div style={{padding:'8px 8px 4px',fontSize:10,color:'var(--fg3)',lineHeight:1.8}}>
-                <div style={{color:'var(--gold)',fontWeight:500,marginBottom:4}}>使用建议</div>
-                <div>・相邻图片重叠 30–50%</div>
-                <div>・光线尽量一致</div>
-                <div>・避免拍摄运动物体</div>
-                <div>・建议不超过 5 张</div>
+              <div className="ns-t">PDF 页面 ({pages.length}页)</div>
+              <div style={{maxHeight:180,overflowY:'auto'}}>
+                {pages.map((p, i) => (
+                  <div key={i} style={{display:'flex',alignItems:'center',gap:6,padding:'4px 8px',borderRadius:4,cursor:'pointer',
+                    background: curIdx===i ? 'var(--bg4)':'transparent'}} onClick={()=>setCurIdx(i)}>
+                    <span style={{fontSize:11,color:curIdx===i?'var(--gold2)':'var(--fg2)',flex:1}}>第 {p.num} 页</span>
+                    {p.procDataUrl && <Icon name="check" size={10} color="var(--green)" />}
+                  </div>
+                ))}
               </div>
             </div>
-          ) : mode === 'cloud' ? (
-            <div className="ns">
-              <div className="ns-t">云端图库</div>
-              <div className="ni on"><i><Icon name="upload" size={12}/></i> 上传 &amp; 管理</div>
-              <div style={{padding:'8px 8px 4px',fontSize:10,color:'var(--fg3)',lineHeight:1.8}}>
-                <div style={{color:'var(--gold)',fontWeight:500,marginBottom:4}}>说明</div>
-                <div>・支持 JPG PNG WEBP 等</div>
-                <div>・单文件最大 50 MB</div>
-                <div>・最多 200 张记录</div>
-                <div>・点击「→ 送入拼接」</div>
-              </div>
-            </div>
-          ) : (
-            <>
-              <div className="ns">
-                <div className="ns-t">WORKSPACE</div>
-                <div className={`ni${view==='home'?' on':''}`} onClick={()=>{ if(view==='editor'){ setPages([]); setCurIdx(0); } }}>
-                  <i><Icon name="upload" size={12} /></i> 打开文件
-                </div>
-                {/* 显眼拼接入口 */}
-                <div className="ni" onClick={()=>setMode('stitch')}
-                  style={{background:'rgba(201,168,108,.10)',border:'1px solid var(--gold-dim)',
-                    borderRadius:4,margin:'4px 8px',padding:'6px 8px',cursor:'pointer',
-                    display:'flex',alignItems:'center',gap:7}}>
-                  <i style={{color:'var(--gold)'}}><Icon name="image" size={13}/></i>
-                  <div>
-                    <div style={{fontSize:11,fontWeight:600,color:'var(--gold)'}}>图片拼接</div>
-                    <div style={{fontSize:9,color:'var(--fg3)',marginTop:1}}>全景 · 多段合成</div>
-                  </div>
-                </div>
-                {/* 云图库入口 */}
-                <div className="ni" onClick={()=>setMode('cloud')}
-                  style={{margin:'4px 8px',padding:'5px 8px',cursor:'pointer',
-                    display:'flex',alignItems:'center',gap:7}}>
-                  <i style={{color:'var(--fg2)'}}><Icon name="upload" size={12}/></i>
-                  <div style={{fontSize:11,color:'var(--fg2)'}}>云端图库</div>
-                </div>
-                {curPage && (
-                  <div className="ni on">
-                    <i><Icon name="file" size={12} /></i>
-                    <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',fontSize:11}}>{fileName || '当前文件'}</span>
-                  </div>
-                )}
-              </div>
-              {pages.length > 1 && (
-                <div className="ns">
-                  <div className="ns-t">PDF 页面 ({pages.length}页)</div>
-                  <div style={{maxHeight:180,overflowY:'auto'}}>
-                    {pages.map((p, i) => (
-                      <div key={i} style={{display:'flex',alignItems:'center',gap:6,padding:'4px 8px',borderRadius:4,cursor:'pointer',
-                        background: curIdx===i ? 'var(--bg4)':'transparent'}} onClick={()=>setCurIdx(i)}>
-                        <span style={{fontSize:11,color:curIdx===i?'var(--gold2)':'var(--fg2)',flex:1}}>第 {p.num} 页</span>
-                        {p.procDataUrl && <Icon name="check" size={10} color="var(--green)" />}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </>
           )}
         </div>
+        <div style={{padding:'10px 14px',borderTop:'1px solid var(--border)',fontSize:10,color:'var(--fg3)',lineHeight:1.5}}>
+          {mode === 'enhance' ? (
+            <>所有图像处理算法<br/>运行在您的浏览器中<br/>不会上传到服务器</>
+          ) : (
+            <>全景拼接算法<br/>运行在您的浏览器中<br/>不会上传到服务器</>
+          )}
         <div style={{padding:'10px 14px',borderTop:'1px solid var(--border)',fontSize:10,color:'var(--fg3)',lineHeight:1.5}}>
           所有图像处理算法<br/>运行在您的浏览器中<br/>不会上传到服务器
         </div>
@@ -9422,49 +8751,40 @@ function ScanEnhanceApp({user, onLogout, onUpdateUser}) {
 
       {/* ── 主区域 ── */}
       <div className="main">
-        {/* 顶栏 */}
-        <div className="top">
-          <button onClick={()=>setSbOpen(o=>!o)} style={{background:'none',color:'var(--fg3)',padding:'0 4px',marginRight:4}}><Icon name="menu" size={18} /></button>
-          <span className="top-t">
-            {mode==='stitch' ? '图片拼接 · 全景合成' : mode==='cloud' ? '云端图库 · 上传与管理' : (view==='home' ? '扫描增强 · 浏览器端图像处理' : `${fileName} · 第 ${curPage?.num} 页`)}
-          </span>
-          {/* Tab 切换器 */}
-          <div style={{display:'flex',gap:3,marginRight:6,flexShrink:0}}>
-            {[{k:'enhance',l:'增强'},{k:'stitch',l:'拼接'},{k:'cloud',l:'云图库'}].map(({k,l})=>(
-              <button key={k} onClick={()=>setMode(k)}
-                style={{padding:'3px 10px',borderRadius:3,fontSize:11,cursor:'pointer',
-                  background: mode===k ? 'var(--gold)' : 'var(--bg3)',
-                  color: mode===k ? '#1a180e' : 'var(--fg2)',
-                  border: mode===k ? 'none' : '1px solid var(--border2)',
-                  fontWeight: mode===k ? 600 : 400}}>{l}</button>
-            ))}
+        <div className="main">
+          {/* 顶栏 */}
+          <div className="top">
+            <button onClick={()=>setSbOpen(o=>!o)} style={{background:'none',color:'var(--fg3)',padding:'0 4px',marginRight:4}}><Icon name="menu" size={18} /></button>
+            <span className="top-t">
+              {mode === 'enhance' 
+                ? (view==='home' ? '扫描增强 · 浏览器端图像处理' : `${fileName} · 第 ${curPage?.num} 页`)
+                : '图片拼接 · 全景照片合成'}
+            </span>
+            {mode === 'enhance' && view==='editor' && (
+              <>
+                {curPage?.procDataUrl && (
+                  <button className="btn btn-s btn-sm" onClick={handleDownload} style={{display:'inline-flex',alignItems:'center',gap:5}}>
+                    <Icon name="download" size={12}/> 下载
+                  </button>
+                )}
+                {processedCount > 1 && (
+                  <button className="btn btn-s btn-sm" onClick={handleDownloadAll} style={{display:'inline-flex',alignItems:'center',gap:5}}>
+                    <Icon name="download" size={12}/> 全部({processedCount})
+                  </button>
+                )}
+                <button className="btn btn-s btn-sm" onClick={()=>setShowCamera(true)}
+                  style={{display:'inline-flex',alignItems:'center',gap:5}}>
+                  <Icon name="scan" size={12}/> 拍照
+                </button>
+                <label className="btn btn-p btn-sm" style={{cursor:loadingFile?'wait':'pointer'}}>
+                  {loadingFile ? '加载中…' : '+ 换文件'}
+                  <input type="file" style={{display:'none'}} accept=".pdf,.png,.jpg,.jpeg,.bmp,.tiff,.webp"
+                    onChange={e=>handleFile(e.target.files?.[0])} disabled={loadingFile}/>
+                </label>
+              </>
+            )}
+            <button onClick={onLogout} style={{background:'none',color:'var(--fg3)',fontSize:12}}>退出</button>
           </div>
-          {view==='editor' && mode==='enhance' && (
-            <>
-              {curPage?.procDataUrl && (
-                <button className="btn btn-s btn-sm" onClick={handleDownload} style={{display:'inline-flex',alignItems:'center',gap:5}}>
-                  <Icon name="download" size={12}/> 下载
-                </button>
-              )}
-              {processedCount > 1 && (
-                <button className="btn btn-s btn-sm" onClick={handleDownloadAll} style={{display:'inline-flex',alignItems:'center',gap:5}}>
-                  <Icon name="download" size={12}/> 全部({processedCount})
-                </button>
-              )}
-              <button className="btn btn-s btn-sm" onClick={()=>setShowCamera(true)}
-                style={{display:'inline-flex',alignItems:'center',gap:5}}>
-                <Icon name="scan" size={12}/> 拍照
-              </button>
-              <label className="btn btn-p btn-sm" style={{cursor:loadingFile?'wait':'pointer'}}>
-                {loadingFile ? '加载中…' : '+ 换文件'}
-                <input type="file" style={{display:'none'}} accept=".pdf,.png,.jpg,.jpeg,.bmp,.tiff,.webp"
-                  onChange={e=>handleFile(e.target.files?.[0])} disabled={loadingFile}/>
-              </label>
-            </>
-          )}
-          <button onClick={onLogout} style={{background:'none',color:'var(--fg3)',fontSize:12}}>退出</button>
-        </div>
-
         {err && (
           <div style={{background:'rgba(196,90,90,.15)',border:'1px solid var(--red)',
             borderRadius:4,padding:'8px 14px',margin:'10px 16px',fontSize:12,color:'var(--red)'}}>
@@ -9472,20 +8792,10 @@ function ScanEnhanceApp({user, onLogout, onUpdateUser}) {
           </div>
         )}
 
-        {/* ── 拼接面板 ── */}
-        {mode === 'stitch' && <StitchPanel addRef={stitchAddRef}/>}
-
-        {/* ── 云图库面板 ── */}
-        {mode === 'cloud' && (
-          <CloudUploadPanel onSendToStitch={(url, name) => {
-            setMode('stitch');
-            // 用 setTimeout 等 StitchPanel 挂载后调用其 addFromUrl
-            setTimeout(() => { if (stitchAddRef.current) stitchAddRef.current(url, name); }, 100);
-          }}/>
-        )}
-
         {/* ── 首页上传区 ── */}
-        {view === 'home' && mode === 'enhance' && (
+        {mode === 'enhance' ? (
+        <>
+        {view === 'home' && (
           <div className="ct" style={{maxWidth:680,margin:'0 auto',paddingTop:32}}>
             <div style={{textAlign:'center',marginBottom:32}}>
               <div style={{marginBottom:12}}><Icon name="scan" size={48}/></div>
@@ -9547,7 +8857,7 @@ function ScanEnhanceApp({user, onLogout, onUpdateUser}) {
         )}
 
         {/* ── 编辑器视图 ── */}
-        {view === 'editor' && mode === 'enhance' && curPage && (
+        {view === 'editor' && curPage && (
           <div style={{flex:1,display:'flex',overflow:'hidden',minHeight:0}}>
             {/* 左侧操作面板 */}
             <div style={{width:268,borderRight:'1px solid var(--border)',display:'flex',flexDirection:'column',
@@ -9561,9 +8871,9 @@ function ScanEnhanceApp({user, onLogout, onUpdateUser}) {
                       border:`1px solid ${active?'var(--gold-dim)':'var(--border)'}`,
                       background: active?'rgba(201,168,108,.07)':'var(--bg3)'}}>
                       <div style={{display:'flex',alignItems:'center',gap:8,padding:'7px 10px',cursor:'pointer'}}
-                        onClick={() => toggleOp(op.key)}>
-                        <input type="checkbox" checked={active} readOnly
-                          style={{accentColor:'var(--gold)',flexShrink:0,pointerEvents:'none'}}/>
+                        onClick={()=>toggleOp(op.key)}>
+                        <input type="checkbox" checked={active} onChange={()=>toggleOp(op.key)}
+                          style={{accentColor:'var(--gold)',flexShrink:0}}/>
                         <span style={{flexShrink:0}}><Icon name={op.icon} size={13}/></span>
                         <div style={{flex:1,minWidth:0}}>
                           <div style={{fontSize:12,fontWeight:500,color:active?'var(--gold2)':'var(--fg)'}}>{op.label}</div>
@@ -9690,6 +9000,10 @@ function ScanEnhanceApp({user, onLogout, onUpdateUser}) {
           </div>
         )}
       </div>
+        </>
+        ) : (
+        <StitchPanel token={localStorage.getItem('mf_token')} />
+        )}
 
       {/* ── CameraCapture 弹层 ── */}
       {showCamera && (
