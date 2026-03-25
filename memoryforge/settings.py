@@ -30,6 +30,9 @@ INSTALLED_APPS = [
     'dashboard',
     'scan_enhance',
     'question_bank',
+    'doc_reader',
+    'chat',
+    'banished',
 ]
 
 MEDIA_URL = '/media/'

@@ -1,3 +1,5 @@
+import hashlib
+import os
 import secrets
 import uuid
 from datetime import timedelta, date
@@ -24,6 +26,37 @@ class UserManager(BaseUserManager):
         return user
 
 
+CLOUD_QUOTA_BYTES = 50 * 1024 * 1024  # 50 MB
+
+
+def cloud_upload_path(instance, filename):
+    """Upload to media/cloud/<user_id>/<filename>"""
+    filename = os.path.basename(filename)
+    return f'cloud/{instance.user_id}/{filename}'
+
+
+ALLOWED_EXTENSIONS = {
+    '.pdf', '.txt', '.md',
+    '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
+    '.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg',
+    '.py', '.js', '.ts', '.jsx', '.tsx', '.java', '.c', '.cpp',
+    '.cc', '.h', '.hpp', '.go', '.rs', '.sh', '.bash', '.zsh',
+    '.html', '.css', '.scss', '.json', '.yaml', '.yml', '.toml',
+    '.xml', '.csv', '.sql', '.r', '.rb', '.php', '.swift', '.kt',
+}
+
+ALLOWED_MIME_PREFIXES = (
+    'text/',
+    'image/',
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats',
+    'application/vnd.ms-',
+    'application/json',
+    'application/xml',
+)
+
+
 class User(AbstractBaseUser, PermissionsMixin):
     email = models.EmailField(unique=True, verbose_name='邮箱')
     is_active = models.BooleanField(default=True)
@@ -42,6 +75,16 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     def __str__(self):
         return self.email
+
+    @property
+    def cloud_used_bytes(self):
+        from django.db.models import Sum
+        agg = self.cloud_files.aggregate(total=Sum('size'))
+        return agg['total'] or 0
+
+    @property
+    def cloud_quota_bytes(self):
+        return CLOUD_QUOTA_BYTES
 
 
 class TokenUsage(models.Model):
@@ -252,3 +295,54 @@ class PasswordResetToken(models.Model):
         if self.is_used:
             return False
         return timezone.now() < self.created_at + timedelta(minutes=30)
+
+
+def sha256_of_file(f):
+    """Compute SHA-256 of an InMemoryUploadedFile / TemporaryUploadedFile."""
+    h = hashlib.sha256()
+    for chunk in f.chunks():
+        h.update(chunk)
+    f.seek(0)
+    return h.hexdigest()
+
+
+FILE_TYPE_CHOICES = [
+    ('pdf', 'PDF'),
+    ('image', '图片'),
+    ('doc', '文档'),
+    ('code', '代码'),
+    ('other', '其他'),
+]
+
+EXT_TO_TYPE = {
+    '.pdf': 'pdf',
+    '.jpg': 'image', '.jpeg': 'image', '.png': 'image',
+    '.gif': 'image', '.webp': 'image', '.bmp': 'image', '.svg': 'image',
+    '.doc': 'doc', '.docx': 'doc', '.xls': 'doc', '.xlsx': 'doc',
+    '.ppt': 'doc', '.pptx': 'doc', '.txt': 'doc', '.md': 'doc', '.csv': 'doc',
+    '.py': 'code', '.js': 'code', '.ts': 'code', '.jsx': 'code', '.tsx': 'code',
+    '.java': 'code', '.c': 'code', '.cpp': 'code', '.cc': 'code',
+    '.h': 'code', '.hpp': 'code', '.go': 'code', '.rs': 'code',
+    '.sh': 'code', '.bash': 'code', '.zsh': 'code', '.html': 'code',
+    '.css': 'code', '.scss': 'code', '.json': 'code', '.yaml': 'code',
+    '.yml': 'code', '.toml': 'code', '.xml': 'code', '.sql': 'code',
+    '.r': 'code', '.rb': 'code', '.php': 'code', '.swift': 'code', '.kt': 'code',
+}
+
+
+class CloudFile(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='cloud_files')
+    name = models.CharField(max_length=255, verbose_name='文件名')
+    size = models.PositiveBigIntegerField(verbose_name='文件大小（字节）')
+    file_type = models.CharField(max_length=10, choices=FILE_TYPE_CHOICES, default='other', verbose_name='文件类型')
+    file = models.FileField(upload_to=cloud_upload_path, verbose_name='文件')
+    sha256 = models.CharField(max_length=64, blank=True, default='', verbose_name='SHA-256')
+    uploaded_at = models.DateTimeField(auto_now_add=True, verbose_name='上传时间')
+
+    class Meta:
+        verbose_name = '云盘文件'
+        verbose_name_plural = '云盘文件'
+        ordering = ['-uploaded_at']
+
+    def __str__(self):
+        return f'{self.user.email} – {self.name}'

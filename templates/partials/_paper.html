@@ -1,0 +1,1238 @@
+{% verbatim %}
+const typeset = (el) => {
+  if (!el || !window.MathJax || !window.MathJax.typesetPromise) return;
+  window.MathJax.typesetPromise([el]).catch(()=>{});
+};
+
+// ── Citation Chip 组件 ──
+function CitationChip({cite, onClick}) {
+  return (
+    <span className="cite-chip" onClick={onClick} title={`跳转到: ${cite.cite_key}`}>
+      <span style={{display:'inline-flex',alignItems:'center',gap:4}}>
+        <Icon name="file" size={12} />
+        {cite.lit_title ? cite.lit_title.slice(0,20) + (cite.lit_title.length>20?'…':'') : cite.file_ref}:L{cite.line_start}-{cite.line_end}
+      </span>
+    </span>
+  );
+}
+
+// ── Markdown+MathJax 渲染器 ──
+function MdRender({content, className='', style={}}) {
+  const ref = useRef(null);
+  const html = renderMd(content);
+  useEffect(() => { if (ref.current) typeset(ref.current); }, [content]);
+  return (
+    <div ref={ref} className={className} style={style}
+      dangerouslySetInnerHTML={{__html: html}} />
+  );
+}
+
+// ── 文献阅读器（带行号、高亮、公式渲染）──
+function LiteratureViewer({lit, highlightLines=null, onLineClick, onCreateNote}) {
+  const containerRef = useRef(null);
+  const [lines, setLines] = useState([]);
+  const [selRange, setSelRange] = useState(null);
+
+  useEffect(() => {
+    if (!lit?.content) { setLines([]); return; }
+    setLines(lit.content.split('\n'));
+  }, [lit?.id, lit?.content]);
+
+  useEffect(() => {
+    if (containerRef.current) typeset(containerRef.current);
+  }, [lines]);
+
+  useEffect(() => {
+    if (highlightLines && containerRef.current) {
+      const el = containerRef.current.querySelector(`[data-line="${highlightLines[0]}"]`);
+      if (el) el.scrollIntoView({behavior:'smooth', block:'center'});
+    }
+  }, [highlightLines]);
+
+  if (!lit) return <div className="empty"><h3>选择文献开始阅读</h3></div>;
+
+  const isHighlighted = (i) => {
+    if (!highlightLines) return false;
+    return i+1 >= highlightLines[0] && i+1 <= highlightLines[1];
+  };
+
+  return (
+    <div ref={containerRef} className="pl-viewer" style={{paddingLeft:60}}>
+      <div style={{marginBottom:20,paddingBottom:14,borderBottom:'1px solid var(--border)'}}>
+        <h2 style={{fontFamily:'var(--serif)',fontSize:20,color:'var(--gold2)',marginBottom:4}}>{lit.title}</h2>
+        {lit.authors && <div style={{fontSize:12,color:'var(--fg2)'}}>{lit.authors} {lit.year ? `(${lit.year})` : ''} {lit.journal ? `· ${lit.journal}` : ''}</div>}
+        <div style={{display:'flex',gap:8,marginTop:8,flexWrap:'wrap'}}>
+          <span style={{fontSize:10,padding:'2px 7px',borderRadius:4,background:'var(--bg4)',color:'var(--fg3)'}}>{lit.language === 'en' ? '英文' : lit.language === 'zh' ? '中文' : '混合'}</span>
+          <span style={{fontSize:10,padding:'2px 7px',borderRadius:4,background:'var(--bg4)',color:'var(--fg3)'}}>{lit.total_lines} 行</span>
+          {lit.is_indexed && <span style={{fontSize:10,padding:'2px 7px',borderRadius:4,background:'rgba(94,184,122,.15)',color:'var(--green)',display:'inline-flex',alignItems:'center',gap:4}}><Icon name="check" size={10} /> 已索引</span>}
+        </div>
+      </div>
+      {lines.map((line, i) => {
+        const lineNum = i + 1;
+        const hl = isHighlighted(i);
+        // Detect heading for structure
+        const isH1 = line.startsWith('# ');
+        const isH2 = line.startsWith('## ');
+        const isH3 = line.startsWith('### ');
+        return (
+          <div key={i} data-line={lineNum} className={`pl-line-anchor${hl?' hl':''}`}
+            style={{position:'relative', cursor: onLineClick ? 'pointer' : 'default'}}
+            onClick={() => onLineClick && onLineClick(lineNum, line)}>
+            <span className="pl-line-num" onClick={e => {
+              e.stopPropagation();
+              onCreateNote && onCreateNote(lineNum, lineNum, line);
+            }}>{lineNum}</span>
+            <MdRender content={line || '\u00A0'}
+              className={isH1?'':isH2?'':isH3?'':''}
+              style={{display:'block', minHeight:'1.5em'}} />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Token 统计迷你面板 ──
+function TokenMiniPanel({onRefresh}) {
+  const [stats, setStats] = useState(null);
+  const load = () => F(`${PA}/token-stats/`).then(setStats).catch(()=>{});
+  useEffect(() => { load(); }, []);
+  useEffect(() => { if(onRefresh) { onRefresh.current = load; } }, []);
+  if (!stats) return null;
+  return (
+    <div style={{padding:'8px 12px',borderTop:'1px solid var(--border)',background:'var(--bg2)'}}>
+      <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}>
+        <span style={{fontSize:10,color:'var(--fg3)',letterSpacing:1}}>TOKEN 用量</span>
+        <button onClick={load} style={{background:'none',color:'var(--fg3)',fontSize:9,padding:'1px 5px',border:'1px solid var(--border)',borderRadius:3,cursor:'pointer'}}>刷新</button>
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:4}}>
+        <div style={{background:'var(--bg3)',borderRadius:4,padding:'4px 6px',textAlign:'center'}}>
+          <div style={{fontFamily:'var(--mono)',fontSize:13,color:'var(--gold2)',fontWeight:500}}>{((stats.total_tokens||0)/1000).toFixed(1)}K</div>
+          <div style={{fontSize:9,color:'var(--fg3)'}}>总Token</div>
+        </div>
+        <div style={{background:'var(--bg3)',borderRadius:4,padding:'4px 6px',textAlign:'center'}}>
+          <div style={{fontFamily:'var(--mono)',fontSize:13,color:'var(--cyan)',fontWeight:500}}>{stats.prompt_count||0}</div>
+          <div style={{fontSize:9,color:'var(--fg3)'}}>提交次数</div>
+        </div>
+        <div style={{background:'var(--bg3)',borderRadius:4,padding:'4px 6px',textAlign:'center'}}>
+          <div style={{fontFamily:'var(--mono)',fontSize:11,color:'var(--blue)',fontWeight:500}}>{((stats.daily_input||0)/1000).toFixed(1)}K</div>
+          <div style={{fontSize:9,color:'var(--fg3)'}}>今日输入</div>
+        </div>
+        <div style={{background:'var(--bg3)',borderRadius:4,padding:'4px 6px',textAlign:'center'}}>
+          <div style={{fontFamily:'var(--mono)',fontSize:11,color:'var(--green)',fontWeight:500}}>{((stats.daily_output||0)/1000).toFixed(1)}K</div>
+          <div style={{fontSize:9,color:'var(--fg3)'}}>今日输出</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── 文献库 ──
+function LiteratureLibrary({project, onOpenLit, onRefresh}) {
+  const [lits, setLits] = useState([]);
+  const [showAdd, setShowAdd] = useState(false);
+  const [showImport, setShowImport] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [form, setForm] = useState({title:'',authors:'',year:'',journal:'',abstract:'',content:'',language:'zh'});
+  const [ocrProjects, setOcrProjects] = useState([]);
+  const [ocrForm, setOcrForm] = useState({ocr_project_id:'',title:'',authors:'',year:'',language:'en'});
+
+  const load = () => {
+    F(`${PA}/projects/${project.id}/literatures/`).then(setLits).catch(()=>{});
+  };
+  useEffect(() => { load(); }, [project.id]);
+
+  const addLit = async () => {
+    if (!form.title.trim()) return showAlert('请输入文献标题', '提示');
+    setLoading(true);
+    try {
+      await P(`${PA}/projects/${project.id}/literatures/`, form);
+      setShowAdd(false); setForm({title:'',authors:'',year:'',journal:'',abstract:'',content:'',language:'zh'});
+      load(); onRefresh && onRefresh();
+    } catch(e) { showAlert('添加失败: ' + e.message, '错误'); }
+    setLoading(false);
+  };
+
+  const loadOcrProjects = () => {
+    F(`${PA}/ocr-projects/`).then(setOcrProjects).catch(()=>{});
+  };
+
+  const importFromOcr = async () => {
+    if (!ocrForm.ocr_project_id) return showAlert('请选择OCR项目', '提示');
+    setLoading(true);
+    try {
+      await P(`${PA}/projects/${project.id}/literatures/import-ocr/`, ocrForm);
+      setShowImport(false); load(); onRefresh && onRefresh();
+    } catch(e) { showAlert('导入失败: ' + e.message, '错误'); }
+    setLoading(false);
+  };
+
+  const deleteLit = async (id) => {
+    const confirmed = await showConfirm('确认删除此文献？');
+    if (!confirmed) return;
+    try { await F(`${PA}/literatures/${id}/`, {method:'DELETE'}); load(); } catch(e) {}
+  };
+
+  const reindex = async (id, e) => {
+    e.stopPropagation();
+    try {
+      await P(`${PA}/literatures/${id}/reindex/`, {});
+      showAlert('正在重建索引，请稍候刷新', '提示');
+    } catch(e) { showAlert('操作失败', '错误'); }
+  };
+
+  return (
+    <div className="pl-fade">
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+        <h3 style={{fontFamily:'var(--serif)',fontSize:18}}>文献库</h3>
+        <div style={{display:'flex',gap:8}}>
+          <button className="btn btn-sm btn-s" onClick={() => { setShowImport(true); loadOcrProjects(); }}>
+            <span style={{display:'inline-flex',alignItems:'center',gap:6}}>
+              <Icon name="download" size={12} />
+              从OCR导入
+            </span>
+          </button>
+          <button className="btn btn-sm btn-p" onClick={() => setShowAdd(true)}>+ 添加文献</button>
+        </div>
+      </div>
+
+      {lits.length === 0 ? (
+        <div className="empty"><h3>暂无文献</h3><p>请添加文献或从OCR工作室导入</p></div>
+      ) : lits.map(lit => (
+        <div key={lit.id} className="card" style={{cursor:'pointer',marginBottom:10}}
+          onClick={() => onOpenLit(lit)}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:12}}>
+            <div style={{flex:1}}>
+              <div style={{fontFamily:'var(--serif)',fontSize:15,color:'var(--fg)',marginBottom:4}}>{lit.title}</div>
+              {lit.authors && <div style={{fontSize:12,color:'var(--fg2)'}}>{lit.authors} {lit.year ? `(${lit.year})` : ''}</div>}
+              <div style={{display:'flex',gap:6,marginTop:6,flexWrap:'wrap'}}>
+                <span style={{fontSize:10,padding:'2px 6px',borderRadius:3,background:'var(--bg4)',color:'var(--fg3)'}}>{lit.source_type === 'ocr' ? 'OCR' : lit.source_type === 'manual' ? '手动' : '上传'}</span>
+                <span style={{fontSize:10,padding:'2px 6px',borderRadius:3,background:'var(--bg4)',color:'var(--fg3)'}}>{lit.total_lines}行 / {lit.chunk_count}块</span>
+                {lit.is_indexed ? <span style={{fontSize:10,padding:'2px 6px',borderRadius:3,background:'rgba(94,184,122,.15)',color:'var(--green)',display:'inline-flex',alignItems:'center',gap:4}}><Icon name="check" size={10} /> 已索引</span>
+                  : <span style={{fontSize:10,padding:'2px 6px',borderRadius:3,background:'rgba(196,90,90,.15)',color:'var(--red)'}}>未索引</span>}
+              </div>
+            </div>
+            <div style={{display:'flex',gap:6,flexShrink:0}}>
+              {!lit.is_indexed && <button className="btn btn-sm btn-s" onClick={e => reindex(lit.id, e)}>建立索引</button>}
+              <button className="btn btn-sm btn-s" onClick={e => { e.stopPropagation(); deleteLit(lit.id); }} style={{color:'var(--red)'}}>删除</button>
+            </div>
+          </div>
+          <div style={{marginTop:8,fontFamily:'var(--mono)',fontSize:10,color:'var(--fg3)'}}>
+            <span style={{display:'inline-flex',alignItems:'center',gap:6}}>
+              <Icon name="link" size={11} />
+              {lit.file_ref}
+            </span>
+          </div>
+        </div>
+      ))}
+
+      {/* 添加文献对话框 */}
+      {showAdd && (
+        <div className="modal-ov" onClick={() => setShowAdd(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <h2>添加文献</h2>
+            <div className="fg"><label>标题 *</label><input value={form.title} onChange={e=>setForm({...form,title:e.target.value})} placeholder="论文/书籍标题" /></div>
+            <div className="g2">
+              <div className="fg"><label>作者</label><input value={form.authors} onChange={e=>setForm({...form,authors:e.target.value})} /></div>
+              <div className="fg"><label>年份</label><input value={form.year} onChange={e=>setForm({...form,year:e.target.value})} /></div>
+            </div>
+            <div className="fg"><label>期刊/来源</label><input value={form.journal} onChange={e=>setForm({...form,journal:e.target.value})} /></div>
+            <div className="fg"><label>摘要</label><textarea value={form.abstract} onChange={e=>setForm({...form,abstract:e.target.value})} rows={3} /></div>
+            <div className="fg"><label>语言</label>
+              <select value={form.language} onChange={e=>setForm({...form,language:e.target.value})}>
+                <option value="zh">中文</option><option value="en">英文</option><option value="mixed">混合</option>
+              </select>
+            </div>
+            <div className="fg"><label>全文内容（Markdown格式，支持公式）</label>
+              <textarea value={form.content} onChange={e=>setForm({...form,content:e.target.value})} rows={10} placeholder="粘贴论文全文（Markdown格式）..." />
+            </div>
+            <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}>
+              <button className="btn btn-s" onClick={() => setShowAdd(false)}>取消</button>
+              <button className="btn btn-p" onClick={addLit} disabled={loading}>{loading?'添加中...':'添加文献'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* OCR导入对话框 */}
+      {showImport && (
+        <div className="modal-ov" onClick={() => setShowImport(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <h2>从OCR工作室导入</h2>
+            <p style={{fontSize:12,color:'var(--fg2)',marginBottom:12}}>选择已完成OCR的项目，系统将自动合并所有页面内容并建立索引</p>
+            <div className="fg"><label>OCR项目 *</label>
+              <select value={ocrForm.ocr_project_id} onChange={e=>setOcrForm({...ocrForm,ocr_project_id:e.target.value})}>
+                <option value="">-- 选择OCR项目 --</option>
+                {ocrProjects.filter(p=>p.can_import).map(p => (
+                  <option key={p.id} value={p.id}>{p.name} ({p.done_pages}/{p.total_pages}页)</option>
+                ))}
+              </select>
+            </div>
+            <div className="fg"><label>文献标题（留空则使用文件名）</label><input value={ocrForm.title} onChange={e=>setOcrForm({...ocrForm,title:e.target.value})} /></div>
+            <div className="g2">
+              <div className="fg"><label>作者</label><input value={ocrForm.authors} onChange={e=>setOcrForm({...ocrForm,authors:e.target.value})} /></div>
+              <div className="fg"><label>年份</label><input value={ocrForm.year} onChange={e=>setOcrForm({...ocrForm,year:e.target.value})} /></div>
+            </div>
+            <div className="fg"><label>语言</label>
+              <select value={ocrForm.language} onChange={e=>setOcrForm({...ocrForm,language:e.target.value})}>
+                <option value="en">英文</option><option value="zh">中文</option><option value="mixed">混合</option>
+              </select>
+            </div>
+            <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}>
+              <button className="btn btn-s" onClick={() => setShowImport(false)}>取消</button>
+              <button className="btn btn-p" onClick={importFromOcr} disabled={loading}>{loading?'导入中...':'导入文献'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── 阅读台：文献+笔记 双栏 ──
+function ReadingDesk({project, lit, onCiteJump, user}) {
+  const [notes, setNotes] = useState([]);
+  const [hlLines, setHlLines] = useState(null);
+  const [noteModal, setNoteModal] = useState(null);
+  const [noteForm, setNoteForm] = useState({content:'',note_type:'annotation',title:''});
+  const [litDetail, setLitDetail] = useState(null);
+
+  useEffect(() => {
+    if (lit) {
+      F(`${PA}/literatures/${lit.id}/`).then(setLitDetail).catch(()=>{});
+      F(`${PA}/projects/${project.id}/notes/`).then(ns => setNotes(ns.filter(n=>n.lit_id===lit.id))).catch(()=>{});
+    }
+  }, [lit?.id]);
+
+  const openNote = (lineStart, lineEnd, text) => {
+    setNoteModal({lineStart, lineEnd, text});
+    setNoteForm({content:'', note_type:'annotation', title:''});
+  };
+
+  const saveNote = async () => {
+    if (!noteForm.content.trim()) return;
+    try {
+      await P(`${PA}/projects/${project.id}/notes/`, {
+        lit_id: lit.id,
+        note_type: noteForm.note_type,
+        title: noteForm.title,
+        content: noteForm.content,
+        cited_line_start: noteModal.lineStart,
+        cited_line_end: noteModal.lineEnd,
+        cited_text: noteModal.text,
+      });
+      setNoteModal(null);
+      F(`${PA}/projects/${project.id}/notes/`).then(ns => setNotes(ns.filter(n=>n.lit_id===lit.id)));
+    } catch(e) { showAlert('保存失败', '错误'); }
+  };
+
+  const deleteNote = async (id) => {
+    const confirmed = await showConfirm('删除此笔记？');
+    if (!confirmed) return;
+    try {
+      await F(`${PA}/notes/${id}/`, {method:'DELETE'});
+      setNotes(ns => ns.filter(n=>n.id!==id));
+    } catch(e) {}
+  };
+
+  const NOTE_TYPE_LABELS = {annotation:'标注',summary:'摘要',comment:'评论',question:'疑问',insight:'洞见',connection:'关联'};
+  const NOTE_COLORS = {annotation:'var(--gold)',summary:'var(--blue)',comment:'var(--fg2)',question:'var(--cyan)',insight:'var(--green)',connection:'var(--purple)'};
+
+  if (!lit) return (
+    <div className="empty" style={{paddingTop:80}}>
+      <h3>请先选择文献</h3>
+      <p>从文献库中选择一篇文献开始阅读</p>
+    </div>
+  );
+
+  return (
+    <div className="pl-split">
+      {/* 左：文献内容 */}
+      <div className="pl-lit-panel">
+        <div style={{padding:'8px 16px',borderBottom:'1px solid var(--border)',display:'flex',alignItems:'center',gap:8,background:'var(--bg2)',flexShrink:0}}>
+          <span style={{fontSize:12,color:'var(--fg2)',flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{lit.title}</span>
+          {hlLines && (
+            <span className="cite-chip" style={{cursor:'default'}}>L{hlLines[0]}-{hlLines[1]}</span>
+          )}
+          {hlLines && <button className="btn btn-sm btn-s" onClick={() => setHlLines(null)}>清除高亮</button>}
+        </div>
+        <LiteratureViewer
+          lit={litDetail}
+          highlightLines={hlLines}
+          onLineClick={(lineNum, text) => openNote(lineNum, lineNum, text)}
+          onCreateNote={openNote}
+        />
+      </div>
+
+      {/* 右：笔记面板 */}
+      <div className="pl-side-panel">
+        <div style={{padding:'12px 14px',borderBottom:'1px solid var(--border)',fontWeight:500,fontSize:13,color:'var(--fg2)'}}>
+          <span style={{display:'inline-flex',alignItems:'center',gap:6}}>
+            <Icon name="note" size={12} />
+            笔记 ({notes.length})
+          </span>
+        </div>
+        <div style={{flex:1,overflow:'auto',padding:12}}>
+          {notes.length === 0 && (
+            <div style={{textAlign:'center',padding:30,color:'var(--fg3)',fontSize:12}}>
+              点击文献行号 (①) 创建标注笔记
+            </div>
+          )}
+          {notes.map(note => (
+            <div key={note.id} className={`pl-note-item ${note.note_type.slice(0,3)}`}
+              style={{borderLeftColor: NOTE_COLORS[note.note_type]||'var(--gold)'}}
+              onClick={() => note.cited_line_start && setHlLines([note.cited_line_start, note.cited_line_end||note.cited_line_start])}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:4}}>
+                <span style={{fontSize:10,color:NOTE_COLORS[note.note_type]||'var(--gold)',fontWeight:500}}>{NOTE_TYPE_LABELS[note.note_type]||note.note_type}</span>
+                <div style={{display:'flex',gap:4,alignItems:'center'}}>
+                  {note.citation && <span className="cite-chip" style={{fontSize:9}}>{note.citation}</span>}
+                  <button onClick={e=>{e.stopPropagation();deleteNote(note.id);}} style={{background:'none',border:'none',color:'var(--fg3)',cursor:'pointer',fontSize:12,padding:'0 2px'}}>
+                    <Icon name="x" size={12} />
+                  </button>
+                </div>
+              </div>
+              {note.cited_text && <div style={{fontSize:11,color:'var(--fg3)',fontStyle:'italic',marginBottom:4,borderLeft:'2px solid var(--border2)',paddingLeft:6}}>{note.cited_text.slice(0,100)}</div>}
+              <div style={{fontSize:12,color:'var(--fg)',lineHeight:1.5}}>{note.content}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 创建笔记对话框 */}
+      {noteModal && (
+        <div className="modal-ov" onClick={() => setNoteModal(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{maxWidth:480}}>
+            <h2>创建笔记</h2>
+            {noteModal.text && (
+              <div style={{background:'var(--bg3)',borderRadius:6,padding:'8px 12px',marginBottom:12,fontSize:12,color:'var(--fg2)',borderLeft:'3px solid var(--gold)',fontStyle:'italic'}}>
+                {noteModal.text.slice(0,200)}
+              </div>
+            )}
+            <div style={{fontSize:11,color:'var(--fg3)',marginBottom:12,fontFamily:'var(--mono)'}}>
+              引用位置: L{noteModal.lineStart}{noteModal.lineEnd !== noteModal.lineStart ? `-${noteModal.lineEnd}` : ''}
+            </div>
+            <div className="fg"><label>笔记类型</label>
+              <select value={noteForm.note_type} onChange={e=>setNoteForm({...noteForm,note_type:e.target.value})}>
+                {Object.entries(NOTE_TYPE_LABELS).map(([k,v]) => <option key={k} value={k}>{v}</option>)}
+              </select>
+            </div>
+            <div className="fg"><label>标题（可选）</label><input value={noteForm.title} onChange={e=>setNoteForm({...noteForm,title:e.target.value})} /></div>
+            <div className="fg"><label>笔记内容</label><textarea value={noteForm.content} onChange={e=>setNoteForm({...noteForm,content:e.target.value})} rows={5} placeholder="写下你的思考、理解或问题..." autoFocus /></div>
+            <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}>
+              <button className="btn btn-s" onClick={() => setNoteModal(null)}>取消</button>
+              <button className="btn btn-p" onClick={saveNote}>保存笔记</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── 知识检索 ──
+function KnowledgeSearch({project, onJumpToLit}) {
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [topK, setTopK] = useState(10);
+
+  const search = async () => {
+    if (!query.trim()) return;
+    setLoading(true);
+    try {
+      const res = await P(`${PA}/projects/${project.id}/search/`, {query, top_k: topK});
+      setResults(res.results || []);
+    } catch(e) { showAlert('检索失败: ' + e.message, '错误'); }
+    setLoading(false);
+  };
+
+  const explore = async () => {
+    if (!query.trim()) return;
+    setLoading(true);
+    try {
+      const res = await P(`${PA}/projects/${project.id}/explore/`, {query, depth: 2});
+      // Show as results
+      const chunks = [];
+      (res.layers||[]).forEach(l => l.chunks && chunks.push(...l.chunks.map(c => ({...c, score: c.score||0.5, preview: c.preview||''}))));
+      setResults(chunks);
+      if (res.summary) showAlert('探索摘要:\n\n' + res.summary, '探索结果');
+    } catch(e) { showAlert('探索失败: ' + e.message, '错误'); }
+    setLoading(false);
+  };
+
+  const maxScore = results.length > 0 ? Math.max(...results.map(r=>r.score||0)) : 1;
+
+  return (
+    <div className="pl-fade">
+      <h3 style={{fontFamily:'var(--serif)',fontSize:18,marginBottom:16}}>知识检索</h3>
+      <div style={{display:'flex',gap:8,marginBottom:16}}>
+        <input value={query} onChange={e=>setQuery(e.target.value)}
+          onKeyDown={e=>e.key==='Enter'&&search()}
+          placeholder="输入研究问题或关键词..."
+          style={{flex:1}} />
+        <select value={topK} onChange={e=>setTopK(Number(e.target.value))} style={{width:80}}>
+          {[5,10,20,30].map(k=><option key={k} value={k}>{k}条</option>)}
+        </select>
+              <button className="btn btn-p" onClick={search} disabled={loading} style={{display:'inline-flex',alignItems:'center',gap:6}}>
+                <Icon name="search" size={12} />
+                {loading?'检索中...':'检索'}
+              </button>
+              <button className="btn btn-s" onClick={explore} disabled={loading} title="深度探索：从查询出发，逐层展开相关概念"
+                style={{display:'inline-flex',alignItems:'center',gap:6}}>
+                <Icon name="map" size={12} />
+                探索
+              </button>
+      </div>
+
+      {results.length > 0 && (
+        <div style={{marginBottom:8,fontSize:12,color:'var(--fg3)'}}>找到 {results.length} 个相关片段</div>
+      )}
+
+      {results.map((r, i) => (
+        <div key={i} className="pl-search-result pl-fade" onClick={() => onJumpToLit && onJumpToLit(r.lit_id, r.line_start, r.line_end)}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:6}}>
+            <div style={{flex:1}}>
+              <div style={{fontFamily:'var(--serif)',fontSize:13,color:'var(--fg)',marginBottom:2}}>{r.lit_title}</div>
+              {r.heading && <div style={{fontSize:10,color:'var(--gold-dim)',marginBottom:4}}>§ {r.heading}</div>}
+            </div>
+            <span className="cite-chip" style={{marginLeft:8,flexShrink:0}}>{r.cite_key}</span>
+          </div>
+          <div style={{fontSize:12,color:'var(--fg2)',lineHeight:1.6}}>{r.preview}</div>
+          <div className="score-bar" style={{marginTop:8}}>
+            <div className="score-fill" style={{width:`${Math.round((r.score/maxScore)*100)}%`}} />
+          </div>
+          <div style={{display:'flex',justify:'space-between',marginTop:4,gap:8}}>
+            <span style={{fontSize:10,color:'var(--fg3)',fontFamily:'var(--mono)'}}>{r.cite_key}</span>
+            <span style={{fontSize:10,color:'var(--fg3)'}}>{r.chunk_type}</span>
+          </div>
+        </div>
+      ))}
+
+      {!loading && results.length === 0 && query && (
+        <div className="empty"><h3>未找到结果</h3><p>尝试换一个查询词，或先确认文献已建立索引</p></div>
+      )}
+    </div>
+  );
+}
+
+// ── 研究讨论 ──
+function ResearchChat({project, user, onTokenRefresh}) {
+  const [convs, setConvs] = useState([]);
+  const [curConv, setCurConv] = useState(null);
+  const [msgs, setMsgs] = useState([]);
+  const [inp, setInp] = useState('');
+  const [streaming, setStreaming] = useState(false);
+  const [streamText, setStreamText] = useState('');
+  const [curCitations, setCurCitations] = useState([]);
+  const [retrieving, setRetrieving] = useState(false);
+  const msgEndRef = useRef(null);
+  const msgRef = useRef(null);
+
+  useEffect(() => { loadConvs(); }, [project.id]);
+  useEffect(() => { msgEndRef.current?.scrollIntoView({behavior:'smooth'}); }, [msgs, streamText]);
+  useEffect(() => {
+    if (curConv) {
+      F(`${PA}/conversations/${curConv.id}/`).then(d => { setMsgs(d.messages || []); }).catch(()=>{});
+    }
+  }, [curConv?.id]);
+
+  useEffect(() => {
+    if (msgRef.current) typeset(msgRef.current);
+  }, [msgs, streamText]);
+
+  const loadConvs = () => {
+    F(`${PA}/projects/${project.id}/conversations/`).then(setConvs).catch(()=>{});
+  };
+
+  const newConv = async () => {
+    const c = await P(`${PA}/projects/${project.id}/conversations/`, {title:'新对话'});
+    setCurConv(c); setMsgs([]); loadConvs();
+  };
+
+  const send = async () => {
+    if (!inp.trim() || streaming) return;
+    if (!curConv) { showAlert('请先创建对话', '提示'); return; }
+    const m = inp.trim(); setInp('');
+    setMsgs(prev => [...prev, {role:'user', content:m, citations:[]}]);
+    setStreaming(true); setStreamText(''); setCurCitations([]); setRetrieving(true);
+
+    const token = localStorage.getItem('mf_token');
+    const hdrs = {'Content-Type':'application/json', 'Authorization': `Token ${token}`};
+
+    try {
+      const resp = await fetch(`${PA}/conversations/${curConv.id}/chat/`, {
+        method:'POST', headers:hdrs, body:JSON.stringify({message:m})
+      });
+      if (!resp.ok) throw new Error(await resp.text());
+      const reader = resp.body.getReader(); const dec = new TextDecoder();
+      let buf=''; let full=''; let cites=[];
+      while(true) {
+        const {done, value} = await reader.read(); if(done) break;
+        buf += dec.decode(value, {stream:true});
+        const lns = buf.split('\n'); buf = lns.pop();
+        for(const ln of lns) {
+          if(!ln.startsWith('data: ')) continue;
+          let ev; try{ ev=JSON.parse(ln.slice(6)); }catch{ continue; }
+          if(ev.type==='retrieval_start') { setRetrieving(true); }
+          else if(ev.type==='citations') { cites=ev.citations||[]; setCurCitations(cites); setRetrieving(false); }
+          else if(ev.type==='chunk') { full+=ev.text; setStreamText(full); }
+          else if(ev.type==='done') {
+            setMsgs(prev => [...prev, {role:'assistant', content:full, citations:cites}]);
+            setStreamText(''); onTokenRefresh && onTokenRefresh();
+          }
+        }
+      }
+    } catch(e) {
+      setMsgs(prev=>[...prev,{role:'assistant',content:`错误: ${e.message}`,citations:[]}]);
+      setStreamText('');
+    }
+    setStreaming(false); setRetrieving(false);
+  };
+
+  return (
+    <div style={{display:'flex',height:'calc(100vh - 88px)',overflow:'hidden'}}>
+      {/* 对话列表侧栏 */}
+      <div style={{width:180,borderRight:'1px solid var(--border)',display:'flex',flexDirection:'column',flexShrink:0}}>
+        <div style={{padding:'10px 8px',borderBottom:'1px solid var(--border)'}}>
+          <button className="btn btn-p btn-sm" style={{width:'100%'}} onClick={newConv}>+ 新对话</button>
+        </div>
+        <div style={{flex:1,overflow:'auto',padding:'6px 4px'}}>
+          {convs.map(c => (
+            <div key={c.id} className={`ni${curConv?.id===c.id?' on':''}`} onClick={() => setCurConv(c)} style={{marginBottom:2}}>
+              <i><Icon name="chat" size={12}/></i>
+              <span style={{flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',fontSize:12}}>{c.title}</span>
+              <span style={{fontSize:10,color:'var(--fg3)'}}>{c.msg_count}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 聊天区 */}
+      <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>
+        {!curConv ? (
+          <div className="empty" style={{paddingTop:80}}>
+            <h3>开始研究对话</h3>
+            <p>点击「新对话」，Agent 将基于您的文献库回答问题</p>
+            <div style={{marginTop:16,padding:16,background:'var(--bg3)',borderRadius:8,maxWidth:400,margin:'16px auto 0',textAlign:'left'}}>
+              <div style={{fontSize:12,color:'var(--gold2)',fontWeight:500,marginBottom:8,display:'inline-flex',alignItems:'center',gap:6}}>
+                <Icon name="bolt" size={12} />
+                零幻觉保证
+              </div>
+              <div style={{fontSize:12,color:'var(--fg2)',lineHeight:1.7}}>Agent 只从您导入的文献库中检索答案，每个观点必须附带精确引用（格式：文件名:L行号-行号），绝不凭空推测。</div>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div ref={msgRef} style={{flex:1,overflow:'auto',padding:16,display:'flex',flexDirection:'column',gap:12}}>
+              {msgs.length === 0 && (
+                <div style={{textAlign:'center',padding:40,color:'var(--fg3)'}}>
+                  <div style={{marginBottom:8}}><Icon name="search" size={24} /></div>
+                  <div>提问后，Agent 将自动检索文献库并给出有引用的回答</div>
+                </div>
+              )}
+              {msgs.map((m, i) => (
+                <div key={i} className={`cht-m${m.role==='user'?' u':' a'}`}>
+                  <div className={`pl-msg-bubble ${m.role}`}>
+                    {m.role === 'assistant' ? (
+                      <MdRender content={m.content} />
+                    ) : (
+                      <span>{m.content}</span>
+                    )}
+                  </div>
+                  {m.role === 'assistant' && m.citations && m.citations.length > 0 && (
+                    <div style={{display:'flex',flexWrap:'wrap',gap:4,marginTop:6,paddingLeft:4}}>
+                      <span style={{fontSize:10,color:'var(--fg3)'}}>引用:</span>
+                      {m.citations.map((c,ci) => (
+                        <CitationChip key={ci} cite={c} onClick={() => {}} />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+
+              {/* 检索状态 */}
+              {retrieving && (
+                <div style={{display:'flex',alignItems:'center',gap:8,color:'var(--fg3)',fontSize:12}}>
+                  <div className="load" style={{padding:0}}/>
+                  <span>正在检索文献库...</span>
+                </div>
+              )}
+
+              {/* 当前引用预览 */}
+              {curCitations.length > 0 && !retrieving && (
+                <div style={{padding:'8px 12px',background:'rgba(90,138,196,.08)',borderRadius:6,border:'1px solid rgba(90,138,196,.2)'}}>
+                <div style={{fontSize:10,color:'var(--blue)',marginBottom:6,display:'inline-flex',alignItems:'center',gap:6}}>
+                  <Icon name="link" size={11} />
+                  检索到的文献片段
+                </div>
+                  <div style={{display:'flex',flexWrap:'wrap',gap:4}}>
+                    {curCitations.map((c,i) => <CitationChip key={i} cite={c} />)}
+                  </div>
+                </div>
+              )}
+
+              {/* 流式输出 */}
+              {streamText && (
+                <div className="cht-m a">
+                  <div className="pl-msg-bubble assistant">
+                    <MdRender content={streamText} />
+                    <span style={{display:'inline-block',width:6,height:14,background:'var(--gold)',marginLeft:2,verticalAlign:'middle',animation:'blink 1s infinite'}} />
+                  </div>
+                </div>
+              )}
+              <div ref={msgEndRef} />
+            </div>
+
+            <div style={{padding:'10px 14px',borderTop:'1px solid var(--border)',display:'flex',gap:8}}>
+              <textarea value={inp} onChange={e=>setInp(e.target.value)}
+                onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}}}
+                placeholder="提问（回车发送，Shift+回车换行）&#10;例：这些文献对XX问题的核心观点是什么？"
+                style={{flex:1,resize:'none',minHeight:64,maxHeight:120,fontSize:13,lineHeight:1.5}} />
+              <button className={`btn btn-p${streaming?' generating':''}`} onClick={send} disabled={streaming} style={{alignSelf:'flex-end',padding:'10px 16px'}}>
+                {streaming ? '...' : '发送'}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── 写作台 ──
+function WritingDesk({project, user, onTokenRefresh}) {
+  const [drafts, setDrafts] = useState([]);
+  const [curDraft, setCurDraft] = useState(null);
+  const [content, setContent] = useState('');
+  const [preview, setPreview] = useState(false);
+  const [assistInp, setAssistInp] = useState('');
+  const [assisting, setAssisting] = useState(false);
+  const [assistResult, setAssistResult] = useState('');
+  const [citations, setCitations] = useState([]);
+  const [dirty, setDirty] = useState(false);
+  const previewRef = useRef(null);
+
+  useEffect(() => { loadDrafts(); }, [project.id]);
+  useEffect(() => { if(preview && previewRef.current) typeset(previewRef.current); }, [preview, content]);
+
+  const loadDrafts = () => {
+    F(`${PA}/projects/${project.id}/drafts/`).then(setDrafts).catch(()=>{});
+  };
+
+  const newDraft = async () => {
+    const title = prompt('草稿标题:');
+    if (!title?.trim()) return;
+    const d = await P(`${PA}/projects/${project.id}/drafts/`, {title: title.trim()});
+    setCurDraft(d); setContent(''); setDirty(false); loadDrafts();
+  };
+
+  const selectDraft = async (d) => {
+    const full = await F(`${PA}/drafts/${d.id}/`);
+    setCurDraft(full); setContent(full.content||''); setDirty(false);
+  };
+
+  const saveDraft = async () => {
+    if (!curDraft) return;
+    await U(`${PA}/drafts/${curDraft.id}/`, {content});
+    setDirty(false);
+  };
+
+  const requestAssist = async () => {
+    if (!curDraft || !assistInp.trim()) return;
+    setAssisting(true); setAssistResult(''); setCitations([]);
+
+    const token = localStorage.getItem('mf_token');
+    const hdrs = {'Content-Type':'application/json','Authorization':`Token ${token}`};
+    try {
+      const resp = await fetch(`${PA}/drafts/${curDraft.id}/assist/`, {
+        method:'POST', headers:hdrs,
+        body:JSON.stringify({instruction:assistInp, section_context:content.slice(-800)})
+      });
+      if (!resp.ok) throw new Error(await resp.text());
+      const reader = resp.body.getReader(); const dec = new TextDecoder();
+      let buf=''; let full='';
+      while(true) {
+        const {done, value} = await reader.read(); if(done) break;
+        buf += dec.decode(value,{stream:true});
+        const lns = buf.split('\n'); buf = lns.pop();
+        for(const ln of lns) {
+          if(!ln.startsWith('data: ')) continue;
+          let ev; try{ ev=JSON.parse(ln.slice(6)); }catch{ continue; }
+          if(ev.type==='citations') { setCitations(ev.citations||[]); }
+          else if(ev.type==='chunk') { full+=ev.text; setAssistResult(full); }
+          else if(ev.type==='done') { onTokenRefresh && onTokenRefresh(); }
+        }
+      }
+    } catch(e) { setAssistResult('错误: ' + e.message); }
+    setAssisting(false);
+  };
+
+  const insertResult = () => {
+    if (!assistResult) return;
+    setContent(c => c + '\n\n' + assistResult);
+    setAssistResult(''); setCitations([]); setDirty(true);
+  };
+
+  return (
+    <div style={{display:'flex',height:'calc(100vh - 88px)',overflow:'hidden'}}>
+      {/* 草稿列表 */}
+      <div style={{width:180,borderRight:'1px solid var(--border)',display:'flex',flexDirection:'column',flexShrink:0}}>
+        <div style={{padding:'10px 8px',borderBottom:'1px solid var(--border)'}}>
+          <button className="btn btn-p btn-sm" style={{width:'100%'}} onClick={newDraft}>+ 新草稿</button>
+        </div>
+        <div style={{flex:1,overflow:'auto',padding:'6px 4px'}}>
+          {drafts.map(d => (
+            <div key={d.id} className={`ni${curDraft?.id===d.id?' on':''}`} onClick={()=>selectDraft(d)} style={{marginBottom:2}}>
+              <i><Icon name="pen" size={12}/></i>
+              <span style={{flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',fontSize:12}}>{d.title}</span>
+              <span style={{fontSize:10,color:'var(--fg3)'}}>{d.word_count}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 写作区 */}
+      {!curDraft ? (
+        <div className="empty" style={{flex:1,paddingTop:80}}>
+          <h3>写作台</h3>
+          <p>创建或选择草稿，AI 辅助写作将自动附带文献引用</p>
+        </div>
+      ) : (
+        <div style={{flex:1,display:'flex',overflow:'hidden'}}>
+          {/* 编辑器 */}
+          <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>
+            <div style={{padding:'8px 14px',borderBottom:'1px solid var(--border)',display:'flex',alignItems:'center',gap:8,background:'var(--bg2)',flexShrink:0}}>
+              <span style={{flex:1,fontSize:13,fontWeight:500}}>{curDraft.title}</span>
+              {dirty && <span style={{fontSize:11,color:'var(--gold)'}}>● 未保存</span>}
+              <button className="btn btn-sm btn-s" onClick={() => setPreview(p=>!p)}>{preview?'编辑':'预览'}</button>
+              <button className="btn btn-sm btn-p" onClick={saveDraft}>保存</button>
+            </div>
+            {preview ? (
+              <div ref={previewRef} className="pl-viewer" style={{flex:1,overflow:'auto',padding:24}}>
+                <MdRender content={content} />
+              </div>
+            ) : (
+              <textarea className="pl-draft-ed" style={{flex:1,borderRadius:0,border:'none',borderBottom:'1px solid var(--border)'}}
+                value={content} onChange={e=>{setContent(e.target.value);setDirty(true);}}
+                placeholder="在此写作... 支持 Markdown 和 LaTeX 公式（$ ... $ 或 $$ ... $$）" />
+            )}
+          </div>
+
+          {/* AI辅助侧栏 */}
+          <div className="pl-side-panel" style={{borderLeft:'1px solid var(--border)'}}>
+            <div style={{padding:'12px 14px',borderBottom:'1px solid var(--border)',fontSize:13,fontWeight:500,color:'var(--fg2)'}}>
+              <span style={{display:'inline-flex',alignItems:'center',gap:6}}>
+                <Icon name="bot" size={13} />
+                AI写作辅助
+              </span>
+            </div>
+            <div style={{flex:1,overflow:'auto',padding:12}}>
+              <div style={{fontSize:12,color:'var(--fg3)',marginBottom:12,lineHeight:1.6}}>
+                AI 将从文献库检索相关内容，生成带精确引用的写作建议
+              </div>
+              <textarea value={assistInp} onChange={e=>setAssistInp(e.target.value)}
+                placeholder="例：分析XX方法的优缺点，或：概述目前研究现状..."
+                style={{width:'100%',minHeight:80,fontSize:12,resize:'vertical',marginBottom:8}} />
+              <button className={`btn btn-p btn-sm${assisting?' generating':''}`} onClick={requestAssist} disabled={assisting} style={{width:'100%',marginBottom:12}}>
+                {assisting ? '生成中...' : '生成带引用的内容'}
+              </button>
+
+              {citations.length > 0 && (
+                <div style={{marginBottom:10}}>
+                  <div style={{fontSize:10,color:'var(--fg3)',marginBottom:4}}>检索到的引用:</div>
+                  <div style={{display:'flex',flexWrap:'wrap',gap:4}}>
+                    {citations.map((c,i) => <CitationChip key={i} cite={c} />)}
+                  </div>
+                </div>
+              )}
+
+              {assistResult && (
+                <div>
+                  <div style={{fontSize:10,color:'var(--green)',marginBottom:6,display:'inline-flex',alignItems:'center',gap:4}}><Icon name="check" size={10} /> 生成结果</div>
+                  <div style={{background:'var(--bg3)',borderRadius:6,padding:10,fontSize:12,lineHeight:1.6,marginBottom:8,maxHeight:300,overflow:'auto',color:'var(--fg)'}}>
+                    <MdRender content={assistResult} />
+                  </div>
+                  <button className="btn btn-s btn-sm" style={{width:'100%'}} onClick={insertResult}>↓ 插入到草稿</button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── 启发灯塔 ──
+function IdeaLighthouse({project, user, onTokenRefresh}) {
+  const [ideas, setIdeas] = useState([]);
+  const [generating, setGenerating] = useState(false);
+  const [focusQuery, setFocusQuery] = useState('');
+
+  const IDEA_LABELS = {gap:'研究空白',contradiction:'文献矛盾',extension:'扩展方向',method:'方法创新',connection:'跨领域',hypothesis:'研究假设'};
+  const IDEA_COLORS = {gap:'var(--cyan)',contradiction:'var(--red)',extension:'var(--green)',method:'var(--gold)',connection:'var(--purple)',hypothesis:'var(--blue)'};
+
+  useEffect(() => { loadIdeas(); }, [project.id]);
+
+  const loadIdeas = () => {
+    F(`${PA}/projects/${project.id}/ideas/`).then(setIdeas).catch(()=>{});
+  };
+
+  const generate = async () => {
+    setGenerating(true);
+    try {
+      const res = await P(`${PA}/projects/${project.id}/ideas/generate/`, {focus_query: focusQuery});
+      setIdeas(prev => [...(res.ideas||[]).map(i=>({...i})), ...prev]);
+      onTokenRefresh && onTokenRefresh();
+    } catch(e) { showAlert('生成失败: ' + e.message, '错误'); }
+    setGenerating(false);
+  };
+
+  const deleteIdea = async (id) => {
+    try {
+      await F(`${PA}/ideas/${id}/`, {method:'DELETE'});
+      setIdeas(prev => prev.filter(i=>i.id!==id));
+    } catch(e) {}
+  };
+
+  const starIdea = async (id, starred) => {
+    try {
+      await U(`${PA}/ideas/${id}/`, {is_starred: !starred});
+      setIdeas(prev => prev.map(i => i.id===id ? {...i,is_starred:!starred} : i));
+    } catch(e) {}
+  };
+
+  return (
+    <div className="pl-fade">
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+        <h3 style={{fontFamily:'var(--serif)',fontSize:18}}>启发灯塔</h3>
+        <span style={{fontSize:12,color:'var(--fg3)'}}>基于文献库的研究灵感（必须有文献依据）</span>
+      </div>
+
+      <div className="card" style={{marginBottom:20,borderColor:'var(--gold-dim)'}}>
+        <div style={{fontSize:13,color:'var(--gold2)',fontWeight:500,marginBottom:8,display:'inline-flex',alignItems:'center',gap:6}}>
+          <Icon name="alert" size={12} />
+          设计原则
+        </div>
+        <div style={{fontSize:12,color:'var(--fg2)',lineHeight:1.7}}>
+          启发灯塔的所有灵感均来自您的文献库，每条灵感必须附带具体的文献依据。Agent 不会天马行空，只会在现有文献基础上发现研究机会。
+        </div>
+      </div>
+
+      <div style={{display:'flex',gap:8,marginBottom:20}}>
+        <input value={focusQuery} onChange={e=>setFocusQuery(e.target.value)}
+          placeholder="聚焦方向（留空则基于整个项目）..."
+          style={{flex:1}} />
+        <button className={`btn btn-p${generating?' generating':''}`} onClick={generate} disabled={generating}
+          style={{display:'inline-flex',alignItems:'center',gap:6}}>
+          <Icon name="spark" size={12} />
+          {generating ? '分析中...' : '生成灵感'}
+        </button>
+      </div>
+
+      {ideas.length === 0 && !generating && (
+        <div className="empty"><h3>暂无灵感</h3><p>点击「生成灵感」，Agent 将分析文献库寻找研究机会</p></div>
+      )}
+
+      {ideas.map(idea => (
+        <div key={idea.id} className={`pl-idea-card ${idea.idea_type}`}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:8}}>
+            <div>
+              <span style={{fontSize:10,padding:'2px 7px',borderRadius:4,background:`rgba(128,128,128,.15)`,color:IDEA_COLORS[idea.idea_type]||'var(--fg2)',fontWeight:500,marginRight:6}}>
+                {IDEA_LABELS[idea.idea_type]||idea.idea_type}
+              </span>
+              <span style={{fontFamily:'var(--serif)',fontSize:15,color:'var(--fg)'}}>{idea.title}</span>
+            </div>
+            <div style={{display:'flex',gap:6,flexShrink:0}}>
+              <button onClick={() => starIdea(idea.id, idea.is_starred)} style={{background:'none',border:'none',cursor:'pointer',color:idea.is_starred?'var(--gold)':'var(--fg3)'}}>
+                <Icon name="star" size={14} style={{opacity: idea.is_starred ? 1 : 0.4}} />
+              </button>
+              <button onClick={() => deleteIdea(idea.id)} style={{background:'none',border:'none',cursor:'pointer',fontSize:13,color:'var(--fg3)'}}>
+                <Icon name="x" size={12} />
+              </button>
+            </div>
+          </div>
+          <div style={{fontSize:13,color:'var(--fg2)',lineHeight:1.7,marginBottom:8}}>{idea.description}</div>
+          {idea.evidence_summary && (
+            <div style={{fontSize:11,color:'var(--fg3)',borderTop:'1px solid var(--border)',paddingTop:8,marginTop:4,lineHeight:1.6}}>
+              <span style={{color:'var(--gold-dim)'}}>文献依据: </span>
+              {idea.evidence_summary}
+            </div>
+          )}
+          {idea.evidence_chunks && idea.evidence_chunks.length > 0 && (
+            <div style={{display:'flex',flexWrap:'wrap',gap:4,marginTop:6}}>
+              {idea.evidence_chunks.map((c,i) => (
+                <span key={i} className="cite-chip">{c.cite}</span>
+              ))}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── 项目笔记汇总 ──
+function NotesOverview({project, onJumpToLit}) {
+  const [notes, setNotes] = useState([]);
+  const NOTE_TYPE_LABELS = {annotation:'标注',summary:'摘要',comment:'评论',question:'疑问',insight:'洞见',connection:'关联'};
+  useEffect(() => {
+    F(`${PA}/projects/${project.id}/notes/`).then(setNotes).catch(()=>{});
+  }, [project.id]);
+
+  return (
+    <div className="pl-fade">
+      <h3 style={{fontFamily:'var(--serif)',fontSize:18,marginBottom:16}}>研究笔记 ({notes.length})</h3>
+      {notes.length === 0 && <div className="empty"><h3>暂无笔记</h3><p>在阅读台中点击行号创建标注</p></div>}
+      {notes.map(note => (
+        <div key={note.id} className="card" style={{marginBottom:10,cursor:'pointer'}}
+          onClick={() => note.lit_id && onJumpToLit && onJumpToLit(note.lit_id, note.cited_line_start, note.cited_line_end)}>
+          <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
+            <div>
+              <span style={{fontSize:11,color:'var(--gold-dim)',marginRight:8}}>{NOTE_TYPE_LABELS[note.note_type]||note.note_type}</span>
+              {note.title && <span style={{fontSize:13,fontWeight:500}}>{note.title}</span>}
+            </div>
+            {note.citation && <span className="cite-chip">{note.citation}</span>}
+          </div>
+          {note.cited_text && <div style={{fontSize:11,color:'var(--fg3)',fontStyle:'italic',marginBottom:6,borderLeft:'2px solid var(--border2)',paddingLeft:6}}>{note.cited_text.slice(0,100)}</div>}
+          <div style={{fontSize:13,color:'var(--fg)',lineHeight:1.6}}>{note.content}</div>
+          <div style={{fontSize:10,color:'var(--fg3)',marginTop:6}}>{note.lit_title}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── 主 PaperLabApp ──
+function PaperLabApp({user, onLogout, onUpdateUser}) {
+  const [v, setV] = useState('projects');
+  const [projects, setProjects] = useState([]);
+  const [curProject, setCurProject] = useState(null);
+  const [curLit, setCurLit] = useState(null);
+  const [hlLines, setHlLines] = useState(null);
+  const [sbOpen, setSbOpen] = useState(false);
+  const [showNewProject, setShowNewProject] = useState(false);
+  const [newProjForm, setNewProjForm] = useState({title:'',description:'',domain:'',research_questions:''});
+  const tokenRefreshRef = useRef(null);
+
+  useEffect(() => { loadProjects(); }, []);
+
+  const loadProjects = () => {
+    F(`${PA}/projects/`).then(setProjects).catch(()=>{});
+  };
+
+  const createProject = async () => {
+    if (!newProjForm.title.trim()) return showAlert('请输入项目标题', '提示');
+    try {
+      const p = await P(`${PA}/projects/`, newProjForm);
+      setShowNewProject(false);
+      setNewProjForm({title:'',description:'',domain:'',research_questions:''});
+      loadProjects();
+    } catch(e) { showAlert('创建失败: ' + e.message, '错误'); }
+  };
+
+  const selectProject = (p) => {
+    setCurProject(p); setCurLit(null); setHlLines(null); setV('library');
+  };
+
+  const openLit = (lit) => {
+    setCurLit(lit); setHlLines(null); setV('reading');
+  };
+
+  const jumpToLit = (litId, lineStart, lineEnd) => {
+    F(`${PA}/literatures/${litId}/`).then(lit => {
+      setCurLit(lit);
+      setHlLines(lineStart ? [lineStart, lineEnd || lineStart] : null);
+      setV('reading');
+    }).catch(()=>{});
+  };
+
+  const goTo = (view) => { setV(view); setSbOpen(false); };
+
+  const tokenRefresh = () => {
+    if (tokenRefreshRef.current) tokenRefreshRef.current();
+    const token = localStorage.getItem('mf_token');
+    F(`${API}/auth/me/`).then(me => { if(me.authenticated) onUpdateUser({...me, token}); }).catch(()=>{});
+  };
+
+  const NAV_GROUPS = [
+    {
+      label: '导航',
+      items: [
+        {id:'projects', icon:'grid', label:'研究项目'},
+      ]
+    },
+    ...(curProject ? [{
+      label: curProject.title,
+      items: [
+        {id:'library', icon:'book', label:'文献库'},
+        {id:'reading', icon:'eye', label:'阅读台'},
+        {id:'search', icon:'search', label:'知识检索'},
+        {id:'chat', icon:'chat', label:'研究讨论'},
+        {id:'notes', icon:'note', label:'研究笔记'},
+        {id:'writing', icon:'pen', label:'写作台'},
+        {id:'ideas', icon:'spark', label:'启发灯塔'},
+      ]
+    }] : []),
+  ];
+
+  const TOP_TITLES = {
+    projects:'研究项目', library:'文献库', reading:'阅读台',
+    search:'知识检索', chat:'研究讨论', notes:'研究笔记',
+    writing:'写作台', ideas:'启发灯塔',
+  };
+
+  return (
+    <div className="app">
+      <div className={`sb-ov${sbOpen?' open':''}`} onClick={() => setSbOpen(false)} />
+      <div className={`sb${sbOpen?' open':''}`}>
+        <div className="sb-back" onClick={() => window.location.hash='#/'}>← 返回平台</div>
+        <div className="sb-hd"><h1>学术研究站</h1><p>零幻觉·精确引用·深度探索</p></div>
+        <div className="sb-nav">
+          {NAV_GROUPS.map(grp => (
+            <div className="ns" key={grp.label}>
+              <div className="ns-t">{grp.label}</div>
+              {grp.items.map(item => (
+                <div key={item.id} className={`ni${v===item.id?' on':''}`} onClick={() => goTo(item.id)}>
+                  <i><Icon name={item.icon} size={14} /></i>{item.label}
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+        <TokenMiniPanel onRefresh={tokenRefreshRef} />
+        <div style={{padding:'6px 12px 10px'}}>
+          <div style={{fontSize:11,color:'var(--fg3)',marginBottom:6,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',display:'flex',alignItems:'center',gap:6}}>
+            <Icon name="user" size={14} />{displayName(user)}
+          </div>
+          <div style={{display:'flex',gap:6}}>
+            <button onClick={onLogout} style={{flex:1,padding:'5px 8px',borderRadius:'var(--r)',background:'var(--bg4)',color:'var(--fg3)',border:'1px solid var(--border2)',fontSize:12,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:4}}>
+              <Icon name="logout" size={13} />退出
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="main">
+        <div className="top">
+          <button className="menu-btn" onClick={() => setSbOpen(o=>!o)}><Icon name="menu" size={18} /></button>
+          <span className="top-t">{TOP_TITLES[v]||v}</span>
+          {curProject && v!=='projects' && (
+            <span className="top-b">{curProject.title}</span>
+          )}
+          {curLit && (v==='reading') && (
+            <span style={{fontSize:11,color:'var(--fg3)',fontFamily:'var(--mono)',marginLeft:4}}>
+              {curLit.file_ref || curLit.title?.slice(0,20)}
+            </span>
+          )}
+        </div>
+
+        <div className={`ct${v==='reading'||v==='chat'||v==='writing'?'':''}`} style={v==='reading'||v==='chat'||v==='writing'?{padding:0,overflow:'hidden'}:{}}>
+          {/* 研究项目列表 */}
+          {v === 'projects' && (
+            <div className="pl-fade">
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
+                <h2 style={{fontFamily:'var(--serif)',fontSize:22}}>研究项目</h2>
+                <button className="btn btn-p" onClick={() => setShowNewProject(true)}>+ 新建项目</button>
+              </div>
+
+              <div className="card" style={{marginBottom:20,borderColor:'var(--cyan)',background:'rgba(90,196,180,.05)'}}>
+                <div style={{fontSize:13,color:'var(--cyan)',fontWeight:500,marginBottom:6,display:'inline-flex',alignItems:'center',gap:6}}>
+                  <Icon name="search" size={12} />
+                  学术研究站设计理念
+                </div>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,fontSize:12,color:'var(--fg2)'}}>
+                  <div><Icon name="bolt" size={12} /> <b>零幻觉</b>：仅引用文献库中的真实内容</div>
+                  <div><Icon name="link" size={12} /> <b>精确引用</b>：文件名:L行号-行号 可点击跳转</div>
+                  <div><Icon name="map" size={12} /> <b>深度探索</b>：Agent 自动在知识迷宫中导航</div>
+                  <div><Icon name="pen" size={12} /> <b>辅助写作</b>：每段内容自动附带文献依据</div>
+                  <div><Icon name="file" size={12} /> <b>OCR绑定</b>：与OCR工作室深度集成</div>
+                  <div><Icon name="spark" size={12} /> <b>启发灯塔</b>：基于文献的研究灵感</div>
+                </div>
+              </div>
+
+              {projects.length === 0 ? (
+                <div className="empty"><h3>暂无研究项目</h3><p>创建第一个研究项目，开始你的学术研究之旅</p></div>
+              ) : (
+                <div className="g2">
+                  {projects.map(p => (
+                    <div key={p.id} className="card" style={{cursor:'pointer',transition:'all .2s'}}
+                      onClick={() => selectProject(p)}
+                      onMouseEnter={e=>e.currentTarget.style.borderColor='var(--cyan)'}
+                      onMouseLeave={e=>e.currentTarget.style.borderColor=''}>
+                      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
+                        <h3 style={{fontFamily:'var(--serif)',fontSize:16,color:'var(--gold2)'}}>{p.title}</h3>
+                        <div style={{display:'flex',gap:6}}>
+                          <span style={{fontSize:10,padding:'2px 6px',borderRadius:3,background:'rgba(90,196,180,.1)',color:'var(--cyan)'}}>{p.lit_count}篇文献</span>
+                          <span style={{fontSize:10,padding:'2px 6px',borderRadius:3,background:'var(--bg4)',color:'var(--fg3)'}}>{p.note_count}条笔记</span>
+                        </div>
+                      </div>
+                      {p.domain && <div style={{fontSize:12,color:'var(--blue)',marginTop:4}}># {p.domain}</div>}
+                      {p.description && <div style={{fontSize:12,color:'var(--fg2)',marginTop:6,lineHeight:1.5}}>{p.description.slice(0,100)}</div>}
+                      {p.research_questions && (
+                        <div style={{fontSize:11,color:'var(--fg3)',marginTop:6,borderTop:'1px solid var(--border)',paddingTop:6}}>
+                          研究问题: {p.research_questions.slice(0,80)}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {showNewProject && (
+                <div className="modal-ov" onClick={() => setShowNewProject(false)}>
+                  <div className="modal" onClick={e => e.stopPropagation()}>
+                    <h2>新建研究项目</h2>
+                    <div className="fg"><label>项目标题 *</label><input value={newProjForm.title} onChange={e=>setNewProjForm({...newProjForm,title:e.target.value})} autoFocus /></div>
+                    <div className="fg"><label>研究领域</label><input value={newProjForm.domain} onChange={e=>setNewProjForm({...newProjForm,domain:e.target.value})} placeholder="如：深度学习、材料科学..." /></div>
+                    <div className="fg"><label>项目描述</label><textarea value={newProjForm.description} onChange={e=>setNewProjForm({...newProjForm,description:e.target.value})} rows={3} /></div>
+                    <div className="fg"><label>核心研究问题</label><textarea value={newProjForm.research_questions} onChange={e=>setNewProjForm({...newProjForm,research_questions:e.target.value})} rows={4} placeholder="描述你要研究的核心问题，Agent 将基于此聚焦分析..." /></div>
+                    <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}>
+                      <button className="btn btn-s" onClick={() => setShowNewProject(false)}>取消</button>
+                      <button className="btn btn-p" onClick={createProject}>创建项目</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 需要项目的视图 */}
+          {!curProject && v !== 'projects' && (
+            <div className="empty"><h3>请先选择研究项目</h3><button className="btn btn-p" onClick={()=>goTo('projects')}>选择项目</button></div>
+          )}
+
+          {curProject && v === 'library' && (
+            <LiteratureLibrary project={curProject} onOpenLit={openLit} />
+          )}
+
+          {curProject && v === 'reading' && (
+            <ReadingDesk project={curProject} lit={curLit} onCiteJump={jumpToLit} user={user} />
+          )}
+
+          {curProject && v === 'search' && (
+            <KnowledgeSearch project={curProject} onJumpToLit={jumpToLit} />
+          )}
+
+          {curProject && v === 'chat' && (
+            <ResearchChat project={curProject} user={user} onTokenRefresh={tokenRefresh} />
+          )}
+
+          {curProject && v === 'notes' && (
+            <NotesOverview project={curProject} onJumpToLit={jumpToLit} />
+          )}
+
+          {curProject && v === 'writing' && (
+            <WritingDesk project={curProject} user={user} onTokenRefresh={tokenRefresh} />
+          )}
+
+          {curProject && v === 'ideas' && (
+            <IdeaLighthouse project={curProject} user={user} onTokenRefresh={tokenRefresh} />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+{% endverbatim %}

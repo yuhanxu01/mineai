@@ -1,0 +1,1662 @@
+{% verbatim %}
+// ── User Panel App ────────────────────────────────────────────
+function UserPanelApp({user, onLogout, onUpdateUser, siteConfig}) {
+  const [tab, setTab] = useState('profile');
+  const [apiKey, setApiKey] = useState('');
+  const [keyInfo, setKeyInfo] = useState(null);
+  const [keyMsg, setKeyMsg] = useState('');
+  const [cloudFiles, setCloudFiles] = useState([]);
+  const [cloudUsed, setCloudUsed] = useState(0);
+  const [cloudQuota, setCloudQuota] = useState(50 * 1024 * 1024);
+  const [cloudLoading, setCloudLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadError, setUploadError] = useState('');
+  const [dragOver, setDragOver] = useState(false);
+  const fileInputRef = useRef(null);
+
+  const ALLOWED_EXTS_STR = '.pdf,.txt,.md,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.csv,.jpg,.jpeg,.png,.gif,.webp,.bmp,.svg,.py,.js,.ts,.jsx,.tsx,.java,.c,.cpp,.go,.rs,.sh,.bash,.html,.css,.scss,.json,.yaml,.yml,.toml,.xml,.sql,.r,.rb,.php,.swift,.kt';
+  const ALLOWED_EXTS = ALLOWED_EXTS_STR.split(',');
+
+  useEffect(() => {
+    loadApiKey();
+    if (!user?.is_guest) loadCloud();
+  }, []);
+
+  const loadApiKey = async () => {
+    try { const d = await F(`${API}/auth/user-api-key/`); setKeyInfo(d); } catch {}
+  };
+
+  const loadCloud = async () => {
+    setCloudLoading(true);
+    try {
+      const d = await F(`${API}/auth/cloud/`);
+      setCloudFiles(d.files || []);
+      setCloudUsed(d.used_bytes || 0);
+      setCloudQuota(d.quota_bytes || 50 * 1024 * 1024);
+    } catch {}
+    setCloudLoading(false);
+  };
+
+  const saveApiKey = async () => {
+    if (!apiKey.trim()) return;
+    try {
+      const d = await P(`${API}/auth/user-api-key/`, {api_key: apiKey.trim()});
+      setKeyInfo(d); setApiKey('');
+      setKeyMsg('✓ API 密钥已保存'); setTimeout(() => setKeyMsg(''), 2500);
+    } catch (e) { setKeyMsg('保存失败：' + e.message); }
+  };
+
+  const deleteApiKey = async () => {
+    const confirmed = await showConfirm('确认删除 API 密钥？');
+    if (!confirmed) return;
+    try {
+      await F(`${API}/auth/user-api-key/`, {method: 'DELETE'});
+      setKeyInfo({has_key: false, preview: null});
+      setKeyMsg('✓ API 密钥已删除'); setTimeout(() => setKeyMsg(''), 2500);
+    } catch {}
+  };
+
+  const fmtBytes = (b) => {
+    if (!b) return '0 B';
+    if (b < 1024) return `${b} B`;
+    if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
+    return `${(b / 1024 / 1024).toFixed(2)} MB`;
+  };
+
+  const fmtType = (t) => ({'pdf':'PDF','image':'图片','doc':'文档','code':'代码','other':'其他'}[t] || t);
+
+  const validateFile = (file) => {
+    const parts = file.name.split('.');
+    const ext = parts.length > 1 ? '.' + parts.pop().toLowerCase() : '';
+    if (!ALLOWED_EXTS.includes(ext)) return `不支持 ${ext||'此'} 格式，仅允许 PDF、图片、文档、代码文件`;
+    if (file.size > 10 * 1024 * 1024) return '单个文件不能超过 10 MB';
+    return null;
+  };
+
+  const doUpload = (file) => {
+    const err = validateFile(file);
+    if (err) { setUploadError(err); return Promise.resolve(); }
+    setUploadError(''); setUploading(true); setUploadProgress(0);
+    const formData = new FormData();
+    formData.append('file', file);
+    const token = localStorage.getItem('mf_token');
+    return new Promise((resolve) => {
+      const xhr = new XMLHttpRequest();
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) setUploadProgress(Math.round(e.loaded / e.total * 100));
+      };
+      xhr.onload = () => {
+        setUploading(false);
+        if (xhr.status === 201) {
+          const d = JSON.parse(xhr.responseText);
+          setCloudFiles(prev => [d, ...prev]);
+          setCloudUsed(d.used_bytes || 0);
+          setCloudQuota(d.quota_bytes || cloudQuota);
+        } else {
+          try { setUploadError(JSON.parse(xhr.responseText).error || '上传失败'); } catch { setUploadError('上传失败'); }
+        }
+        resolve();
+      };
+      xhr.onerror = () => { setUploading(false); setUploadError('网络错误，上传失败'); resolve(); };
+      xhr.open('POST', `${API}/auth/cloud/`);
+      if (token) xhr.setRequestHeader('Authorization', `Token ${token}`);
+      xhr.send(formData);
+    });
+  };
+
+  const handleFileSelect = async (files) => {
+    for (const f of files) { await doUpload(f); }
+  };
+
+  const handleDelete = async (id) => {
+    const confirmed = await showConfirm('确认删除此文件？');
+    if (!confirmed) return;
+    try {
+      const d = await F(`${API}/auth/cloud/${id}/`, {method: 'DELETE'});
+      setCloudFiles(prev => prev.filter(f => f.id !== id));
+      setCloudUsed(d.used_bytes || 0);
+    } catch (e) { showAlert('删除失败：' + e.message, '删除失败'); }
+  };
+
+  const handleDownload = (id) => {
+    const token = localStorage.getItem('mf_token');
+    const url = `${API}/auth/cloud/${id}/download/`;
+    const a = document.createElement('a');
+    a.href = url; document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  };
+
+  const usedPct = cloudQuota ? Math.min(100, Math.round(cloudUsed / cloudQuota * 100)) : 0;
+  const isGuest = user?.is_guest;
+
+  return (
+    <div style={{minHeight:'100vh', background:'var(--bg)', display:'flex', flexDirection:'column'}}>
+      <nav style={{height:52, background:'var(--bg2)', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', padding:'0 24px', gap:14, flexShrink:0}}>
+        <button className="btn btn-s btn-sm" onClick={() => window.location.hash='#/'} style={{display:'inline-flex',alignItems:'center',gap:6}}>
+          <Icon name="home" size={14} /> 返回首页
+        </button>
+        <div style={{fontFamily:'var(--serif)', fontSize:17, fontWeight:600, color:'var(--gold2)', marginLeft:4, display:'flex', alignItems:'center', gap:6}}>
+          <Icon name="user" size={14}/> 个人中心
+        </div>
+        <div style={{marginLeft:'auto', display:'flex', alignItems:'center', gap:12}}>
+          <span style={{fontSize:12, color:'var(--fg3)', maxWidth:200, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{user?.email}</span>
+          {!isGuest && <button className="btn btn-s btn-sm" onClick={onLogout}>退出登录</button>}
+        </div>
+      </nav>
+
+      <div style={{flex:1, maxWidth:860, margin:'0 auto', width:'100%', padding:'28px 24px'}}>
+        {isGuest ? (
+          <div className="card" style={{textAlign:'center', padding:48}}>
+            <div style={{fontSize:48, marginBottom:12}}>🔒</div>
+            <h3 style={{fontFamily:'var(--serif)', color:'var(--fg2)', marginBottom:8}}>请先登录</h3>
+            <p style={{color:'var(--fg3)', fontSize:13, marginBottom:20}}>个人中心和云盘功能需要登录才能使用</p>
+            <button className="btn btn-p" onClick={() => window.location.hash='#/login'}>立即登录</button>
+          </div>
+        ) : (
+          <>
+            <div className="tabs">
+              <div className={`tab${tab==='profile'?' on':''}`} onClick={() => setTab('profile')}>
+                <span style={{display:'inline-flex',alignItems:'center',gap:5}}><Icon name="user" size={13}/> 基本信息</span>
+              </div>
+              <div className={`tab${tab==='cloud'?' on':''}`} onClick={() => setTab('cloud')}>
+                <span style={{display:'inline-flex',alignItems:'center',gap:5}}><Icon name="cloud-drive" size={13}/> 我的云盘</span>
+              </div>
+            </div>
+
+            {tab === 'profile' && (
+              <div>
+                <div className="card" style={{marginBottom:16}}>
+                  <h3 style={{fontFamily:'var(--serif)',fontSize:16,marginBottom:14,color:'var(--gold2)'}}>账号信息</h3>
+                  <div className="g2">
+                    <div>
+                      <div style={{fontSize:11,color:'var(--fg3)',marginBottom:3}}>邮箱</div>
+                      <div style={{fontSize:14}}>{user?.email}</div>
+                    </div>
+                    <div>
+                      <div style={{fontSize:11,color:'var(--fg3)',marginBottom:3}}>注册日期</div>
+                      <div style={{fontSize:14}}>{user?.joined || '—'}</div>
+                    </div>
+                    <div>
+                      <div style={{fontSize:11,color:'var(--fg3)',marginBottom:3}}>账号类型</div>
+                      <div style={{fontSize:14}}>
+                        {user?.is_staff
+                          ? <span style={{color:'var(--gold)'}}>管理员</span>
+                          : <span style={{color:'var(--green)'}}>普通用户</span>}
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{fontSize:11,color:'var(--fg3)',marginBottom:3}}>云盘空间</div>
+                      <div style={{fontSize:14}}>{fmtBytes(cloudUsed)} / {fmtBytes(cloudQuota)}</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="card">
+                  <h3 style={{fontFamily:'var(--serif)',fontSize:16,marginBottom:4,color:'var(--gold2)'}}>自定义 API 密钥</h3>
+                  <p style={{fontSize:12,color:'var(--fg3)',marginBottom:14,lineHeight:1.7}}>
+                    配置后，所有 AI 功能将使用您自己的密钥，不消耗平台共享配额。
+                  </p>
+                  {keyInfo?.has_key ? (
+                    <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
+                      <div style={{background:'var(--bg3)',border:'1px solid var(--border2)',borderRadius:6,padding:'6px 12px',fontFamily:'var(--mono)',fontSize:13,color:'var(--fg2)',display:'inline-flex',alignItems:'center',gap:6}}>
+                        <Icon name="key" size={13}/> {keyInfo.preview}
+                      </div>
+                      <button className="btn btn-d btn-sm" onClick={deleteApiKey}>删除密钥</button>
+                      {keyMsg && <span style={{fontSize:12,color:'var(--green)'}}>{keyMsg}</span>}
+                    </div>
+                  ) : (
+                    <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'flex-end'}}>
+                      <div className="fg" style={{flex:1,minWidth:220,marginBottom:0}}>
+                        <label>API 密钥</label>
+                        <input type="password" placeholder="sk-..." value={apiKey}
+                          onChange={e => setApiKey(e.target.value)}
+                          onKeyDown={e => e.key==='Enter' && saveApiKey()} />
+                      </div>
+                      <button className="btn btn-p" onClick={saveApiKey} disabled={!apiKey.trim()}>保存</button>
+                      {keyMsg && <span style={{fontSize:12,color:keyMsg.startsWith('✓')?'var(--green)':'var(--red)'}}>{keyMsg}</span>}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {tab === 'cloud' && (
+              <div>
+                {/* Storage bar */}
+                <div className="card" style={{marginBottom:14}}>
+                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+                    <div style={{fontSize:13,fontWeight:500,display:'flex',alignItems:'center',gap:6}}>
+                      <Icon name="cloud-drive" size={16}/> 存储空间
+                    </div>
+                    <div style={{fontSize:12,color:'var(--fg3)',fontFamily:'var(--mono)'}}>
+                      {fmtBytes(cloudUsed)} / {fmtBytes(cloudQuota)}
+                    </div>
+                  </div>
+                  <div style={{height:6,background:'var(--bg4)',borderRadius:4,overflow:'hidden'}}>
+                    <div style={{
+                      height:'100%',borderRadius:4,transition:'width .4s',width:`${usedPct}%`,
+                      background: usedPct>90?'var(--red)':usedPct>70?'var(--orange)':'var(--gold)',
+                    }}/>
+                  </div>
+                  <div style={{fontSize:11,color:'var(--fg3)',marginTop:4}}>已用 {usedPct}%，共 50 MB 免费空间</div>
+                </div>
+
+                {/* Upload zone */}
+                <div
+                  onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+                  onDragLeave={() => setDragOver(false)}
+                  onDrop={e => { e.preventDefault(); setDragOver(false); handleFileSelect(Array.from(e.dataTransfer.files)); }}
+                  onClick={() => !uploading && fileInputRef.current?.click()}
+                  style={{
+                    border:`2px dashed ${dragOver?'var(--gold)':'var(--border2)'}`,
+                    borderRadius:10, padding:'28px 20px', textAlign:'center', cursor:'pointer',
+                    marginBottom:14, transition:'all .2s',
+                    background: dragOver?'rgba(201,168,108,.06)':'var(--bg2)',
+                  }}
+                >
+                  <input ref={fileInputRef} type="file" multiple style={{display:'none'}}
+                    accept={ALLOWED_EXTS_STR}
+                    onChange={e => { handleFileSelect(Array.from(e.target.files)); e.target.value=''; }}
+                  />
+                  <Icon name="cloud-up" size={32} style={{color:'var(--gold)',opacity:.7,display:'block',margin:'0 auto 10px'}}/>
+                  {uploading ? (
+                    <>
+                      <div style={{fontSize:13,color:'var(--fg2)',marginBottom:8}}>上传中 {uploadProgress}%</div>
+                      <div style={{height:4,background:'var(--bg4)',borderRadius:2,maxWidth:200,margin:'0 auto'}}>
+                        <div style={{height:'100%',borderRadius:2,background:'var(--gold)',width:`${uploadProgress}%`,transition:'width .2s'}}/>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div style={{fontSize:13,color:'var(--fg2)',marginBottom:4}}>
+                        拖拽文件到此处，或 <span style={{color:'var(--gold)'}}>点击选择文件</span>
+                      </div>
+                      <div style={{fontSize:11,color:'var(--fg3)'}}>
+                        支持 PDF · 图片 · 文档 · 代码 · 单个文件最大 10 MB
+                      </div>
+                    </>
+                  )}
+                  {uploadError && (
+                    <div style={{marginTop:10,fontSize:12,color:'var(--red)',background:'rgba(196,90,90,.08)',borderRadius:6,padding:'6px 12px'}}>
+                      ⚠ {uploadError}
+                    </div>
+                  )}
+                </div>
+
+                {/* File list */}
+                {cloudLoading ? (
+                  <div className="load">加载中...</div>
+                ) : cloudFiles.length === 0 ? (
+                  <div className="empty"><h3>云盘为空</h3><p>上传您的第一个文件吧</p></div>
+                ) : cloudFiles.map(f => (
+                  <div key={f.id} style={{
+                    display:'flex',alignItems:'center',gap:12,padding:'10px 14px',
+                    borderRadius:8,border:'1px solid var(--border)',marginBottom:6,
+                    background:'var(--bg2)',transition:'border-color .12s',
+                  }}>
+                    <div style={{width:36,height:36,borderRadius:8,display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,background:'var(--bg3)',border:'1px solid var(--border)',flexShrink:0}}>
+                      {f.file_type==='pdf'?'📄':f.file_type==='image'?'🖼️':f.file_type==='code'?'💻':'📝'}
+                    </div>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:13,fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{f.name}</div>
+                      <div style={{fontSize:11,color:'var(--fg3)',marginTop:2}}>
+                        {fmtType(f.file_type)} · {fmtBytes(f.size)} · {f.uploaded_at}
+                      </div>
+                    </div>
+                    <div style={{display:'flex',gap:6,flexShrink:0}}>
+                      <button className="btn btn-s btn-sm" onClick={() => handleDownload(f.id)}
+                        style={{display:'inline-flex',alignItems:'center',gap:4}}>
+                        <Icon name="download" size={12}/> 下载
+                      </button>
+                      <button className="btn btn-sm" onClick={() => handleDelete(f.id)}
+                        style={{background:'rgba(196,90,90,.12)',color:'var(--red)',border:'1px solid rgba(196,90,90,.2)',display:'inline-flex',alignItems:'center',gap:4}}>
+                        <Icon name="trash" size={12}/> 删除
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function MemoryForgeApp({user, onLogout, onUpdateUser}) {
+
+  const [v, setV] = useState('home');
+  const [ps, setPs] = useState([]);
+  const [ap, setAp] = useState(null);
+  const [cfg, setCfg] = useState(null);
+  const [sbOpen, setSbOpen] = useState(false);
+  const goTo = (view) => { setV(view); setSbOpen(false); };
+
+  useEffect(() => { initApp(); }, []);
+
+  // Auto-refresh stats every 60s
+  useEffect(() => {
+    const id = setInterval(refreshUser, 60000);
+    return () => clearInterval(id);
+  }, []);
+
+  const initApp = () => {
+    F(`${API}/core/config/`).then(setCfg).catch(() => setCfg({configured:false}));
+    F(`${API}/novel/projects/`).then(setPs).catch(()=>{});
+  };
+
+  const refreshUser = () => {
+    const token = localStorage.getItem('mf_token');
+    F(`${API}/auth/me/`).then(me => { if (me.authenticated) onUpdateUser({...me, token}); }).catch(()=>{});
+  };
+
+  const loadPs = () => F(`${API}/novel/projects/`).then(setPs).catch(()=>{});
+  const selP = async (p) => { const f = await F(`${API}/novel/project/${p.id}/`); setAp(f); setV('project'); };
+  const refP = () => ap && F(`${API}/novel/project/${ap.id}/`).then(setAp);
+
+  if (cfg && !cfg.configured) return (
+    <>
+      <div style={{position:'fixed',top:14,left:14,zIndex:999}}>
+        <button className="btn btn-s btn-sm" onClick={() => { window.location.hash = '#/'; }}>← 返回平台</button>
+      </div>
+      <Setup
+        onDone={() => { F(`${API}/core/config/`).then(setCfg); }}
+        platformConfigured={cfg.platform_configured}
+        platformAllowed={cfg.platform_allowed}
+      />
+    </>
+  );
+
+  const u = user?.usage || {};
+
+  return (
+    <div className="app">
+      <div className={`sb-ov${sbOpen?' open':''}`} onClick={()=>setSbOpen(false)}/>
+      <div className={`sb${sbOpen?' open':''}`}>
+        <div className="sb-back" onClick={() => { window.location.hash = '#/'; }}>← 返回平台</div>
+        <div className="sb-hd"><h1>记忆熔炉</h1><p>无限记忆·长篇创作</p></div>
+        <div className="sb-nav">
+          <div className="ns"><div className="ns-t">导航</div>
+            <div className={`ni ${v==='home'?'on':''}`} onClick={()=>goTo('home')}><i><Icon name="home" size={14} /></i>工作台</div>
+          </div>
+          {ap && <div className="ns"><div className="ns-t">{ap.title}</div>
+            <div className={`ni ${v==='project'?'on':''}`} onClick={()=>goTo('project')}><i><Icon name="book" size={14} /></i>章节管理</div>
+            <div className={`ni ${v==='write'?'on':''}`} onClick={()=>goTo('write')}><i><Icon name="pen" size={14} /></i>写作工坊</div>
+            <div className={`ni ${v==='pyramid'?'on':''}`} onClick={()=>goTo('pyramid')}><i><Icon name="layers" size={14} /></i>记忆金字塔</div>
+            <div className={`ni ${v==='timeline'?'on':''}`} onClick={()=>goTo('timeline')}><i><Icon name="clock" size={14} /></i>时间线</div>
+            <div className={`ni ${v==='chars'?'on':''}`} onClick={()=>goTo('chars')}><i><Icon name="user" size={14} /></i>角色图鉴</div>
+            <div className={`ni ${v==='chat'?'on':''}`} onClick={()=>goTo('chat')}><i><Icon name="chat" size={14} /></i>剧情顾问</div>
+            <div className={`ni ${v==='logs'?'on':''}`} onClick={()=>goTo('logs')}><i><Icon name="clipboard" size={14} /></i>运行日志</div>
+          </div>}
+          <div style={{marginTop:'auto'}}>
+            <div style={{padding:'10px 8px 0',borderTop:'1px solid var(--border)'}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'0 4px',marginBottom:6}}>
+                <span style={{fontSize:10,color:'var(--fg3)',letterSpacing:1}}>TOKEN 用量</span>
+                <button onClick={refreshUser} style={{background:'none',color:'var(--fg3)',fontSize:9,padding:'1px 5px',border:'1px solid var(--border)',borderRadius:3,cursor:'pointer'}}>刷新</button>
+              </div>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:4,padding:'0 4px',marginBottom:8}}>
+                <div style={{background:'var(--bg3)',borderRadius:4,padding:'5px 6px',textAlign:'center'}}>
+                  <div style={{fontFamily:'var(--mono)',fontSize:16,color:'var(--gold2)',fontWeight:500}}>{(u.prompt_count||0).toLocaleString()}</div>
+                  <div style={{fontSize:9,color:'var(--fg3)',marginTop:1,letterSpacing:.5}}>提交次数</div>
+                </div>
+                <div style={{background:'var(--bg3)',borderRadius:4,padding:'5px 6px',textAlign:'center'}}>
+                  <div style={{fontFamily:'var(--mono)',fontSize:16,color:'var(--cyan)',fontWeight:500}}>{((u.total_tokens||0)/1000).toFixed(1)}K</div>
+                  <div style={{fontSize:9,color:'var(--fg3)',marginTop:1,letterSpacing:.5}}>总Token</div>
+                </div>
+                <div style={{background:'var(--bg3)',borderRadius:4,padding:'4px 6px',textAlign:'center'}}>
+                  <div style={{fontFamily:'var(--mono)',fontSize:13,color:'var(--blue)',fontWeight:500}}>{((u.input_tokens||0)/1000).toFixed(1)}K</div>
+                  <div style={{fontSize:9,color:'var(--fg3)',marginTop:1,letterSpacing:.5}}>输入</div>
+                </div>
+                <div style={{background:'var(--bg3)',borderRadius:4,padding:'4px 6px',textAlign:'center'}}>
+                  <div style={{fontFamily:'var(--mono)',fontSize:13,color:'var(--green)',fontWeight:500}}>{((u.output_tokens||0)/1000).toFixed(1)}K</div>
+                  <div style={{fontSize:9,color:'var(--fg3)',marginTop:1,letterSpacing:.5}}>输出</div>
+                </div>
+              </div>
+            </div>
+            <div style={{padding:'6px 12px 10px'}}>
+              <div style={{fontSize:11,color:'var(--fg3)',marginBottom:6,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',padding:'0 2px',display:'flex',alignItems:'center',gap:6}} title={displayName(user)}>
+                <Icon name="user" size={14} />
+                <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{displayName(user)}</span>
+              </div>
+              <div style={{display:'flex',gap:6}}>
+                {user ? (
+                  <>
+                    <div className={`ni ${v==='settings'?'on':''}`} style={{flex:1,padding:'5px 8px',margin:0}} onClick={()=>goTo('settings')}><i><Icon name="settings" size={14} /></i>设置</div>
+                    <button onClick={onLogout} style={{padding:'5px 11px',borderRadius:'var(--r)',background:'var(--bg4)',color:'var(--fg3)',border:'1px solid var(--border2)',fontSize:13,cursor:'pointer',display:'inline-flex',alignItems:'center',justifyContent:'center'}} title="退出登录"><Icon name="logout" size={14} /></button>
+                  </>
+                ) : (
+                  <button onClick={() => window.location.hash = '#/login'} style={{flex:1,padding:'5px 8px',borderRadius:'var(--r)',background:'var(--bg4)',color:'var(--fg3)',border:'1px solid var(--border2)',fontSize:13,cursor:'pointer'}} title="登录/注册">前往登录 / 注册</button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="main">
+        <div className="top">
+          <button className="menu-btn" onClick={()=>setSbOpen(o=>!o)}><Icon name="menu" size={18} /></button>
+          <span className="top-t">
+            {v==='home'&&'工作台'}{v==='project'&&ap?.title}{v==='write'&&'写作工坊'}{v==='pyramid'&&'记忆金字塔'}
+            {v==='timeline'&&'故事时间线'}{v==='chars'&&'角色图鉴'}{v==='chat'&&'剧情顾问'}{v==='logs'&&'运行日志'}{v==='settings'&&'系统设置'}
+          </span>
+          {ap && <span className="top-b">{ap.genre||'小说'}</span>}
+        </div>
+        <div className="ct">
+          {v==='home'&&<Home ps={ps} onSel={selP} onRef={loadPs} user={user} />}
+          {v==='project'&&ap&&<Proj p={ap} onRef={refP} goWrite={()=>setV('write')} user={user} />}
+          {v==='write'&&ap&&<Write p={ap} onRef={refP} onUsage={refreshUser} user={user} />}
+          {v==='pyramid'&&ap&&<Pyramid pid={ap.id} user={user} />}
+          {v==='timeline'&&ap&&<Timeline pid={ap.id} user={user} />}
+          {v==='chars'&&ap&&<Chars pid={ap.id} user={user} />}
+          {v==='chat'&&ap&&<Chat pid={ap.id} onUsage={refreshUser} user={user} />}
+          {v==='logs'&&<Logs pid={ap?.id} user={user} />}
+          {v==='settings'&&<Settings cfg={cfg} onSave={()=>F(`${API}/core/config/`).then(setCfg)} />}
+        </div>
+      </div>
+      <FloatingChat user={user} onUsage={refreshUser} />
+    </div>
+  );
+}
+
+function FloatingChat({user, onUsage}) {
+  const [open, setOpen] = useState(false);
+  const [minimized, setMinimized] = useState(false);
+  const [pos, setPos] = useState(null);
+  const [size, setSize] = useState({w:340, h:480});
+  const [msgs, setMsgs] = useState([]);
+  const [inp, setInp] = useState('');
+  const [streaming, setStreaming] = useState(false);
+  const [streamText, setStreamText] = useState('');
+  const endRef = useRef(null);
+  const dragRef = useRef({});
+
+  useEffect(() => { endRef.current?.scrollIntoView({behavior:'smooth'}); }, [msgs, streamText]);
+
+  const getDefaultPos = () => ({
+    x: Math.max(0, window.innerWidth - size.w - 24),
+    y: Math.max(0, window.innerHeight - size.h - 24),
+  });
+
+  const startDrag = (e) => {
+    if (e.target.closest('button')) return;
+    e.preventDefault();
+    const cur = pos || getDefaultPos();
+    dragRef.current = {startX: e.clientX - cur.x, startY: e.clientY - cur.y};
+    const onMove = (e) => setPos({x: e.clientX - dragRef.current.startX, y: e.clientY - dragRef.current.startY});
+    const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  };
+
+  const startResize = (e) => {
+    e.preventDefault(); e.stopPropagation();
+    const startX=e.clientX, startY=e.clientY, startW=size.w, startH=size.h;
+    const onMove = (e) => setSize({w:Math.max(280,startW+(e.clientX-startX)), h:Math.max(320,startH+(e.clientY-startY))});
+    const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  };
+
+  const send = async () => {
+    if (!user) { showAlert('请先登录后使用对话功能', '提示'); return; }
+    if (!inp.trim() || streaming) return;
+    const m = inp.trim(); setInp('');
+    const history = msgs.map(msg => ({role: msg.role, content: msg.content}));
+    setMsgs(p => [...p, {role:'user', content:m}]);
+    setStreaming(true); setStreamText('');
+    const token = localStorage.getItem('mf_token');
+    const hdrs = {'Content-Type':'application/json'};
+    if(token) hdrs['Authorization'] = `Token ${token}`;
+    try {
+      const resp = await fetch(`${API}/core/chat-stream/`, {method:'POST', headers:hdrs, body:JSON.stringify({message:m, history})});
+      if(!resp.ok) throw new Error(await resp.text());
+      const reader = resp.body.getReader(); const dec = new TextDecoder();
+      let buf=''; let full='';
+      while(true) {
+        const {done, value} = await reader.read(); if(done) break;
+        buf += dec.decode(value,{stream:true});
+        const lns = buf.split('\n'); buf = lns.pop();
+        for(const ln of lns) {
+          if(!ln.startsWith('data: ')) continue;
+          let ev; try{ ev=JSON.parse(ln.slice(6)); }catch{ continue; }
+          if(ev.type==='chunk'){ full+=ev.text; setStreamText(full); }
+          else if(ev.type==='done'){ setMsgs(p=>[...p,{role:'assistant',content:full}]); setStreamText(''); onUsage&&onUsage(); }
+          else if(ev.type==='error'){ throw new Error(ev.message); }
+        }
+      }
+    } catch(e) {
+      setMsgs(p=>[...p,{role:'assistant',content:`错误: ${e.message}`}]); setStreamText('');
+    }
+    setStreaming(false);
+  };
+
+  const computedPos = pos || getDefaultPos();
+  const winStyle = {
+    position:'fixed', left:computedPos.x, top:computedPos.y,
+    width:size.w, height:minimized?44:size.h,
+    zIndex:9000, background:'var(--bg2)', border:'1px solid var(--border2)',
+    borderRadius:10, display:'flex', flexDirection:'column',
+    overflow:'hidden', boxShadow:'0 8px 32px rgba(0,0,0,.55)',
+  };
+
+  if (!open) return (
+    <button className="fc-bubble" onClick={()=>setOpen(true)} title="AI 对话">
+      <Icon name="chat" size={20}/>
+    </button>
+  );
+
+  return (
+    <div className="fc-window" style={winStyle}>
+      <div className="fc-hd" onMouseDown={startDrag}>
+        <span className="fc-hd-title"><Icon name="chat" size={13}/> AI 对话</span>
+        <div className="fc-hd-btns">
+          <button className="fc-hd-btn" onClick={()=>setMsgs([])} title="清空对话">
+            <Icon name="refresh" size={11}/>
+          </button>
+          <button className="fc-hd-btn" onClick={()=>setMinimized(m=>!m)} title={minimized?'展开':'最小化'}>
+            {minimized ? '□' : '—'}
+          </button>
+          <button className="fc-hd-btn" onClick={()=>{setOpen(false);setMinimized(false);}} title="关闭">×</button>
+        </div>
+      </div>
+      {!minimized && <>
+        <div className="fc-msgs">
+          {msgs.length===0 && (
+            <div className="fc-empty">
+              <div className="fc-empty-icon"><Icon name="chat" size={18} /></div>
+              <div style={{fontWeight:500,marginBottom:4}}>AI 智能助手</div>
+              <div style={{color:'var(--fg3)',lineHeight:1.6}}>随时为你解答任何问题<br/>支持多轮对话，Enter 发送</div>
+            </div>
+          )}
+          {msgs.map((m,i)=>(
+            <div key={i} className={`fc-msg ${m.role}`}>
+              <div className="fc-bbl">{m.content}</div>
+            </div>
+          ))}
+          {streamText && (
+            <div className="fc-msg assistant">
+              <div className="fc-bbl">{streamText}<span style={{opacity:.7,animation:'blink 1s infinite'}}>▌</span></div>
+            </div>
+          )}
+          {streaming && !streamText && <div className="fc-thinking">思考中...</div>}
+          <div ref={endRef}/>
+        </div>
+        <div className="fc-input-row">
+          <textarea
+            value={inp}
+            onChange={e=>setInp(e.target.value)}
+            onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}}}
+            placeholder="输入消息… Enter 发送，Shift+Enter 换行"
+            rows={1}
+          />
+          <button className="btn btn-p btn-sm" onClick={send} disabled={streaming} style={{flexShrink:0,alignSelf:'flex-end'}}>发送</button>
+        </div>
+        <div className="fc-resize" onMouseDown={startResize}/>
+      </>}
+    </div>
+  );
+}
+
+function AuthScreen({onAuth, siteConfig}) {
+  const [tab, setTab] = useState('login');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPwd, setShowPwd] = useState(false);
+  const [code, setCode] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [countdown, setCountdown] = useState(0);
+  const [codeSent, setCodeSent] = useState(false);
+  const [error, setError] = useState('');
+  const [forgotSent, setForgotSent] = useState(false);
+  const timerRef = useRef(null);
+
+  const fmtCD = (s) => `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`;
+
+  const startCountdown = (seconds) => {
+    clearInterval(timerRef.current);
+    setCountdown(seconds);
+    timerRef.current = setInterval(() => {
+      setCountdown(n => { if (n <= 1) { clearInterval(timerRef.current); return 0; } return n - 1; });
+    }, 1000);
+  };
+
+  const parseErr = (e) => {
+    try {
+      const msg = e.message || '';
+      // Remove status code prefix (e.g., "500: " or "403: ")
+      const jsonStr = msg.replace(/^\d+:\s*/, '').trim();
+      return JSON.parse(jsonStr);
+    } catch (err) {
+      console.error('Failed to parse error:', e.message, e);
+      return {};
+    }
+  };
+
+  const sendCode = async () => {
+    if (!email) return setError('请先输入邮箱');
+    setError(''); setSending(true);
+    try {
+      const res = await P(`${API}/auth/send-code/`, {email});
+      setCodeSent(true);
+      startCountdown(res.cooldown_seconds || 300);
+    } catch(e) {
+      const msg = parseErr(e);
+      console.error('Send code error:', e, 'Parsed:', msg);
+      // Show the actual error from backend, or a more descriptive fallback
+      if (msg.error) {
+        setError(msg.error);
+      } else {
+        // If we can't parse the error, show the raw message for debugging
+        setError(`发送失败: ${e.message?.substring(0, 100) || '未知错误'}`);
+      }
+      if (msg.remaining_seconds) startCountdown(msg.remaining_seconds);
+    }
+    setSending(false);
+  };
+
+  const submit = async () => {
+    if (!email || !password) return;
+    if (tab === 'register' && !code) return setError('请输入验证码');
+    setError(''); setLoading(true);
+    try {
+      const url = tab === 'login' ? `${API}/auth/login/` : `${API}/auth/register/`;
+      const body = tab === 'login' ? {email, password} : {email, password, code};
+      const res = await P(url, body);
+      localStorage.setItem('mf_token', res.token);
+      onAuth(res);
+    } catch(e) {
+      const msg = parseErr(e);
+      setError(msg.error || '网络错误，请重试');
+    }
+    setLoading(false);
+  };
+
+  const submitForgot = async () => {
+    if (!email) return setError('请输入邮箱');
+    setError(''); setLoading(true);
+    try {
+      await P(`${API}/auth/forgot-password/`, {email});
+      setForgotSent(true);
+    } catch(e) {
+      const msg = parseErr(e);
+      setError(msg.error || '发送失败，请重试');
+    }
+    setLoading(false);
+  };
+
+  const switchTab = (t) => {
+    setTab(t); setError(''); setCode(''); setCodeSent(false);
+    setForgotSent(false); setCountdown(0); clearInterval(timerRef.current);
+  };
+
+  return (
+    <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100vh',background:'var(--bg)'}}>
+      <div style={{textAlign:'center',maxWidth:400,width:'100%',padding:'0 24px'}}>
+        <h1 style={{fontFamily:'var(--serif)',fontSize:34,color:'var(--gold2)',marginBottom:4,letterSpacing:2}}>{siteConfig?.site_title || '应用平台'}</h1>
+        <p style={{color:'var(--fg3)',marginBottom:28,fontSize:12,letterSpacing:2}}>{siteConfig?.site_subtitle || '多功能应用集成工作台'}</p>
+        <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:12,padding:28}}>
+          {tab !== 'forgot' && (
+            <div className="tabs" style={{marginBottom:20}}>
+              <div className={`tab ${tab==='login'?'on':''}`} onClick={()=>switchTab('login')}>登录</div>
+              <div className={`tab ${tab==='register'?'on':''}`} onClick={()=>switchTab('register')}>注册</div>
+            </div>
+          )}
+
+          {tab === 'forgot' ? (
+            forgotSent ? (
+              <div style={{textAlign:'center',padding:'12px 0'}}>
+                <div style={{marginBottom:12}}><Icon name="mail" size={36} /></div>
+                <div style={{color:'var(--fg)',fontSize:14,marginBottom:8}}>重置链接已发送</div>
+                <div style={{color:'var(--fg3)',fontSize:12,marginBottom:20}}>请检查 <b>{email}</b> 的收件箱，链接 30 分钟内有效。</div>
+                <button className="btn btn-s" onClick={()=>switchTab('login')} style={{width:'100%'}}>返回登录</button>
+              </div>
+            ) : (
+              <>
+                <div style={{textAlign:'left',marginBottom:16}}>
+                  <div style={{color:'var(--fg)',fontSize:14,fontWeight:600,marginBottom:4}}>忘记密码</div>
+                  <div style={{color:'var(--fg3)',fontSize:12}}>输入注册邮箱，我们将发送重置链接。</div>
+                </div>
+                <div className="fg" style={{textAlign:'left'}}>
+                  <label>邮箱</label>
+                  <input type="email" value={email} onChange={e=>setEmail(e.target.value)}
+                    onKeyDown={e=>e.key==='Enter'&&submitForgot()}
+                    placeholder="your@email.com" style={{width:'100%'}}/>
+                </div>
+                {error && <div style={{color:'var(--red)',fontSize:12,marginBottom:12,textAlign:'left',padding:'6px 10px',background:'rgba(196,90,90,.1)',borderRadius:'var(--r)'}}>{error}</div>}
+                <button className="btn btn-p" onClick={submitForgot} disabled={loading||!email} style={{width:'100%',padding:'10px',fontSize:14,marginBottom:10}}>
+                  {loading?'发送中...':'发送重置链接'}
+                </button>
+                <button className="btn btn-s" onClick={()=>switchTab('login')} style={{width:'100%',fontSize:13}}>返回登录</button>
+              </>
+            )
+          ) : (
+            <>
+              <div className="fg" style={{textAlign:'left'}}>
+                <label>邮箱</label>
+                {tab==='register' ? (
+                  <div style={{display:'flex',gap:8}}>
+                    <input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="your@email.com" style={{flex:1,minWidth:0}}/>
+                    <button className="btn btn-s" onClick={sendCode} disabled={sending||countdown>0||!email}
+                      style={{flexShrink:0,fontSize:12,padding:'7px 10px',whiteSpace:'nowrap'}}>
+                      {sending?'发送中...':countdown>0?fmtCD(countdown):codeSent?'重新发送':'获取验证码'}
+                    </button>
+                  </div>
+                ) : (
+                  <input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="your@email.com" style={{width:'100%'}}/>
+                )}
+              </div>
+
+              {tab==='register' && (
+                <div className="fg" style={{textAlign:'left'}}>
+                  <label>验证码
+                    {codeSent && (
+                      <span style={{color:'var(--green)',fontSize:10,marginLeft:8,fontWeight:'normal'}}>
+                        <span className="with-ic">
+                          <Icon name="check" size={12} />
+                          已发送至邮箱
+                        </span>
+                      </span>
+                    )}
+                  </label>
+                  <input value={code} onChange={e=>setCode(e.target.value.replace(/\D/g,'').slice(0,6))}
+                    placeholder="6 位数字验证码" maxLength={6}
+                    style={{width:'100%',fontFamily:'var(--mono)',letterSpacing:6,fontSize:18,textAlign:'center'}}/>
+                </div>
+              )}
+
+              <div className="fg" style={{textAlign:'left'}}>
+                <label>密码{tab==='register'?' (至少 6 位)':''}</label>
+                <div style={{position:'relative',display:'flex',alignItems:'center'}}>
+                  <input type={showPwd?'text':'password'} value={password} onChange={e=>setPassword(e.target.value)}
+                    onKeyDown={e=>e.key==='Enter'&&submit()} placeholder="••••••" style={{width:'100%',paddingRight:36}}/>
+                  <button type="button" onClick={()=>setShowPwd(v=>!v)}
+                    style={{position:'absolute',right:8,background:'none',border:'none',cursor:'pointer',padding:0,color:'var(--muted)',lineHeight:1,fontSize:16}}
+                    title={showPwd?'隐藏密码':'显示密码'}>
+                    {showPwd
+                      ? <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                      : <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                    }
+                  </button>
+                </div>
+              </div>
+
+              {error && <div style={{color:'var(--red)',fontSize:12,marginBottom:12,textAlign:'left',padding:'6px 10px',background:'rgba(196,90,90,.1)',borderRadius:'var(--r)'}}>{error}</div>}
+
+              <button className="btn btn-p" onClick={submit}
+                disabled={loading||!email||!password||(tab==='register'&&!code)}
+                style={{width:'100%',padding:'10px',fontSize:14}}>
+                {loading?(tab==='login'?'登录中...':'注册中...'):(tab==='login'?'登录':'注册账号')}
+              </button>
+
+              {tab==='login' && (
+                <div style={{marginTop:12,textAlign:'center'}}>
+                  <button onClick={()=>switchTab('forgot')}
+                    style={{background:'none',border:'none',cursor:'pointer',color:'var(--fg3)',fontSize:12,padding:0}}
+                    onMouseOver={e=>e.target.style.color='var(--gold)'}
+                    onMouseOut={e=>e.target.style.color='var(--fg3)'}>
+                    忘记密码？
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ResetPasswordScreen({siteConfig}) {
+  const token = new URLSearchParams(window.location.hash.split('?')[1] || '').get('token') || '';
+  const [password, setPassword] = useState('');
+  const [showPwd, setShowPwd] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [done, setDone] = useState(false);
+
+  const submit = async () => {
+    if (!password) return;
+    if (password.length < 6) return setError('密码至少 6 位');
+    setError(''); setLoading(true);
+    try {
+      await P(`${API}/auth/reset-password/`, {token, password});
+      setDone(true);
+    } catch(e) {
+      try {
+        const msg = JSON.parse((e.message || '').replace(/^\d+:\s*/, '').trim());
+        setError(msg.error || '重置失败，请重试');
+      } catch { setError('重置失败，请重试'); }
+    }
+    setLoading(false);
+  };
+
+  return (
+    <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100vh',background:'var(--bg)'}}>
+      <div style={{textAlign:'center',maxWidth:400,width:'100%',padding:'0 24px'}}>
+        <h1 style={{fontFamily:'var(--serif)',fontSize:34,color:'var(--gold2)',marginBottom:4,letterSpacing:2}}>{siteConfig?.site_title || '应用平台'}</h1>
+        <p style={{color:'var(--fg3)',marginBottom:28,fontSize:12,letterSpacing:2}}>重置密码</p>
+        <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:12,padding:28}}>
+          {!token ? (
+            <div style={{color:'var(--red)',fontSize:13}}>链接无效，请重新申请重置密码。</div>
+          ) : done ? (
+            <div style={{textAlign:'center',padding:'8px 0'}}>
+              <div style={{marginBottom:12}}><Icon name="check" size={36} /></div>
+              <div style={{color:'var(--fg)',fontSize:14,marginBottom:8}}>密码已重置</div>
+              <div style={{color:'var(--fg3)',fontSize:12,marginBottom:20}}>请使用新密码登录。</div>
+              <button className="btn btn-p" onClick={()=>{window.location.hash='#/login';}} style={{width:'100%'}}>前往登录</button>
+            </div>
+          ) : (
+            <>
+              <div style={{textAlign:'left',marginBottom:16}}>
+                <div style={{color:'var(--fg)',fontSize:14,fontWeight:600,marginBottom:4}}>设置新密码</div>
+                <div style={{color:'var(--fg3)',fontSize:12}}>请输入您的新密码（至少 6 位）。</div>
+              </div>
+              <div className="fg" style={{textAlign:'left'}}>
+                <label>新密码</label>
+                <div style={{position:'relative',display:'flex',alignItems:'center'}}>
+                  <input type={showPwd?'text':'password'} value={password} onChange={e=>setPassword(e.target.value)}
+                    onKeyDown={e=>e.key==='Enter'&&submit()} placeholder="••••••" style={{width:'100%',paddingRight:36}}/>
+                  <button type="button" onClick={()=>setShowPwd(v=>!v)}
+                    style={{position:'absolute',right:8,background:'none',border:'none',cursor:'pointer',padding:0,color:'var(--muted)',lineHeight:1,fontSize:16}}
+                    title={showPwd?'隐藏密码':'显示密码'}>
+                    {showPwd
+                      ? <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                      : <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                    }
+                  </button>
+                </div>
+              </div>
+              {error && <div style={{color:'var(--red)',fontSize:12,marginBottom:12,textAlign:'left',padding:'6px 10px',background:'rgba(196,90,90,.1)',borderRadius:'var(--r)'}}>{error}</div>}
+              <button className="btn btn-p" onClick={submit} disabled={loading||!password} style={{width:'100%',padding:'10px',fontSize:14}}>
+                {loading?'重置中...':'确认重置'}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Setup({onDone, platformConfigured, platformAllowed}) {
+  const [k, setK] = useState(''); const [s, setS] = useState(false);
+  const showPlatformLoginTip = platformConfigured && !platformAllowed;
+  const save = async () => {
+    setS(true);
+    try {
+      await F(`${API}/auth/user-api-key/`, {method:'POST', body:JSON.stringify({api_key:k})});
+      onDone();
+    } catch(e){showAlert(e.message, '错误')}
+    setS(false);
+  };
+  return (
+    <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100vh',background:'var(--bg)'}}>
+      <div style={{textAlign:'center',maxWidth:420,padding:40}}>
+        <h1 style={{fontFamily:'var(--serif)',fontSize:34,color:'var(--gold2)',marginBottom:6}}>记忆熔炉</h1>
+        <p style={{color:'var(--fg3)',marginBottom:30,fontSize:13}}>AI长篇小说创作引擎 · 无限层级记忆系统</p>
+        <div className="card" style={{textAlign:'left',marginBottom:16,borderColor:'var(--border2)'}}>
+          <p style={{fontSize:12,color:'var(--fg2)',lineHeight:1.8}}>
+            {showPlatformLoginTip
+              ? <>平台密钥仅对已登录用户可用。您可以先 <b style={{color:'var(--gold)'}}>登录</b> 使用平台额度，或填写自己的<b style={{color:'var(--gold)'}}>智谱AI API密钥</b>（<a href="https://open.bigmodel.cn" target="_blank" style={{color:'var(--blue)'}}>bigmodel.cn</a>）以继续使用。</>
+              : <>平台尚未配置API密钥。请填写您自己的<b style={{color:'var(--gold)'}}>智谱AI API密钥</b>（<a href="https://open.bigmodel.cn" target="_blank" style={{color:'var(--blue)'}}>bigmodel.cn</a>）以继续使用。</>
+            }
+          </p>
+        </div>
+        <div className="fg" style={{textAlign:'left'}}>
+          <label>您的 API 密钥</label>
+          <input value={k} onChange={e=>setK(e.target.value)} placeholder="输入您的API密钥..." type="password"/>
+        </div>
+        <div style={{display:'flex',gap:8}}>
+          <button className="btn btn-p" onClick={save} disabled={s||!k} style={{flex:1}}>{s?'保存中...':'开始创作'}</button>
+          {showPlatformLoginTip && (
+            <button className="btn btn-s" onClick={() => { window.location.hash = '#/login'; }} style={{flex:1}}>去登录</button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Home({ps, onSel, onRef, user}) {
+  const [show, setShow] = useState(false);
+  const [f, setF] = useState({title:'',genre:'',synopsis:'',style_guide:'',world_setting:''});
+  const [cr, setCr] = useState(false);
+  const [gen, setGen] = useState(false);
+  const requireLogin = () => { if(!user) { showAlert('此操作需要登录，请先登录', '提示'); window.location.hash = '#/login'; return false; } return true; };
+  const create = async () => { if(!requireLogin()) return; if(!f.title)return; setCr(true); try{const p=await P(`${API}/novel/projects/`,f);setShow(false);setF({title:'',genre:'',synopsis:'',style_guide:'',world_setting:''});onRef();const full=await F(`${API}/novel/project/${p.id}/`);onSel(full);}catch(e){showAlert(e.message, '错误')} setCr(false); };
+  const autoGen = async () => {
+    if(!requireLogin()) return;
+    setGen(true);
+    try {
+      const res = await P(`${API}/novel/generate-idea/`, f);
+      setF({...f, ...res});
+    } catch(e) {
+      showAlert("生成失败: " + e.message, '错误');
+    }
+    setGen(false);
+  };
+  return (
+    <div>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
+        <div><h2 style={{fontFamily:'var(--serif)',fontSize:26}}>作品广场</h2><p style={{color:'var(--fg3)',fontSize:12,marginTop:3}}>选择一部作品或创建新作</p></div>
+        <button className="btn btn-p" onClick={()=>{ if(requireLogin()) setShow(true); }}>+ 新建作品</button>
+      </div>
+      {ps.length===0?<div className="empty"><h3>还没有作品</h3><p>创建您的第一部小说，开始AI辅助无限记忆创作之旅</p></div>:
+      <div className="g2">{ps.map(p=>(
+        <div key={p.id} className="card" style={{cursor:'pointer'}} onClick={()=>onSel(p)}>
+          <h3>{p.title}</h3><p style={{fontSize:12,color:'var(--fg3)'}}>{p.genre}</p>
+          <p style={{fontSize:13,color:'var(--fg2)',margin:'6px 0'}}>{p.synopsis}</p>
+          <div style={{display:'flex',gap:16,fontSize:12,color:'var(--fg3)'}}>
+            <span>{p.chapter_count} 章</span><span>{p.total_words?.toLocaleString()} 字</span>
+          </div>
+        </div>
+      ))}</div>}
+      {show&&<div className="modal-ov" onClick={()=>!gen&&setShow(false)}><div className="modal" onClick={e=>e.stopPropagation()} style={{position:'relative', overflow:'hidden'}}>
+        {gen && <div style={{position:'absolute',top:0,left:0,right:0,height:3,background:'linear-gradient(to right, transparent, var(--gold), transparent)',animation:'shimmer 1.5s infinite linear', backgroundSize:'200% 100%', zIndex:2}} />}
+        <h2 style={{display:'flex', alignItems:'center', gap:8}}>
+          新建作品 {gen && <span style={{fontSize:12, color:'var(--gold)', fontWeight:'normal', animation:'ai-pulse 2s infinite', padding:'2px 8px', borderRadius:10, background:'rgba(219,185,122,0.1)', display:'inline-flex', alignItems:'center', gap:4}}><Icon name="spark" size={12} /> 脑洞生成中...</span>}
+        </h2>
+        
+        <div className="fg"><label>书名 *</label><input className={gen?'input-shimmer':''} disabled={gen} value={f.title} onChange={e=>setF({...f,title:e.target.value})} placeholder="输入书名..."/></div>
+        <div className="fg"><label>类型</label><input className={gen?'input-shimmer':''} disabled={gen} value={f.genre} onChange={e=>setF({...f,genre:e.target.value})} placeholder="玄幻、仙侠、都市、科幻..."/></div>
+        <div className="fg"><label>简介</label><textarea className={gen?'input-shimmer':''} disabled={gen} value={f.synopsis} onChange={e=>setF({...f,synopsis:e.target.value})} placeholder="故事简介..." rows={3}/></div>
+        <div className="fg"><label>风格指导</label><textarea className={gen?'input-shimmer':''} disabled={gen} value={f.style_guide} onChange={e=>setF({...f,style_guide:e.target.value})} placeholder="写作风格偏好..." rows={2}/></div>
+        <div className="fg"><label>世界设定</label><textarea className={gen?'input-shimmer':''} disabled={gen} value={f.world_setting} onChange={e=>setF({...f,world_setting:e.target.value})} placeholder="世界观设定..." rows={3}/></div>
+        <div style={{display:'flex',gap:8,justifyContent:'flex-end', marginTop:20}}>
+          <button className={`btn btn-ai ${gen?'generating':''}`} onClick={autoGen} disabled={gen} style={{marginRight:'auto',display:'inline-flex',alignItems:'center',gap:6}}>
+            <Icon name="spark" size={12} />
+            {gen?'脑洞持续展开中...':'AI 脑洞补全'}
+          </button>
+          <button className="btn btn-s" onClick={()=>setShow(false)} disabled={gen}>取消</button>
+          <button className="btn btn-p" onClick={create} disabled={cr||gen}>{cr?'创建中...':'创建作品'}</button>
+        </div>
+      </div></div>}
+    </div>
+  );
+}
+
+function Proj({p, onRef, goWrite, user}) {
+  const [gen, setGen] = useState(false); const [ins, setIns] = useState('');
+  const [showAdd, setShowAdd] = useState(false); const [nc, setNc] = useState({title:'',outline:''});
+  const requireLogin = () => { if(!user) { showAlert('此操作需要登录，请先登录', '提示'); window.location.hash = '#/login'; return false; } return true; };
+  const genOutline = async () => { if(!requireLogin()) return; setGen(true); try{await P(`${API}/novel/project/${p.id}/outline/`,{instruction:ins});onRef();}catch(e){showAlert(e.message, '错误')} setGen(false); };
+  const addCh = async () => { if(!requireLogin()) return; try{await P(`${API}/novel/project/${p.id}/chapters/`,nc);setShowAdd(false);setNc({title:'',outline:''});onRef();}catch(e){showAlert(e.message, '错误')} };
+  return (
+    <div>
+      <div className="card" style={{marginBottom:16}}>
+        <h3>{p.title}</h3><p style={{fontSize:13,color:'var(--fg2)'}}>{p.synopsis}</p>
+        {p.world_setting&&(
+          <p style={{fontSize:12,color:'var(--fg3)',marginTop:6}}>
+            <span className="with-ic">
+              <Icon name="map" size={12} />
+              <span>{p.world_setting.substring(0,200)}...</span>
+            </span>
+          </p>
+        )}
+      </div>
+      <div style={{display:'flex',gap:8,marginBottom:14,alignItems:'center'}}>
+        <input value={ins} onChange={e=>setIns(e.target.value)} placeholder="可选：描述故事方向，指导大纲生成..." style={{flex:1}}/>
+        <button className="btn btn-p" onClick={genOutline} disabled={gen}>
+          {gen ? '生成中...' : (
+            <span className="with-ic">
+              <Icon name="spark" size={14} />
+              生成大纲
+            </span>
+          )}
+        </button>
+        <button className="btn btn-s" onClick={()=>{ if(requireLogin()) setShowAdd(true); }}>+ 添加章节</button>
+      </div>
+      {p.chapters?.length>0?p.chapters.map(ch=>(
+        <div key={ch.id} className="ch-item" onClick={goWrite}>
+          <div className="ch-n">{ch.number}</div>
+          <div className="ch-info"><h4>{ch.title}</h4><p>{ch.outline?.substring(0,100)||'暂无大纲'}</p></div>
+          <span style={{fontSize:12,color:'var(--fg3)'}}>{ch.word_count}字</span>
+          <span className={`ch-st ${ch.status}`}>{STATUS_MAP[ch.status]||ch.status}</span>
+        </div>
+      )):<div className="empty"><h3>还没有章节</h3><p>生成大纲或手动添加章节</p></div>}
+      {showAdd&&<div className="modal-ov" onClick={()=>setShowAdd(false)}><div className="modal" onClick={e=>e.stopPropagation()}>
+        <h2>添加章节</h2>
+        <div className="fg"><label>标题</label><input value={nc.title} onChange={e=>setNc({...nc,title:e.target.value})}/></div>
+        <div className="fg"><label>大纲</label><textarea value={nc.outline} onChange={e=>setNc({...nc,outline:e.target.value})} rows={4}/></div>
+        <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}>
+          <button className="btn btn-s" onClick={()=>setShowAdd(false)}>取消</button>
+          <button className="btn btn-p" onClick={addCh}>添加</button>
+        </div>
+      </div></div>}
+    </div>
+  );
+}
+
+function Write({p, onRef, onUsage, user}) {
+  const chs = p.chapters||[];
+  const [sel, setSel] = useState(null);
+  const [cd, setCd] = useState(null);
+  const [wr, setWr] = useState(false);
+  const [ins, setIns] = useState('');
+  const [tab, setTab] = useState('write');
+  // context menu state
+  const [ctxMenu, setCtxMenu] = useState(null); // {x, y}
+  const [selRange, setSelRange] = useState(null); // {start, end, text}
+  const [refining, setRefining] = useState(false);
+  // custom prompt modal
+  const [customModal, setCustomModal] = useState(false);
+  const [customPrompt, setCustomPrompt] = useState('');
+  const taRef = React.useRef(null);
+
+  // Compute word count client-side from content (real-time, correct for CJK)
+  const wordCount = React.useMemo(() => {
+    const t = cd?.content || '';
+    const cjk = (t.match(/[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff]/g)||[]).length;
+    const asc = (t.match(/[a-zA-Z0-9]+/g)||[]).length;
+    return cjk + asc;
+  }, [cd?.content]);
+
+  const requireLogin = () => { if(!user) { showAlert('此操作需要登录，请先登录', '提示'); window.location.hash = '#/login'; return false; } return true; };
+  const load = async (ch) => { setSel(ch); const d = await F(`${API}/novel/chapter/${ch.id}/`); setCd(d); };
+
+  const _streamChapter = async (url) => {
+    const base = cd?.content || '';
+    const sep = base ? '\n\n' : '';
+    const token = localStorage.getItem('mf_token');
+    const hdrs = {'Content-Type':'application/json'};
+    if(token) hdrs['Authorization'] = `Token ${token}`;
+    const resp = await fetch(url, {method:'POST', headers:hdrs, body:JSON.stringify({instruction:ins})});
+    if(!resp.ok) throw new Error(`${resp.status}: ${await resp.text()}`);
+    const reader = resp.body.getReader(); const dec = new TextDecoder();
+    let buf=''; let acc='';
+    while(true) {
+      const {done,value} = await reader.read(); if(done) break;
+      buf += dec.decode(value,{stream:true});
+      const lns = buf.split('\n'); buf = lns.pop();
+      for(const ln of lns) {
+        if(!ln.startsWith('data: ')) continue;
+        let ev; try{ ev=JSON.parse(ln.slice(6)); }catch{ continue; }
+        if(ev.type==='chunk'){ acc+=ev.text; setCd(p=>({...p,content:base+sep+acc})); }
+        else if(ev.type==='done'){ onRef&&onRef(); onUsage&&onUsage(); }
+        else if(ev.type==='error'){ throw new Error(ev.message); }
+      }
+    }
+  };
+
+  const doWrite = async () => {
+    if(!requireLogin()) return; if(!sel) return; setWr(true);
+    try { await _streamChapter(`${API}/novel/chapter/${sel.id}/write-stream/`); }
+    catch(e){ showAlert(e.message, '错误'); }
+    setWr(false);
+  };
+
+  const doCont = async () => {
+    if(!requireLogin()) return; if(!sel) return; setWr(true);
+    try { await _streamChapter(`${API}/novel/chapter/${sel.id}/continue-stream/`); }
+    catch(e){ showAlert(e.message, '错误'); }
+    setWr(false);
+  };
+
+  const doSave = async () => { if(!requireLogin()) return; if(!cd)return; await U(`${API}/novel/chapter/${cd.id}/`,{content:cd.content}); onRef(); };
+
+  // handle right-click on textarea
+  const handleContextMenu = (e) => {
+    const ta = taRef.current;
+    if(!ta) return;
+    const start = ta.selectionStart;
+    const end = ta.selectionEnd;
+    const text = ta.value.substring(start, end).trim();
+    if(!text) return; // only show menu when text is selected
+    e.preventDefault();
+    setSelRange({start, end, text});
+    setCtxMenu({x: e.clientX, y: e.clientY});
+  };
+
+  const closeCtxMenu = () => setCtxMenu(null);
+
+  // stream refine and replace selected text
+  const doRefine = async (mode, customInstruction='') => {
+    if(!requireLogin()) return;
+    if(!sel || !selRange) return;
+    closeCtxMenu();
+    setRefining(true);
+    try {
+      const token = localStorage.getItem('mf_token');
+      const hdrs = {'Content-Type':'application/json'};
+      if(token) hdrs['Authorization'] = `Token ${token}`;
+      const body = {selected_text: selRange.text, mode, custom_instruction: customInstruction};
+      const resp = await fetch(`${API}/novel/chapter/${sel.id}/refine-stream/`, {method:'POST', headers:hdrs, body:JSON.stringify(body)});
+      if(!resp.ok) throw new Error(`${resp.status}: ${await resp.text()}`);
+      const reader = resp.body.getReader(); const dec = new TextDecoder();
+      let buf=''; let acc='';
+      // snapshot content before streaming starts
+      const originalContent = cd?.content || '';
+      const before = originalContent.substring(0, selRange.start);
+      const after = originalContent.substring(selRange.end);
+      while(true) {
+        const {done,value} = await reader.read(); if(done) break;
+        buf += dec.decode(value,{stream:true});
+        const lns = buf.split('\n'); buf = lns.pop();
+        for(const ln of lns) {
+          if(!ln.startsWith('data: ')) continue;
+          let ev; try{ ev=JSON.parse(ln.slice(6)); }catch{ continue; }
+          if(ev.type==='chunk'){ acc+=ev.text; setCd(p=>({...p,content:before+acc+after})); }
+          else if(ev.type==='done'){ onUsage&&onUsage(); }
+          else if(ev.type==='error'){ throw new Error(ev.message); }
+        }
+      }
+      // update selRange to new selection end
+      setSelRange(null);
+    } catch(e){ showAlert(e.message, '错误'); }
+    setRefining(false);
+  };
+
+  const openCustomModal = () => { setCtxMenu(null); setCustomPrompt(''); setCustomModal(true); };
+  const submitCustom = () => { setCustomModal(false); doRefine('custom', customPrompt); };
+
+  // close ctx menu on click outside
+  React.useEffect(() => {
+    if(!ctxMenu) return;
+    const handler = () => closeCtxMenu();
+    document.addEventListener('click', handler);
+    return () => document.removeEventListener('click', handler);
+  }, [ctxMenu]);
+
+  return (
+    <div className="split">
+      {/* Right-click Context Menu */}
+      {ctxMenu && (
+        <div className="ctx-menu" style={{left:ctxMenu.x, top:ctxMenu.y}} onClick={e=>e.stopPropagation()}>
+          <div className="ctx-item" onClick={()=>doRefine('expand')}>
+            <span className="ctx-icon"><Icon name="spark" size={12} /></span>扩写
+          </div>
+          <div className="ctx-item" onClick={()=>doRefine('condense')}>
+            <span className="ctx-icon"><Icon name="triangle" size={10} /></span>精简
+          </div>
+          <div className="ctx-sep"/>
+          <div className="ctx-item" onClick={openCustomModal}>
+            <span className="ctx-icon"><Icon name="pen" size={12} /></span>输入AI提示词…
+          </div>
+        </div>
+      )}
+      {/* Custom Prompt Modal */}
+      {customModal && (
+        <div className="refine-ov" onClick={()=>setCustomModal(false)}>
+          <div className="refine-box" onClick={e=>e.stopPropagation()}>
+            <h4>AI润色提示词</h4>
+            <p style={{fontSize:12,color:'var(--fg3)',marginBottom:8}}>
+              选中文本：<em style={{color:'var(--gold)'}}>{selRange?.text?.slice(0,60)}{selRange?.text?.length>60?'…':''}</em>
+            </p>
+            <textarea
+              value={customPrompt}
+              onChange={e=>setCustomPrompt(e.target.value)}
+              placeholder="请输入AI润色指令，例如：改成更诗意的风格、增加紧张感、用古风文言…"
+              autoFocus
+              onKeyDown={e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey))submitCustom();}}
+            />
+            <div className="row">
+              <button className="btn btn-s btn-sm" onClick={()=>setCustomModal(false)}>取消</button>
+              <button className="btn btn-p" onClick={submitCustom} disabled={!customPrompt.trim()}>确认润色</button>
+            </div>
+          </div>
+        </div>
+      )}
+      <div className="split-l">
+        {!sel?<div>
+          <div style={{display:'flex',alignItems:'center',marginBottom:14}}>
+            <h3 style={{fontFamily:'var(--serif)',fontSize:18,flex:1}}>选择章节</h3>
+            <span style={{fontSize:12,color:'var(--fg3)'}}>共 {(p.total_words||0).toLocaleString()} 字</span>
+          </div>
+          {chs.map(ch=>(<div key={ch.id} className="ch-item" onClick={()=>load(ch)}>
+            <div className="ch-n">{ch.number}</div>
+            <div className="ch-info"><h4>{ch.title}</h4><p>{ch.word_count.toLocaleString()}字 · {STATUS_MAP[ch.status]||ch.status}</p></div>
+          </div>))}
+        </div>:<div>
+          <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:10}}>
+            <button className="btn btn-s btn-sm" onClick={()=>{setSel(null);setCd(null)}}>← 返回</button>
+            <h3 style={{fontFamily:'var(--serif)',fontSize:16}}>第{sel.number}章: {sel.title}</h3>
+            <span style={{fontSize:12,color:'var(--fg3)',marginLeft:'auto'}}>{wordCount.toLocaleString()} 字</span>
+          </div>
+          <div className="tabs">
+            <div className={`tab ${tab==='write'?'on':''}`} onClick={()=>setTab('write')}>写作</div>
+            <div className={`tab ${tab==='outline'?'on':''}`} onClick={()=>setTab('outline')}>大纲</div>
+          </div>
+          {tab==='write'&&<>
+            <div style={{marginBottom:10,display:'flex',gap:8}}>
+              <input value={ins} onChange={e=>setIns(e.target.value)} placeholder="给AI的指令（可选）..." style={{flex:1}}/>
+              <button className="btn btn-p" onClick={doWrite} disabled={wr||refining}>
+                {wr ? '写作中...' : (
+                  <span className="with-ic">
+                    <Icon name="pen" size={14} />
+                    撰写
+                  </span>
+                )}
+              </button>
+              <button className="btn btn-s" onClick={doCont} disabled={wr||refining}>→ 续写</button>
+              <button className="btn btn-s btn-sm" onClick={doSave}>保存</button>
+            </div>
+            {wr&&<div className="load">正在检索记忆、分析演变历史，流式生成内容中...</div>}
+            {refining&&<div className="load">AI润色中，正在检索记忆与上下文...</div>}
+            <textarea
+              ref={taRef}
+              className="ed"
+              value={cd?.content||''}
+              onChange={e=>setCd({...cd,content:e.target.value})}
+              placeholder="章节内容将在此流式输出显示...&#10;&#10;提示：选中文本后右键可扩写、精简或自定义AI润色"
+              onContextMenu={handleContextMenu}
+            />
+          </>}
+          {tab==='outline'&&<div className="card"><p style={{fontSize:14,lineHeight:1.7,whiteSpace:'pre-wrap'}}>{cd?.outline||'暂无大纲'}</p></div>}
+        </div>}
+      </div>
+      <div className="split-r">
+        <h4 style={{fontSize:12,color:'var(--fg3)',marginBottom:10,letterSpacing:1}}>Agent 活动日志</h4>
+        <MiniLogs pid={p.id}/>
+      </div>
+    </div>
+  );
+}
+
+function Pyramid({pid, user}) {
+  const [st, setSt] = useState(null);
+  const [cons, setCons] = useState(false);
+  const [q, setQ] = useState(''); const [rr, setRr] = useState(null); const [ret, setRet] = useState(false);
+  const [vl, setVl] = useState(null); const [ln, setLn] = useState([]);
+  const [nd, setNd] = useState(null);
+
+  const requireLogin = () => { if(!user) { showAlert('此操作需要登录，请先登录', '提示'); window.location.hash = '#/login'; return false; } return true; };
+
+  useEffect(() => { F(`${API}/memory/${pid}/stats/`).then(setSt); }, [pid]);
+
+  const lvColors = ['var(--gold)','var(--purple)','var(--blue)','var(--green)','var(--red)'];
+  const lvNames = ['世界','大陆','王国','城池','街巷'];
+
+  const consolidate = async () => { if(!requireLogin()) return; setCons(true); try{await P(`${API}/memory/${pid}/consolidate/`,{target:'universe'});F(`${API}/memory/${pid}/stats/`).then(setSt);}catch(e){showAlert(e.message, '错误')} setCons(false); };
+  const retrieve = async () => { if(!q)return; setRet(true); try{const r=await P(`${API}/memory/${pid}/retrieve/`,{query:q});setRr(r);}catch(e){showAlert(e.message, '错误')} setRet(false); };
+  const viewLv = async (lv) => { setVl(lv); const n=await F(`${API}/memory/${pid}/nodes/?level=${lv}&limit=30`);setLn(n); };
+  const viewNode = async (id) => { const d=await F(`${API}/memory/node/${id}/`);setNd(d); };
+
+  return (
+    <div>
+      <div style={{display:'flex',gap:8,marginBottom:16}}>
+        <button className="btn btn-p" onClick={consolidate} disabled={cons}>
+          {cons ? '整合中...' : (
+            <span className="with-ic">
+              <Icon name="refresh" size={14} />
+              整合记忆
+            </span>
+          )}
+        </button>
+      </div>
+      {st&&<div className="stats-g">
+        {[['节点',st.total_nodes],['链接',st.total_links],['快照',st.total_snapshots],['角色',st.characters],['角色快照',st.char_snapshots],['时间线事件',st.timeline_events],['预估Token',(st.estimated_tokens/1000).toFixed(0)+'K']].map(([l,v],i)=>(
+          <div key={i} className="sc"><div className="sv" style={{fontSize:22}}>{v}</div><div className="sl">{l}</div></div>
+        ))}
+      </div>}
+      <div className="card" style={{marginBottom:16}}>
+        <h3>记忆金字塔</h3>
+        <div className="pyr">{lvNames.map((n,i)=>{
+          const c = st ? (st[n]||0) : 0;
+          const w = 20 + i * 20;
+          return (<div key={i} className="pyr-lv" onClick={()=>viewLv(i)}>
+            <span className="pyr-lb">L{i} {n}</span>
+            <div className="pyr-bar" style={{width:`${w}%`,background:lvColors[i]+'25',borderLeft:`3px solid ${lvColors[i]}`}}>
+              <span style={{color:lvColors[i]}}>{n}</span><span className="pyr-cnt">{c}</span>
+            </div>
+          </div>);
+        })}</div>
+      </div>
+      <div className="card" style={{marginBottom:16}}>
+        <h3>记忆检索测试</h3>
+        <div style={{display:'flex',gap:8,marginTop:8}}>
+          <input value={q} onChange={e=>setQ(e.target.value)} placeholder="输入查询测试记忆检索效果..." style={{flex:1}}/>
+          <button className="btn btn-p" onClick={retrieve} disabled={ret}>
+            {ret ? '检索中...' : (
+              <span className="with-ic">
+                <Icon name="search" size={14} />
+                检索
+              </span>
+            )}
+          </button>
+        </div>
+        {rr&&<div style={{marginTop:10}}>
+          <div style={{fontSize:11,color:'var(--fg3)',marginBottom:6}}>检索到 {rr.chars} 字符 (~{rr.estimated_tokens} tokens)</div>
+          <div style={{background:'var(--bg)',border:'1px solid var(--border)',borderRadius:'var(--r)',padding:12,maxHeight:350,overflow:'auto',fontSize:12,lineHeight:1.6,whiteSpace:'pre-wrap',color:'var(--fg2)'}}>{rr.context}</div>
+        </div>}
+      </div>
+      {vl!==null&&<div className="card">
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
+          <h3>层级{vl}: {lvNames[vl]} ({ln.length}个节点)</h3>
+          <button className="btn btn-s btn-sm" onClick={()=>{setVl(null);setNd(null)}}>关闭</button>
+        </div>
+        {ln.map(n=>(
+          <div key={n.id} style={{padding:6,borderBottom:'1px solid var(--border)',cursor:'pointer',fontSize:12}} onClick={()=>viewNode(n.id)}>
+            <span style={{color:'var(--gold)'}}>{n.title}</span>
+            <span style={{color:'var(--fg3)',fontSize:10,marginLeft:8}}>v{n.version} · 访问{n.access_count}次 · {n.children_count}个子节点 · 第{n.chapter_index}章</span>
+            <p style={{color:'var(--fg2)',fontSize:11,marginTop:3}}>{n.summary}</p>
+          </div>
+        ))}
+      </div>}
+      {nd&&<div className="modal-ov" onClick={()=>setNd(null)}><div className="modal" onClick={e=>e.stopPropagation()} style={{maxWidth:700}}>
+        <h2>{nd.title}</h2>
+        <div style={{display:'flex',gap:6,flexWrap:'wrap',margin:'8px 0'}}>
+          <span className="tag">层级{nd.level}: {nd.level_name}</span>
+          <span className="tag">类型: {nd.node_type}</span>
+          <span className="tag">版本: v{nd.version}</span>
+          <span className="tag">重要度: {nd.importance}</span>
+          <span className="tag">访问: {nd.access_count}次</span>
+        </div>
+        <div style={{marginBottom:10}}>
+          <h4 style={{fontSize:12,color:'var(--fg3)',marginBottom:3}}>摘要</h4>
+          <p style={{fontSize:13,lineHeight:1.6,color:'var(--fg2)',whiteSpace:'pre-wrap'}}>{nd.summary}</p>
+        </div>
+        {nd.content&&<div style={{marginBottom:10}}>
+          <h4 style={{fontSize:12,color:'var(--fg3)',marginBottom:3}}>完整内容</h4>
+          <div style={{background:'var(--bg)',padding:10,borderRadius:'var(--r)',maxHeight:250,overflow:'auto',fontSize:12,lineHeight:1.6,whiteSpace:'pre-wrap'}}>{nd.content}</div>
+        </div>}
+        {nd.snapshots?.length>0&&<div style={{marginBottom:10}}>
+          <h4 style={{fontSize:12,color:'var(--fg3)',marginBottom:6}}>
+            <span className="with-ic">
+              <Icon name="clock" size={12} />
+              记忆演变历史 ({nd.snapshots.length}个版本)
+            </span>
+          </h4>
+          <div className="evo-track">{nd.snapshots.map((s,i)=>(
+            <div key={i} className="evo-node">
+              <div className="evo-ch">v{s.version} · 第{s.chapter_index}章</div>
+              <div className="evo-state">{s.summary}</div>
+              <div className="evo-change">
+                <span className="with-ic">
+                  <Icon name="note" size={12} />
+                  {s.change_reason||'初始版本'}
+                </span>
+              </div>
+            </div>
+          ))}</div>
+        </div>}
+        {nd.children?.length>0&&<div style={{marginBottom:10}}>
+          <h4 style={{fontSize:12,color:'var(--fg3)',marginBottom:3}}>子节点 ({nd.children.length})</h4>
+          {nd.children.map(c=>(<div key={c.id} style={{fontSize:11,padding:3,cursor:'pointer',color:'var(--gold)'}} onClick={()=>viewNode(c.id)}>[{c.level_name}] {c.title}</div>))}
+        </div>}
+      </div></div>}
+    </div>
+  );
+}
+
+function Timeline({pid}) {
+  const [events, setEvents] = useState([]);
+  const [filter, setFilter] = useState('');
+  useEffect(() => { loadE(); }, [pid]);
+  const loadE = () => {
+    const url = filter ? `${API}/memory/${pid}/timeline/?type=${filter}` : `${API}/memory/${pid}/timeline/`;
+    F(url).then(setEvents);
+  };
+  useEffect(()=>{loadE()},[filter]);
+
+  const types = [['','全部'],['plot','剧情'],['character','角色变化'],['relation','关系变化'],['turning','转折'],['foreshadow','伏笔'],['reveal','揭示']];
+
+  const grouped = {};
+  events.forEach(e => {
+    const k = `第${e.chapter_index}章`;
+    if (!grouped[k]) grouped[k] = [];
+    grouped[k].push(e);
+  });
+
+  return (
+    <div>
+      <h2 style={{fontFamily:'var(--serif)',fontSize:22,marginBottom:4}}>故事时间线</h2>
+      <p style={{color:'var(--fg3)',fontSize:12,marginBottom:16}}>记忆随时间的动态变化 · 角色成长轨迹 · 剧情演变脉络</p>
+      <div style={{display:'flex',gap:6,marginBottom:20,flexWrap:'wrap'}}>
+        {types.map(([v,l])=>(<button key={v} className={`btn btn-sm ${filter===v?'btn-p':'btn-s'}`} onClick={()=>setFilter(v)}>{l}</button>))}
+      </div>
+      {events.length===0?<div className="empty"><h3>暂无时间线事件</h3><p>开始写作后，Agent会自动提取故事事件并构建时间线</p></div>:
+      <div>{Object.entries(grouped).map(([ch, evts])=>(
+        <div key={ch} style={{marginBottom:24}}>
+          <div style={{fontSize:13,fontWeight:600,color:'var(--gold)',marginBottom:10,padding:'4px 0',borderBottom:'1px solid var(--border)'}}>{ch}</div>
+          <div className="tl">{evts.map(e=>(
+            <div key={e.id} className={`tl-item ${e.event_type}`}>
+              <div className="tl-ch">{e.event_type_display} {e.story_time&&`· ${e.story_time}`}</div>
+              <div className="tl-title">{e.title}</div>
+              <div className="tl-desc">{e.description}</div>
+              {e.characters_involved?.length>0&&(
+                <div className="tl-chars">
+                  <span className="with-ic">
+                    <Icon name="user" size={12} />
+                    {e.characters_involved.join('、')}
+                  </span>
+                </div>
+              )}
+              {e.impact&&(
+                <div className="tl-impact">
+                  <span className="with-ic">
+                    <Icon name="bolt" size={12} />
+                    影响: {e.impact}
+                  </span>
+                </div>
+              )}
+            </div>
+          ))}</div>
+        </div>
+      ))}</div>}
+    </div>
+  );
+}
+
+function Chars({pid, user}) {
+  const [cs, setCs] = useState([]);
+  const [sel, setSel] = useState(null);
+  const [detail, setDetail] = useState(null);
+  const [showAdd, setShowAdd] = useState(false);
+  const [f, setF] = useState({name:'',description:'',traits:''});
+  const [ext, setExt] = useState('');
+  const [exting, setExting] = useState(false);
+
+  const requireLogin = () => { if(!user) { showAlert('此操作需要登录，请先登录', '提示'); window.location.hash = '#/login'; return false; } return true; };
+
+  useEffect(()=>{loadC()},[pid]);
+  const loadC = () => F(`${API}/memory/${pid}/characters/`).then(setCs);
+
+  const viewChar = async (id) => {
+    const d = await F(`${API}/memory/character/${id}/`);
+    setDetail(d); setSel(id);
+  };
+
+  const addC = async () => {
+    if(!requireLogin()) return;
+    const traits = f.traits.split(/[,，]/).map(t=>t.trim()).filter(Boolean);
+    await P(`${API}/memory/${pid}/characters/`,{...f,traits});
+    setShowAdd(false);setF({name:'',description:'',traits:''});loadC();
+  };
+  const extC = async () => { if(!ext)return; if(!requireLogin()) return; setExting(true); try{await P(`${API}/memory/${pid}/extract-characters/`,{text:ext});loadC();setExt('');}catch(e){showAlert(e.message, '错误')} setExting(false); };
+
+  return (
+    <div>
+      <div style={{display:'flex',gap:8,marginBottom:16}}>
+        <button className="btn btn-p" onClick={()=>{ if(requireLogin()) setShowAdd(true); }}>+ 添加角色</button>
+      </div>
+      <div className="card" style={{marginBottom:16}}>
+        <h3 style={{fontSize:14,marginBottom:6}}>从文本自动提取角色</h3>
+        <textarea value={ext} onChange={e=>setExt(e.target.value)} placeholder="粘贴故事文本，自动识别并提取角色信息..." rows={3} style={{width:'100%',marginBottom:6}}/>
+        <button className="btn btn-s" onClick={extC} disabled={exting}>
+          {exting ? '提取中...' : (
+            <span className="with-ic">
+              <Icon name="spark" size={14} />
+              智能提取
+            </span>
+          )}
+        </button>
+      </div>
+      {cs.length===0?<div className="empty"><h3>暂无角色</h3><p>手动添加或从文本自动提取角色</p></div>:
+      <div className="g2">{cs.map(c=>(
+        <div key={c.id} className="card" style={{cursor:'pointer'}} onClick={()=>viewChar(c.id)}>
+          <h4 style={{fontFamily:'var(--serif)',fontSize:16,color:'var(--gold2)'}}>{c.name}</h4>
+          {c.aliases?.length>0&&<p style={{fontSize:10,color:'var(--fg3)'}}>别名: {c.aliases.join('、')}</p>}
+          <p style={{fontSize:12,color:'var(--fg2)',margin:'6px 0',lineHeight:1.5}}>{c.description}</p>
+          {c.current_state&&<p style={{fontSize:11,color:'var(--cyan)',marginBottom:4}}>当前状态: {c.current_state}</p>}
+          <div style={{display:'flex',gap:4,flexWrap:'wrap',alignItems:'center'}}>
+            {c.traits?.map((t,i)=><span key={i} className="tag">{t}</span>)}
+            <span style={{fontSize:10,color:'var(--fg3)',marginLeft:'auto'}}>{c.snapshot_count}个快照</span>
+          </div>
+        </div>
+      ))}</div>}
+
+      {detail&&<div className="modal-ov" onClick={()=>{setDetail(null);setSel(null)}}><div className="modal" onClick={e=>e.stopPropagation()} style={{maxWidth:700}}>
+        <h2>
+          <span className="with-ic">
+            <Icon name="user" size={16} />
+            {detail.name}
+          </span>
+        </h2>
+        <p style={{fontSize:13,color:'var(--fg2)',lineHeight:1.6,margin:'8px 0'}}>{detail.description}</p>
+        {detail.backstory&&<p style={{fontSize:12,color:'var(--fg3)',marginBottom:8}}>背景: {detail.backstory}</p>}
+        {detail.current_state&&<div className="card" style={{borderColor:'var(--cyan)',marginBottom:12}}>
+          <h4 style={{fontSize:12,color:'var(--cyan)',marginBottom:3}}>
+            <span className="with-ic">
+              <Icon name="eye" size={12} />
+              当前状态
+            </span>
+          </h4>
+          <p style={{fontSize:13,lineHeight:1.5}}>{detail.current_state}</p>
+        </div>}
+        {detail.traits?.length>0&&<div style={{display:'flex',gap:4,flexWrap:'wrap',marginBottom:12}}>{detail.traits.map((t,i)=><span key={i} className="tag">{t}</span>)}</div>}
+
+        {detail.snapshots?.length>0&&<div>
+          <h4 style={{fontSize:13,color:'var(--fg3)',marginBottom:8}}>
+            <span className="with-ic">
+              <Icon name="clock" size={12} />
+              角色演变轨迹 ({detail.snapshots.length}个时间点)
+            </span>
+          </h4>
+          <div className="evo-track">{detail.snapshots.map((s,i)=>(
+            <div key={i} className="evo-node" style={{minWidth:200}}>
+              <div className="evo-ch">第{s.chapter_index}章</div>
+              <div className="evo-state">{s.state||'—'}</div>
+              {s.beliefs&&(
+                <div style={{fontSize:11,color:'var(--orange)',marginTop:3}}>
+                  <span className="with-ic">
+                    <Icon name="thought" size={12} />
+                    信念: {s.beliefs}
+                  </span>
+                </div>
+              )}
+              {s.goals&&(
+                <div style={{fontSize:11,color:'var(--green)',marginTop:2}}>
+                  <span className="with-ic">
+                    <Icon name="target" size={12} />
+                    目标: {s.goals}
+                  </span>
+                </div>
+              )}
+              {s.traits?.length>0&&<div style={{display:'flex',gap:3,flexWrap:'wrap',marginTop:3}}>{s.traits.map((t,j)=><span key={j} style={{fontSize:9,padding:'1px 4px',borderRadius:3,background:'var(--bg4)',color:'var(--fg3)'}}>{t}</span>)}</div>}
+              <div className="evo-change">
+                <span className="with-ic">
+                  <Icon name="note" size={12} />
+                  {s.change_description}
+                </span>
+              </div>
+            </div>
+          ))}</div>
+        </div>}
+      </div></div>}
+
+      {showAdd&&<div className="modal-ov" onClick={()=>setShowAdd(false)}><div className="modal" onClick={e=>e.stopPropagation()}>
+        <h2>添加角色</h2>
+        <div className="fg"><label>姓名 *</label><input value={f.name} onChange={e=>setF({...f,name:e.target.value})}/></div>
+        <div className="fg"><label>描述</label><textarea value={f.description} onChange={e=>setF({...f,description:e.target.value})} rows={3}/></div>
+        <div className="fg"><label>性格特征 (逗号分隔)</label><input value={f.traits} onChange={e=>setF({...f,traits:e.target.value})} placeholder="勇敢，狡诈，忠诚..."/></div>
+        <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}>
+          <button className="btn btn-s" onClick={()=>setShowAdd(false)}>取消</button>
+          <button className="btn btn-p" onClick={addC}>添加</button>
+        </div>
+      </div></div>}
+    </div>
+  );
+}
+
+function Chat({pid, onUsage, user}) {
+  const [msgs, setMsgs] = useState([]); const [inp, setInp] = useState(''); const [snd, setSnd] = useState(false);
+  const ref = useRef(null);
+  const requireLogin = () => { if(!user) { showAlert('此操作需要登录，请先登录', '提示'); window.location.hash = '#/login'; return false; } return true; };
+  useEffect(()=>{ref.current?.scrollIntoView({behavior:'smooth'})},[msgs]);
+  const send = async () => {
+    if(!requireLogin()) return;
+    if(!inp.trim()||snd)return; const m=inp.trim(); setInp('');
+    setMsgs(p=>[...p,{r:'u',c:m}]); setSnd(true);
+    try{const r=await P(`${API}/novel/project/${pid}/chat/`,{message:m});setMsgs(p=>[...p,{r:'a',c:r.response}]);onUsage&&onUsage();}
+    catch(e){setMsgs(p=>[...p,{r:'a',c:`错误: ${e.message}`}]);}
+    setSnd(false);
+  };
+  return (
+    <div className="cht">
+      <div className="cht-msgs">
+        {msgs.length===0&&<div className="empty"><h3>剧情顾问</h3><p>询问故事相关问题，Agent会在记忆金字塔中检索上下文并追溯角色演变历史来回答。<br/>例如："主角在第3章之后信念有什么变化？" "目前有哪些未解决的伏笔？"</p></div>}
+        {msgs.map((m,i)=>(
+          <div key={i} className={`cht-m ${m.r==='u'?'u':'a'}`}>
+            <div className="cht-lb">{m.r==='u'?'你':'Agent'}</div>
+            <div className="cht-bbl">{m.c}</div>
+          </div>
+        ))}
+        {snd&&<div className="load">Agent正在思考...</div>}
+        <div ref={ref}/>
+      </div>
+      <div className="cht-in">
+        <input value={inp} onChange={e=>setInp(e.target.value)} onKeyDown={e=>e.key==='Enter'&&send()} placeholder="询问故事相关问题..."/>
+        <button className="btn btn-p" onClick={send} disabled={snd}>发送</button>
+      </div>
+    </div>
+  );
+}
+
+function Logs({pid}) {
+  const [logs, setLogs] = useState([]); const [ar, setAr] = useState(true);
+  const load = useCallback(()=>{
+    const u = pid?`${API}/core/logs/?project_id=${pid}&limit=100`:`${API}/core/logs/?limit=100`;
+    F(u).then(setLogs).catch(()=>{});
+  },[pid]);
+  useEffect(()=>{load();if(ar){const id=setInterval(load,3000);return()=>clearInterval(id)}},[load,ar]);
+  return (
+    <div>
+      <div style={{display:'flex',gap:8,marginBottom:14,alignItems:'center'}}>
+        <button className="btn btn-s btn-sm" onClick={load}>
+          <span className="with-ic">
+            <Icon name="refresh" size={12} />
+            刷新
+          </span>
+        </button>
+        <label style={{fontSize:11,color:'var(--fg3)',display:'flex',alignItems:'center',gap:4}}>
+          <input type="checkbox" checked={ar} onChange={e=>setAr(e.target.checked)}/> 自动刷新
+        </label>
+        <span style={{fontSize:11,color:'var(--fg3)',marginLeft:'auto'}}>{logs.length} 条记录</span>
+      </div>
+      {logs.map(l=>(
+        <div key={l.id} className="log-i">
+          <span className="log-tm">{new Date(l.created_at).toLocaleTimeString('zh-CN')}</span>
+          <span className={`log-b ${l.level}`}>{l.level}</span>
+          <div style={{flex:1,minWidth:0}}>
+            <div className="log-tt">{l.title}</div>
+            {l.content&&<div className="log-ct">{l.content.substring(0,300)}</div>}
+          </div>
+        </div>
+      ))}
+      {logs.length===0&&<div className="empty"><p>暂无日志。开始写作后将显示Agent的全部活动。</p></div>}
+    </div>
+  );
+}
+
+function MiniLogs({pid}) {
+  const [logs, setLogs] = useState([]);
+  useEffect(()=>{
+    const ld=()=>F(`${API}/core/logs/?project_id=${pid}&limit=20`).then(setLogs).catch(()=>{});
+    ld(); const id=setInterval(ld,2000); return()=>clearInterval(id);
+  },[pid]);
+  return (<div>{logs.map(l=>(
+    <div key={l.id} style={{marginBottom:7,fontSize:10,borderLeft:`2px solid ${
+      l.level==='llm'?'var(--cyan)':l.level==='memory'?'var(--gold)':l.level==='think'?'var(--blue)':l.level==='error'?'var(--red)':'var(--fg3)'
+    }`,paddingLeft:7}}>
+      <div style={{display:'flex',gap:5,alignItems:'center'}}>
+        <span className={`log-b ${l.level}`} style={{fontSize:8,padding:'0 3px'}}>{l.level}</span>
+        <span style={{color:'var(--fg3)',fontFamily:'var(--mono)',fontSize:9}}>{new Date(l.created_at).toLocaleTimeString('zh-CN')}</span>
+      </div>
+      <div style={{color:'var(--fg2)',marginTop:1}}>{l.title}</div>
+    </div>
+  ))}</div>);
+}
+
+{% endverbatim %}

@@ -2,10 +2,11 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "Django Dev Server",
-      "runtimeExecutable": "bash",
-      "runtimeArgs": ["-c", "cd /Users/renqing/Desktop/mineai && python3 manage.py runserver 0.0.0.0:8000"],
-      "port": 8000
+      "name": "mineai-dev",
+      "runtimeExecutable": "/Users/renqing/miniconda3/bin/python",
+      "runtimeArgs": ["/Users/renqing/Desktop/mineai/manage.py", "runserver", "0.0.0.0:8001"],
+      "port": 8001,
+      "cwd": "/Users/renqing/Desktop/mineai"
     }
   ]
 }

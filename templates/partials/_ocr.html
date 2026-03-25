@@ -1,0 +1,485 @@
+{% verbatim %}
+// ── OCR Studio 应用组件 ────────────────────────────────────────
+// PDF 渲染与图片转换全部在浏览器端完成（PDF.js）
+// 后端仅作为 OCR API 的 CORS 代理，不存储任何文件
+
+function OCRStudioApp({user, onLogout, onUpdateUser}) {
+  const [v, setV] = useState('upload');
+  const [pages, setPages] = useState([]);   // [{id,name,dataUrl,status,result,error}]
+  const [apiKey, setApiKey] = useState('');
+  const [ocrPrompt, setOcrPrompt] = useState('');
+  // 'platform'=使用平台密钥(仅登录非访客用户可用), 'own'=用户自填密钥
+  const [keyMode, setKeyMode] = useState(() => (user && !user.is_guest) ? 'platform' : 'own');
+  const [activePageIdx, setActivePageIdx] = useState(0);
+  const [sbOpen, setSbOpen] = useState(false);
+  const [pdfLoaded, setPdfLoaded] = useState(!!window.pdfjsLib);
+  const pdfJsRef = useRef(window.pdfjsLib || null);
+
+  // 动态加载 PDF.js CDN
+  useEffect(() => {
+    if (window.pdfjsLib) return;
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+    s.onload = () => {
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+        'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      pdfJsRef.current = window.pdfjsLib;
+      setPdfLoaded(true);
+    };
+    document.head.appendChild(s);
+  }, []);
+
+  const resetProject = () => { setPages([]); setActivePageIdx(0); setV('upload'); };
+  const goTo = (view) => { setV(view); setSbOpen(false); };
+
+  return (
+    <div className="app">
+      <div className={`sb${sbOpen?' open':''}`}>
+        <div className="sb-back" onClick={() => { window.location.hash = '#/'; }}>← 返回平台</div>
+        <div className="sb-hd">
+          <h1>OCR 工作室</h1>
+          <p>文档识别 · 文字提取</p>
+        </div>
+        <div className="sb-nav">
+          <div className="ns">
+            <div className="ns-t">工作台</div>
+            <div className={`ni${v==='upload'?' on':''}`} onClick={() => goTo('upload')}>
+              <i><Icon name="upload" size={14} /></i>导入文件
+            </div>
+            {pages.length > 0 && (
+              <div className={`ni${v==='work'?' on':''}`} onClick={() => goTo('work')}>
+                <i><Icon name="file" size={14} /></i>识别工作台
+                <span style={{marginLeft:'auto',fontSize:11,color:'var(--fg3)'}}>{pages.length}页</span>
+              </div>
+            )}
+            {pages.some(p => p.status === 'done') && (
+              <div className={`ni${v==='result'?' on':''}`} onClick={() => goTo('result')}>
+                <i><Icon name="check" size={14} /></i>查看结果
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="main">
+        <div className="top">
+          <button className="menu-btn" onClick={() => setSbOpen(!sbOpen)}><Icon name="menu" size={18} /></button>
+          <span className="top-t">
+            {v==='upload'?'导入文件':v==='work'?'识别工作台':'识别结果'}
+          </span>
+          <div className="top-b">{displayName(user)}</div>
+        </div>
+        <div className="ct">
+          {v === 'upload' && (
+            <OCRUpload
+              pdfJs={pdfJsRef} pdfLoaded={pdfLoaded}
+              apiKey={apiKey} setApiKey={setApiKey}
+              keyMode={keyMode} setKeyMode={setKeyMode}
+              ocrPrompt={ocrPrompt} setOcrPrompt={setOcrPrompt}
+              onPagesReady={(ps) => { setPages(ps); setActivePageIdx(0); setV('work'); }}
+              user={user}
+            />
+          )}
+          {v === 'work' && pages.length > 0 && (
+            <OCRWork
+              pages={pages} setPages={setPages}
+              apiKey={apiKey} keyMode={keyMode} ocrPrompt={ocrPrompt}
+              activePageIdx={activePageIdx} setActivePageIdx={setActivePageIdx}
+              setV={setV} onReset={resetProject} user={user}
+            />
+          )}
+          {v === 'result' && (
+            <OCRResult
+              pages={pages} initialIdx={activePageIdx}
+              goBack={() => setV('work')}
+            />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function OCRUpload({pdfJs, pdfLoaded, apiKey, setApiKey, keyMode, setKeyMode, ocrPrompt, setOcrPrompt, onPagesReady, user}) {
+  const [loading, setLoading] = useState(false);
+  const [progress, setProgress] = useState('');
+  const [dragging, setDragging] = useState(false);
+  const fileRef = useRef();
+
+  const processFile = async (file) => {
+    if (!file) return;
+    if (!user) { showAlert('请先登录', '提示'); window.location.hash = '#/login'; return; }
+    const ext = file.name.toLowerCase().split('.').pop();
+    if (!['pdf','png','jpg','jpeg','gif','bmp','tiff','webp'].includes(ext)) {
+      showAlert('请选择 PDF 或图片文件', '提示'); return;
+    }
+    if (!pdfLoaded && ext === 'pdf') { showAlert('PDF.js 尚未加载，请稍后再试', '提示'); return; }
+    setLoading(true);
+    try {
+      let ps = [];
+      if (ext === 'pdf') {
+        const buf = await file.arrayBuffer();
+        setProgress('加载 PDF...');
+        const pdf = await pdfJs.current.getDocument({data: buf}).promise;
+        for (let i = 1; i <= pdf.numPages; i++) {
+          setProgress(`渲染第 ${i} / ${pdf.numPages} 页...`);
+          const page = await pdf.getPage(i);
+          const vp = page.getViewport({scale: 1.5});
+          const canvas = document.createElement('canvas');
+          canvas.width = vp.width; canvas.height = vp.height;
+          await page.render({canvasContext: canvas.getContext('2d'), viewport: vp}).promise;
+          ps.push({id:`p${i}`, name:`第 ${i} 页`, dataUrl: canvas.toDataURL('image/png'), status:'idle', result:'', error:''});
+        }
+      } else {
+        setProgress('读取图片...');
+        const dataUrl = await new Promise((res, rej) => {
+          const r = new FileReader(); r.onload = e => res(e.target.result); r.onerror = rej; r.readAsDataURL(file);
+        });
+        const img = await new Promise((res, rej) => { const i = new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=dataUrl; });
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
+        canvas.getContext('2d').drawImage(img, 0, 0);
+        ps.push({id:'p1', name: file.name, dataUrl: canvas.toDataURL('image/png'), status:'idle', result:'', error:''});
+      }
+      onPagesReady(ps);
+    } catch(e) {
+      showAlert('文件处理失败: ' + e.message, '错误');
+    }
+    setLoading(false); setProgress('');
+  };
+
+  return (
+    <div className="fade-in">
+      <div style={{marginBottom:32}}>
+        <h1 style={{fontFamily:'var(--serif)',fontSize:28,color:'var(--gold2)',marginBottom:8}}>OCR 工作室</h1>
+        <p style={{color:'var(--fg2)',fontSize:14}}>PDF/图片在浏览器本地渲染，仅 OCR 请求发到后端代理，文件不上传服务器</p>
+      </div>
+
+      <div style={{display:'grid',gap:16,marginBottom:24}}>
+        {/* 密钥来源选择：登录非访客用户可选平台密钥 */}
+        <div>
+          <label style={{display:'block',fontSize:11,color:'var(--fg2)',marginBottom:6}}>
+            OCR API 密钥 <span style={{color:'var(--red)'}}>*</span>
+          </label>
+          {user && !user.is_guest ? (
+            <div style={{display:'flex',gap:8,marginBottom:keyMode==='own'?10:0}}>
+              {[
+                {v:'platform', label:'使用平台密钥', hint:'由平台提供，无需填写'},
+                {v:'own',      label:'使用自己的密钥', hint:'填写您的 GLM API Key'},
+              ].map(opt => (
+                <div key={opt.v}
+                  onClick={() => setKeyMode(opt.v)}
+                  style={{flex:1,cursor:'pointer',padding:'10px 14px',borderRadius:6,
+                    border:`1px solid ${keyMode===opt.v?'var(--gold)':'var(--border2)'}`,
+                    background:keyMode===opt.v?'rgba(201,168,108,.1)':'var(--bg3)',
+                    transition:'all .15s'}}>
+                  <div style={{display:'flex',alignItems:'center',gap:8}}>
+                    <div style={{width:14,height:14,borderRadius:'50%',flexShrink:0,
+                      border:`2px solid ${keyMode===opt.v?'var(--gold)':'var(--fg3)'}`,
+                      background:keyMode===opt.v?'var(--gold)':'transparent'}}/>
+                    <span style={{fontSize:13,fontWeight:500,color:keyMode===opt.v?'var(--gold2)':'var(--fg)'}}>{opt.label}</span>
+                  </div>
+                  <div style={{fontSize:11,color:'var(--fg3)',marginTop:4,paddingLeft:22}}>{opt.hint}</div>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          {/* 仅在"使用自己密钥"或未登录时显示输入框 */}
+          {(keyMode === 'own' || !user || user.is_guest) && (
+            <input type="password"
+              style={{width:'100%',padding:10,background:'var(--bg3)',border:'1px solid var(--border2)',borderRadius:6,color:'var(--fg)'}}
+              placeholder="输入您的 GLM / OCR API 密钥（不会上传服务器）..."
+              value={apiKey} onChange={e => setApiKey(e.target.value)}
+            />
+          )}
+        </div>
+        <div>
+          <label style={{display:'block',fontSize:11,color:'var(--fg2)',marginBottom:4}}>提示词（可选）</label>
+          <textarea
+            style={{width:'100%',minHeight:72,padding:10,background:'var(--bg3)',border:'1px solid var(--border2)',borderRadius:6,color:'var(--fg)',fontFamily:'inherit',resize:'vertical'}}
+            placeholder="例如：以 Markdown 格式提取文本，保留表格和公式..."
+            value={ocrPrompt} onChange={e => setOcrPrompt(e.target.value)}
+          />
+        </div>
+      </div>
+
+      <div
+        style={{border:'2px dashed var(--border2)',borderRadius:12,padding:48,textAlign:'center',
+          cursor:loading?'wait':'pointer',transition:'all .3s',
+          borderColor:dragging?'var(--gold)':'var(--border2)',
+          background:dragging?'var(--bg4)':'transparent', opacity:loading?0.7:1}}
+        onDragOver={e=>{e.preventDefault();setDragging(true);}}
+        onDragLeave={()=>setDragging(false)}
+        onDrop={e=>{e.preventDefault();setDragging(false);if(!loading)processFile(e.dataTransfer.files[0]);}}
+        onClick={()=>!loading&&fileRef.current?.click()}
+      >
+        <input ref={fileRef} type="file" accept=".pdf,.png,.jpg,.jpeg,.gif,.bmp,.tiff,.webp"
+          hidden onChange={e=>processFile(e.target.files[0])} />
+        {loading ? (
+          <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:12}}>
+            <div className="load" />
+            <span style={{color:'var(--fg2)',fontSize:14}}>{progress}</span>
+          </div>
+        ) : (
+          <>
+            <div style={{marginBottom:12,color:'var(--gold)',display:'flex',justifyContent:'center'}}>
+              <Icon name="upload" size={32} stroke={1.6} />
+            </div>
+            <div>
+              <span style={{color:'var(--fg)',fontWeight:500}}>拖拽 PDF 或图片到这里</span>
+              <span style={{color:'var(--fg3)'}}> 或点击选择文件</span>
+            </div>
+            <div style={{fontSize:12,color:'var(--fg3)',marginTop:8}}>
+              支持 PDF、PNG、JPG、WebP 等 · 完全离线渲染
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function OCRWork({pages, setPages, apiKey, keyMode, ocrPrompt, activePageIdx, setActivePageIdx, setV, onReset, user}) {
+  const [selected, setSelected] = useState(() => new Set(pages.map(p => p.id)));
+  const [running, setRunning] = useState(false);
+  const abortRef = useRef(false);
+
+  const toggle = (id) => setSelected(prev => { const n=new Set(prev); n.has(id)?n.delete(id):n.add(id); return n; });
+  const doneCount = pages.filter(p => p.status === 'done').length;
+  const errorCount = pages.filter(p => p.status === 'error').length;
+  const processingCount = pages.filter(p => p.status === 'processing').length;
+  const statusColor = {idle:'var(--fg3)', processing:'var(--gold)', done:'var(--green)', error:'var(--red)'};
+
+  const pendingSelected = [...selected].filter(id => pages.find(p => p.id===id && p.status!=='done')).length;
+
+  const buildOcrBody = (b64) => {
+    const body = {image_b64: b64, prompt: ocrPrompt};
+    if (keyMode === 'own') body.api_key = apiKey;  // 平台模式不传，后端自动取平台密钥
+    return body;
+  };
+
+  const runOCR = async () => {
+    if (!user) { showAlert('请先登录', '提示'); window.location.hash='#/login'; return; }
+    if (keyMode === 'own' && !apiKey.trim()) { showAlert('请先在导入页面填写 OCR API 密钥', '提示'); return; }
+    const targets = pages.filter(p => selected.has(p.id) && p.status !== 'done');
+    if (!targets.length) { showAlert('没有待处理页面（已完成的不会重复识别）', '提示'); return; }
+    setRunning(true); abortRef.current = false;
+    for (const page of targets) {
+      if (abortRef.current) break;
+      setPages(prev => prev.map(p => p.id===page.id ? {...p, status:'processing'} : p));
+      const b64 = page.dataUrl.replace(/^data:image\/\w+;base64,/, '');
+      try {
+        const resp = await fetch(`${API}/ocr/recognize/`, {
+          method:'POST',
+          headers:{'Content-Type':'application/json','Authorization':`Token ${localStorage.getItem('mf_token')}`},
+          body: JSON.stringify(buildOcrBody(b64)),
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
+        setPages(prev => prev.map(p => p.id===page.id ? {...p, status:'done', result:data.text, error:''} : p));
+      } catch(e) {
+        setPages(prev => prev.map(p => p.id===page.id ? {...p, status:'error', error:e.message} : p));
+      }
+    }
+    setRunning(false);
+  };
+
+  const retryPage = async (pageId) => {
+    const page = pages.find(p => p.id===pageId);
+    if (!page) return;
+    if (keyMode === 'own' && !apiKey.trim()) return;
+    setPages(prev => prev.map(p => p.id===pageId ? {...p, status:'processing', error:''} : p));
+    const b64 = page.dataUrl.replace(/^data:image\/\w+;base64,/, '');
+    try {
+      const resp = await fetch(`${API}/ocr/recognize/`, {
+        method:'POST',
+        headers:{'Content-Type':'application/json','Authorization':`Token ${localStorage.getItem('mf_token')}`},
+        body: JSON.stringify(buildOcrBody(b64)),
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
+      setPages(prev => prev.map(p => p.id===pageId ? {...p, status:'done', result:data.text, error:''} : p));
+    } catch(e) {
+      setPages(prev => prev.map(p => p.id===pageId ? {...p, status:'error', error:e.message} : p));
+    }
+  };
+
+  const downloadMD = () => {
+    const done = pages.filter(p => p.status==='done');
+    if (!done.length) { showAlert('还没有已完成的结果', '提示'); return; }
+    const content = done.map((p,i) => `+-${i+1}-+\n\n${p.result}`).join('\n\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([content],{type:'text/markdown'}));
+    a.download = 'ocr_result.md'; a.click(); URL.revokeObjectURL(a.href);
+  };
+
+  return (
+    <div className="fade-in">
+      <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',marginBottom:20,flexWrap:'wrap',gap:12}}>
+        <div>
+          <h1 style={{fontFamily:'var(--serif)',fontSize:22,marginBottom:4}}>识别工作台</h1>
+          <p style={{color:'var(--fg2)',fontSize:13}}>
+            {pages.length} 页 · 已完成 {doneCount}
+            {errorCount>0 && <span style={{color:'var(--red)'}}> · 失败 {errorCount}</span>}
+            {processingCount>0 && <span style={{color:'var(--gold)'}}> · 处理中 {processingCount}</span>}
+          </p>
+        </div>
+        <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+          {doneCount>0 && <>
+            <button className="btn btn-sm btn-s" onClick={()=>setV('result')}>
+              <span className="with-ic"><Icon name="file" size={14} />查看结果</span>
+            </button>
+            <button className="btn btn-sm btn-s" onClick={downloadMD}>
+              <span className="with-ic"><Icon name="download" size={14} />下载 MD</span>
+            </button>
+          </>}
+          <button className="btn btn-sm btn-s" onClick={onReset}>+ 新文件</button>
+        </div>
+      </div>
+
+      <div style={{display:'flex',gap:8,marginBottom:16,flexWrap:'wrap'}}>
+        <button className="btn btn-sm btn-s" onClick={()=>setSelected(new Set(pages.map(p=>p.id)))}>全选</button>
+        <button className="btn btn-sm btn-s" onClick={()=>setSelected(new Set())}>取消</button>
+        <button className="btn btn-sm btn-s" onClick={()=>setSelected(new Set(pages.filter(p=>p.status!=='done').map(p=>p.id)))}>选待处理</button>
+        {!running
+          ? <button className="btn btn-sm btn-p" onClick={runOCR} disabled={pendingSelected===0}>
+              <span className="with-ic"><Icon name="search" size={14} />开始识别 ({pendingSelected})</span>
+            </button>
+          : <button className="btn btn-sm btn-d" onClick={()=>{abortRef.current=true;}}>停止</button>
+        }
+      </div>
+
+      <div style={{display:'flex',gap:8,marginBottom:16,fontSize:11,color:'var(--fg3)',flexWrap:'wrap'}}>
+        {[['idle','待处理'],['processing','处理中'],['done','已完成'],['error','错误']].map(([st,lb])=>(
+          <span key={st} style={{display:'flex',alignItems:'center',gap:4}}>
+            <span style={{width:8,height:8,borderRadius:'50%',background:statusColor[st],
+              animation:st==='processing'?'pulse 1.5s infinite':'none'}} />{lb}
+          </span>
+        ))}
+      </div>
+
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(140px,1fr))',gap:12}}>
+        {pages.map((p,idx)=>(
+          <div key={p.id} style={{
+            position:'relative',borderRadius:6,overflow:'hidden',cursor:'pointer',
+            border:'2px solid',borderColor:selected.has(p.id)?'var(--gold)':'transparent',
+            aspectRatio:'3/4',background:'var(--bg3)',transition:'all .2s',
+          }}
+          onClick={()=>{ if(p.status==='done'){setActivePageIdx(idx);setV('result');} else toggle(p.id); }}>
+            <img src={p.dataUrl} alt={p.name} loading="lazy" style={{width:'100%',height:'100%',objectFit:'cover'}} />
+            <div style={{position:'absolute',top:6,right:6,width:10,height:10,borderRadius:'50%',
+              background:statusColor[p.status],animation:p.status==='processing'?'pulse 1.5s infinite':'none'}} />
+            <div style={{position:'absolute',bottom:6,right:6,background:'rgba(0,0,0,.7)',
+              color:'#fff',fontSize:10,padding:'2px 7px',borderRadius:99,fontWeight:500}}>{idx+1}</div>
+            {selected.has(p.id) && p.status!=='done' && (
+              <div style={{position:'absolute',top:6,left:6,width:20,height:20,borderRadius:4,
+                background:'var(--gold)',display:'flex',alignItems:'center',justifyContent:'center',color:'#000'}}>
+                <Icon name="check" size={12} />
+              </div>
+            )}
+            {p.status==='error' && (
+              <div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column',alignItems:'center',
+                justifyContent:'center',background:'rgba(0,0,0,.65)',gap:8,padding:8}}
+                onClick={e=>{e.stopPropagation();retryPage(p.id);}}>
+                <div style={{color:'var(--red)',fontSize:10}}>识别失败</div>
+                <button className="btn btn-sm" style={{background:'var(--red)',color:'#fff',fontSize:11}}>
+                  <span className="with-ic"><Icon name="refresh" size={11} />重试</span>
+                </button>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {running && (
+        <div style={{position:'fixed',bottom:24,left:'50%',transform:'translateX(-50%)',
+          background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:8,
+          padding:'12px 20px',display:'flex',alignItems:'center',gap:12,
+          boxShadow:'0 8px 32px rgba(0,0,0,.4)',zIndex:200}}>
+          <div className="load" />
+          <span style={{fontSize:13,color:'var(--fg2)'}}>识别中 · 已完成 {doneCount}/{pages.length}</span>
+          <button className="btn btn-sm btn-d" onClick={()=>{abortRef.current=true;}}>停止</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function OCRResult({pages, initialIdx, goBack}) {
+  const done = useMemo(() => pages.filter(p => p.status==='done'), [pages]);
+  // map initialIdx (global pages index) to done array index
+  const [idx, setIdx] = useState(() => {
+    const p = pages[initialIdx];
+    const i = done.indexOf(p);
+    return i >= 0 ? i : 0;
+  });
+  const current = done[idx];
+
+  const downloadMD = () => {
+    const content = done.map((p,i) => `+-${i+1}-+\n\n${p.result}`).join('\n\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([content],{type:'text/markdown'}));
+    a.download = 'ocr_result.md'; a.click(); URL.revokeObjectURL(a.href);
+  };
+
+  if (!current) return (
+    <div className="fade-in" style={{padding:32,textAlign:'center',color:'var(--fg3)'}}>
+      暂无识别结果<br />
+      <button className="btn btn-sm btn-s" style={{marginTop:16}} onClick={goBack}>← 返回</button>
+    </div>
+  );
+
+  return (
+    <div className="fade-in">
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:24,flexWrap:'wrap',gap:12}}>
+        <div style={{display:'flex',alignItems:'center',gap:12}}>
+          <button className="btn btn-sm btn-s" onClick={goBack}>← 返回</button>
+          <h2 style={{fontSize:18,fontWeight:600}}>识别结果</h2>
+        </div>
+        <button className="btn btn-sm btn-s" onClick={downloadMD}>
+          <span className="with-ic"><Icon name="download" size={14} />下载全部 MD</span>
+        </button>
+      </div>
+
+      <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:12,marginBottom:20,flexWrap:'wrap'}}>
+        <button className="btn btn-sm btn-s" disabled={idx<=0} onClick={()=>setIdx(i=>i-1)}>← 上一页</button>
+        <div style={{display:'flex',gap:4,flexWrap:'wrap',justifyContent:'center'}}>
+          {done.map((p,i)=>(
+            <button key={p.id} onClick={()=>setIdx(i)} style={{
+              width:32,height:32,borderRadius:6,border:'1px solid',fontSize:12,fontWeight:500,cursor:'pointer',
+              borderColor:i===idx?'var(--gold)':'var(--border)',
+              background:i===idx?'var(--bg4)':'transparent',
+              color:i===idx?'var(--gold2)':'var(--fg3)',transition:'all .2s',
+            }}>{pages.indexOf(p)+1}</button>
+          ))}
+        </div>
+        <button className="btn btn-sm btn-s" disabled={idx>=done.length-1} onClick={()=>setIdx(i=>i+1)}>下一页 →</button>
+      </div>
+
+      <div className="card" style={{padding:32,minHeight:400}}>
+        <div style={{fontSize:11,color:'var(--fg3)',marginBottom:16,fontWeight:500}}>{current.name}</div>
+        <div style={{fontSize:14,lineHeight:1.75,color:'var(--fg)',whiteSpace:'pre-wrap',wordBreak:'break-word'}}>
+          {current.result}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+// 学术研究站 PaperLabApp
+// ═══════════════════════════════════════════════════════════════
+
+const PA = `${API}/paper`;
+
+// ── 工具函数 ──
+const renderMd = (text) => {
+  if (!text) return '';
+  try {
+    const html = marked.parse(text, {breaks: true, gfm: true});
+    return html;
+  } catch(e) { return text; }
+};
+
+{% endverbatim %}

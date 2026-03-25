@@ -1,0 +1,868 @@
+{% verbatim %}
+// ── 文档阅读器应用组件 ────────────────────────────────────────
+// 支持 PDF/MD 文档阅读，GLM-OCR 解析，可视化分段，LLM 对话
+
+function DocReaderApp({user, onLogout, onUpdateUser}) {
+  const [v, setV] = useState('documents'); // documents, reader, chat
+  const [documents, setDocuments] = useState([]);
+  const [currentDoc, setCurrentDoc] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pdfDoc, setPdfDoc] = useState(null);
+  const [pageScale, setPageScale] = useState(1.5);
+  const [ocrResults, setOcrResults] = useState({});
+  const [selectedSegments, setSelectedSegments] = useState([]);
+  const [chatSessions, setChatSessions] = useState([]);
+  const [currentSession, setCurrentSession] = useState(null);
+  const [chatMessages, setChatMessages] = useState([]);
+  const [streamingContent, setStreamingContent] = useState('');
+  const [instructionType, setInstructionType] = useState('custom');
+  const [userMessage, setUserMessage] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [cacheUsage, setCacheUsage] = useState({used: 0, quota: 200 * 1024 * 1024, percentage: 0});
+  const [parseProgress, setParseProgress] = useState({current: 0, total: 0, status: ''});
+  const [sbOpen, setSbOpen] = useState(false);
+  const [pdfLoaded, setPdfLoaded] = useState(!!window.pdfjsLib);
+  const [dragActive, setDragActive] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const fileInputRef = useRef(null);
+
+  const token = localStorage.getItem('mf_token');
+
+  // 动态加载 PDF.js
+  useEffect(() => {
+    if (window.pdfjsLib) return;
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+    s.onload = () => {
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      setPdfLoaded(true);
+    };
+    document.head.appendChild(s);
+  }, []);
+
+  // 加载文档列表
+  useEffect(() => {
+    if (!user) return;
+    fetch('/api/reader/documents/', {
+      headers: {'Authorization': `Token ${token}`}
+    })
+    .then(r => r.json())
+    .then(data => setDocuments(data.documents || []))
+    .catch(console.error);
+  }, [user]);
+
+  // 加载缓存配额
+  const loadCacheQuota = () => {
+    fetch('/api/reader/cache/quota/', {
+      headers: {'Authorization': `Token ${token}`}
+    })
+    .then(r => r.json())
+    .then(data => setCacheUsage(data.cache_usage))
+    .catch(console.error);
+  };
+
+  useEffect(() => {
+    loadCacheQuota();
+    const interval = setInterval(loadCacheQuota, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // 当进入阅读模式、翻页或currentDoc更新（包含新的pages状态）时，检查当前页是否已解析但未加载详细结果
+  useEffect(() => {
+    if (v === 'reader' && currentDoc && currentDoc.id && !String(currentDoc.id).startsWith('local-')) {
+      const pageInfo = currentDoc.pages?.find(p => p.page_num === currentPage);
+      if (pageInfo && pageInfo.ocr_status === 'done') {
+        const existingData = ocrResults[currentPage];
+        if (!existingData || existingData.layout_details === undefined) {
+          fetch(`/api/reader/documents/${currentDoc.id}/pages/${currentPage}/`, {
+            headers: {'Authorization': `Token ${token}`}
+          })
+          .then(r => r.json())
+          .then(data => {
+            if (data.ocr_status === 'done' && data.layout_details) {
+              setOcrResults(prev => ({...prev, [currentPage]: data}));
+            }
+          })
+          .catch(console.error);
+        }
+      }
+    }
+  }, [v, currentDoc, currentPage, ocrResults, token]);
+
+  const createDocumentProject = async ({name, fileType, totalPages, fileSize}) => {
+    const res = await fetch('/api/reader/documents/', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Token ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        name: name,
+        file_type: fileType,
+        total_pages: totalPages,
+        file_size: fileSize,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || '创建文档失败');
+    }
+    return data;
+  };
+
+  // 加载本地 PDF 文档，支持自动创建项目
+  const loadLocalPDF = async (file, existingDoc = null, shouldCreate = true) => {
+    if (!pdfLoaded) {
+      showAlert('PDF.js 加载中，请稍候...', '提示');
+      return;
+    }
+    if (!file || !file.name.toLowerCase().endsWith('.pdf')) {
+      showAlert('请导入 PDF 文件', '提示');
+      return;
+    }
+
+    try {
+      setImporting(true);
+      const fileBuffer = await file.arrayBuffer();
+      const loadingTask = window.pdfjsLib.getDocument({data: fileBuffer});
+      const pdf = await loadingTask.promise;
+
+      let serverDoc = existingDoc;
+      if (!serverDoc && shouldCreate) {
+        try {
+          serverDoc = await createDocumentProject({
+            name: file.name.replace(/\.pdf$/i, ''),
+            fileType: 'pdf',
+            totalPages: pdf.numPages,
+            fileSize: file.size,
+          });
+          setDocuments(prev => [serverDoc, ...prev.filter(d => d.id !== serverDoc.id)]);
+        } catch (createErr) {
+          console.warn('自动创建文档项目失败，将使用本地阅读模式:', createErr);
+          showAlert('已进入本地阅读模式（自动创建文档失败，可稍后重试）', '提示');
+        }
+      }
+
+      const localDoc = {
+        ...(serverDoc || {}),
+        id: (serverDoc && serverDoc.id) || `local-${Date.now()}`,
+        name: (serverDoc && serverDoc.name) || file.name,
+        file_type: 'pdf',
+        total_pages: (serverDoc && serverDoc.total_pages) || pdf.numPages,
+        file_size: (serverDoc && serverDoc.file_size) || file.size,
+        file: file,
+      };
+
+      setCurrentDoc(localDoc);
+      setV('reader');
+      setSelectedSegments([]);
+      setOcrResults({});
+      setPdfDoc(pdf);
+      setCurrentPage(1);
+    } catch (err) {
+      console.error('PDF加载失败:', err);
+      showAlert(`PDF加载失败: ${err.message}`, '错误');
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const openExistingDocument = async (doc) => {
+    if (doc.file_type !== 'pdf') {
+      showAlert('当前仅支持 PDF 阅读', '提示');
+      return;
+    }
+    const picker = document.createElement('input');
+    picker.type = 'file';
+    picker.accept = '.pdf';
+    picker.onchange = async (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      await loadLocalPDF(file, doc, false);
+    };
+    picker.click();
+  };
+
+  const handlePickedFile = async (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    await loadLocalPDF(file, null, true);
+    e.target.value = '';
+  };
+
+  const handleDropImport = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+    const file = e.dataTransfer.files && e.dataTransfer.files[0];
+    if (!file) return;
+    await loadLocalPDF(file, null, true);
+  };
+
+  // 渲染当前页面为图片
+  const renderPageToImage = async (pageNum) => {
+    if (!pdfDoc) return null;
+    const page = await pdfDoc.getPage(pageNum);
+    const viewport = page.getViewport({scale: 2.0});
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    canvas.height = viewport.height;
+    canvas.width = viewport.width;
+
+    await page.render({canvasContext: context, viewport: viewport}).promise;
+    return canvas.toDataURL('image/png');
+  };
+
+  // 上传页面到服务器缓存
+  const uploadPage = async (pageNum) => {
+    const canUseServer = currentDoc && currentDoc.id && !String(currentDoc.id).startsWith('local-');
+    if (!canUseServer) {
+      throw new Error('当前文档未创建服务端项目，无法上传页面');
+    }
+    const dataUrl = await renderPageToImage(pageNum);
+    const base64 = dataUrl.split(',')[1];
+    const page = await pdfDoc.getPage(pageNum);
+    const originViewport = page.getViewport({scale: 1});
+
+    const res = await fetch(`/api/reader/documents/${currentDoc.id}/pages/upload/`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Token ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        page_num: pageNum,
+        image_b64: base64,
+        page_width: Math.round(originViewport.width),
+        page_height: Math.round(originViewport.height),
+      }),
+    });
+    return res.json();
+  };
+
+  // 解析单个页面
+  const parsePage = async (pageNum) => {
+    const canUseServer = currentDoc && currentDoc.id && !String(currentDoc.id).startsWith('local-');
+    if (!canUseServer) {
+      showAlert('当前文档仅本地阅读，无法解析。请重新导入并自动创建文档项目。', '提示');
+      return null;
+    }
+    setParseProgress({current: pageNum, total: pageNum, status: `正在解析第 ${pageNum} 页...`});
+    const res = await fetch(`/api/reader/documents/${currentDoc.id}/pages/${pageNum}/parse/`, {
+      method: 'POST',
+      headers: {'Authorization': `Token ${token}`},
+    });
+    const data = await res.json();
+    if (data.ocr_status === 'done') {
+      setOcrResults(prev => ({...prev, [pageNum]: data}));
+    }
+    setParseProgress({current: 0, total: 0, status: ''});
+    return data;
+  };
+
+  // 批量解析
+  const batchParse = async (pageNumbers) => {
+    const canUseServer = currentDoc && currentDoc.id && !String(currentDoc.id).startsWith('local-');
+    if (!canUseServer) {
+      showAlert('当前文档仅本地阅读，无法批量解析。请重新导入并自动创建文档项目。', '提示');
+      return;
+    }
+    
+    // Upload un-cached pages first
+    for (let i = 0; i < pageNumbers.length; i++) {
+      const pageNum = pageNumbers[i];
+      // Check if page already has image cached on server
+      const pageInfo = currentDoc.pages?.find(p => p.page_num === pageNum);
+      if (!pageInfo || !pageInfo.has_image) {
+        setParseProgress({current: i+1, total: pageNumbers.length, status: `缓存第 ${pageNum} 页图片...`});
+        try {
+          await uploadPage(pageNum);
+        } catch (e) {
+          showAlert(`缓存第 ${pageNum} 页失败: ${e.message}`, '错误');
+          setParseProgress({current: 0, total: 0, status: ''});
+          return;
+        }
+      }
+    }
+
+    setParseProgress({current: 0, total: pageNumbers.length, status: '准备解析...'});
+
+    const res = await fetch(`/api/reader/documents/${currentDoc.id}/parse/batch/`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Token ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({page_numbers: pageNumbers}),
+    });
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+
+    while (true) {
+      const {done, value} = await reader.read();
+      if (done) break;
+      const chunk = decoder.decode(value);
+      const lines = chunk.split('\n');
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const data = JSON.parse(line.slice(6));
+          if (data.type === 'progress') {
+            setParseProgress({current: data.page_num, total: pageNumbers.length, status: `解析第 ${data.page_num} 页...`});
+          } else if (data.type === 'success') {
+            setOcrResults(prev => ({...prev, [data.page_num]: {...data, ocr_status: 'done'}}));
+          } else if (data.type === 'error') {
+            showAlert(`第 ${data.page_num} 页解析失败: ${data.message}`, '错误');
+            setOcrResults(prev => ({...prev, [data.page_num]: {ocr_status: 'error', error_msg: data.message}}));
+          } else if (data.type === 'done') {
+            setParseProgress({current: 0, total: 0, status: `完成！成功 ${data.completed}，失败 ${data.failed}`});
+            
+            // Reload document details to update server state
+            if (currentDoc && currentDoc.id && !String(currentDoc.id).startsWith('local-')) {
+              fetch(`/api/reader/documents/${currentDoc.id}/`, {
+                headers: {'Authorization': `Token ${token}`},
+              }).then(res => res.json()).then(data => {
+                if (data.id) {
+                  setCurrentDoc(data);
+                }
+              }).catch(e => console.error(e));
+            }
+          }
+        }
+      }
+    }
+  };
+
+  // 格式化文件大小
+  const formatSize = (bytes) => {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+  };
+
+  // 发送消息到AI
+  const sendMessage = async () => {
+    const canUseServer = currentDoc && currentDoc.id && !String(currentDoc.id).startsWith('local-');
+    if (!canUseServer) {
+      showAlert('当前文档仅本地阅读，AI对话需先创建服务端文档项目。', '提示');
+      return;
+    }
+    if (loading) return;
+    if (selectedSegments.length === 0 && instructionType === 'custom') {
+      showAlert('请先选择文本或输入自定义消息', '提示');
+      return;
+    }
+
+    let content = userMessage;
+    if (instructionType === 'translate') {
+      content = '请将以下文本翻译成中文：';
+    } else if (instructionType === 'summarize') {
+      content = '请总结以下文本的要点：';
+    } else if (instructionType === 'explain') {
+      content = '请详细讲解以下文本的内容，包括背景和含义：';
+    }
+
+    // 添加用户消息
+    const userMsg = {
+      role: 'user',
+      content: content,
+      selected_texts: selectedSegments,
+      instruction_type: instructionType,
+    };
+    setChatMessages(prev => [...prev, userMsg]);
+    setUserMessage('');
+    setLoading(true);
+
+    try {
+      const response = await fetch(`/api/reader/documents/${currentDoc.id}/chats/${currentSession?.id || 'new'}/stream/`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Token ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          content: content,
+          selected_texts: selectedSegments,
+          instruction_type: instructionType,
+        }),
+      });
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let assistantMessage = '';
+
+      while (true) {
+        const {done, value} = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n');
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = JSON.parse(line.slice(6));
+            if (data.content) {
+              assistantMessage += data.content;
+              setStreamingContent(assistantMessage);
+            }
+            if (data.done) {
+              setChatMessages(prev => [...prev, {
+                role: 'assistant',
+                content: assistantMessage,
+              }]);
+              setStreamingContent('');
+            }
+            if (data.error) {
+              showAlert('错误: ' + data.error, '错误');
+              setLoading(false);
+              return;
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.error('发送消息失败:', err);
+      showAlert('发送失败: ' + err.message, '错误');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 文档列表视图
+  if (v === 'documents' && !currentDoc) {
+    return (
+      <div className="app" style={{height:'100vh'}}>
+        <aside className={'sb' + (sbOpen ? ' open' : '')} style={{padding:'1rem'}}>
+          <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'1.5rem'}}>
+            <h2 style={{margin:0, fontSize:'1.2rem', color:'var(--gold)', fontFamily:'var(--serif)'}} className="with-ic"><Icon name="file-text" size={16}/> 文档阅读器</h2>
+            <button className="btn btn-s" onClick={() => setSbOpen(!sbOpen)} style={{padding:'0.3rem 0.6rem', fontSize:'1.2rem'}}>
+              <Icon name={sbOpen ? 'x' : 'menu'} size={14}/>
+            </button>
+          </div>
+
+          <div style={{marginBottom:'1rem'}}>
+            <button className="btn btn-p" style={{width:'100%'}} onClick={() => fileInputRef.current && fileInputRef.current.click()}>
+              + 导入 PDF
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf"
+              style={{display:'none'}}
+              onChange={handlePickedFile}
+            />
+          </div>
+
+          <div style={{marginBottom:'1rem'}}>
+            <button className="btn" style={{width:'100%', background:'var(--bg3)', color:'var(--fg)'}} onClick={() => showAlert('云盘选择功能即将上线', '提示')}>
+              <span className="with-ic"><Icon name="cloud-drive" size={13}/> 从云盘选择</span>
+            </button>
+          </div>
+
+          <div style={{borderTop:'1px solid var(--border)', paddingTop:'1rem', marginBottom:'1rem'}}>
+            <div style={{fontSize:'0.8rem', color:'var(--fg3)', marginBottom:'0.5rem'}}>缓存使用量</div>
+            <div style={{fontSize:'1.5rem', fontWeight:'bold', color:'var(--gold)'}}>
+              {formatSize(cacheUsage.used)} / {formatSize(cacheUsage.quota)}
+            </div>
+            <div style={{fontSize:'0.8rem', color:cacheUsage.percentage > 90 ? 'var(--danger)' : 'var(--fg3)'}}>
+              {cacheUsage.percentage}% 已使用
+            </div>
+            {cacheUsage.percentage > 90 && (
+              <div style={{fontSize:'0.7rem', color:'var(--danger)', marginTop:'0.3rem'}}>
+                <span className="with-ic"><Icon name="alert" size={11}/> 缓存空间不足</span>
+              </div>
+            )}
+          </div>
+        </aside>
+
+        <main style={{flex:1, padding:'2rem', overflow:'auto'}}>
+          <h1 style={{marginTop:0, marginBottom:'0.5rem'}}>我的文档</h1>
+          <p style={{marginTop:0, color:'var(--fg3)', marginBottom:'1.2rem'}}>拖入 PDF 立即阅读，系统会自动创建文档项目。</p>
+
+          <section
+            onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
+            onDragEnter={(e) => { e.preventDefault(); setDragActive(true); }}
+            onDragLeave={(e) => { e.preventDefault(); setDragActive(false); }}
+            onDrop={handleDropImport}
+            onClick={() => fileInputRef.current && fileInputRef.current.click()}
+            style={{
+              marginBottom:'1.5rem',
+              padding:'1.3rem',
+              borderRadius:'14px',
+              border: dragActive ? '2px solid var(--gold)' : '2px dashed var(--border2)',
+              background: dragActive ? 'color-mix(in srgb, var(--gold) 14%, var(--bg2))' : 'var(--bg2)',
+              cursor:'pointer',
+              transition:'all .18s ease',
+              boxShadow:'0 10px 28px rgba(0,0,0,0.08)',
+            }}
+          >
+            <div style={{fontWeight:700, marginBottom:'0.3rem'}}><span className="with-ic"><Icon name="upload" size={15}/> 拖拽 PDF 到这里</span></div>
+            <div style={{fontSize:'0.85rem', color:'var(--fg3)'}}>
+              支持“拖入即阅读”，自动创建文档；也可点击此处选择文件
+            </div>
+            {importing && <div style={{fontSize:'0.8rem', color:'var(--gold)', marginTop:'0.6rem'}}>正在导入中...</div>}
+          </section>
+
+          {documents.length === 0 ? (
+            <div style={{textAlign:'center', padding:'3rem', color:'var(--fg3)'}}>
+              <div style={{marginBottom:'1rem'}}><Icon name="file-text" size={34}/></div>
+              <p>还没有文档，拖入一个 PDF 开始阅读吧</p>
+            </div>
+          ) : (
+            <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(250px, 1fr))', gap:'1rem'}}>
+              {documents.map(doc => (
+              <div key={doc.id} style={{
+                  background:'var(--bg2)',
+                  border:'1px solid var(--border)',
+                  borderRadius:'8px',
+                  padding:'1rem',
+                  cursor:'pointer',
+                  transition:'all 0.2s',
+                }} onClick={() => openExistingDocument(doc)} onMouseEnter={(e) => e.currentTarget.style.borderColor='var(--gold)'} onMouseLeave={(e) => e.currentTarget.style.borderColor='var(--border)'}>
+                  <div style={{marginBottom:'0.5rem',display:'inline-flex',alignItems:'center',justifyContent:'center',width:34,height:34,borderRadius:8,background:'var(--bg3)',border:'1px solid var(--border)'}}>
+                    <Icon name={doc.file_type === 'pdf' ? 'book' : doc.file_type === 'md' ? 'note' : 'file'} size={16}/>
+                  </div>
+                  <div style={{fontWeight:'bold', marginBottom:'0.5rem', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>
+                    {doc.name}
+                  </div>
+                  <div style={{fontSize:'0.8rem', color:'var(--fg3)'}}>
+                    {doc.file_type.toUpperCase()} · {doc.total_pages}页
+                  </div>
+                  <div style={{fontSize:'0.7rem', color:'var(--fg3)', marginTop:'0.3rem'}}>
+                    缓存: {doc.cached_pages}/{doc.total_pages}页 ({formatSize(doc.cache_size)})
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </main>
+      </div>
+    );
+  }
+
+  // 阅读器视图
+  if (v === 'reader' && currentDoc) {
+    const canUseServerFeatures = currentDoc.id && !String(currentDoc.id).startsWith('local-');
+    const ocrData = ocrResults[currentPage];
+    const layoutDetails = ocrData?.layout_details || [];
+
+    return (
+      <div className="app" style={{height:'100vh'}}>
+        {/* 左侧边栏 - 页面导航 */}
+        <aside className={'sb' + (sbOpen ? ' open' : '')} style={{padding:'1rem', width:'250px'}}>
+          <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'1rem'}}>
+            <button className="btn" onClick={() => {setCurrentDoc(null); setV('documents');}} style={{padding:'0.3rem 0.6rem'}}>
+              ← 返回
+            </button>
+            <button className="btn btn-s" onClick={() => setSbOpen(!sbOpen)} style={{padding:'0.3rem 0.6rem', fontSize:'1.2rem'}}>
+              <Icon name={sbOpen ? 'x' : 'menu'} size={14}/>
+            </button>
+          </div>
+
+          <h3 style={{marginBottom:'1rem', fontSize:'1rem', color:'var(--gold)'}}>{currentDoc.name}</h3>
+
+          <div style={{marginBottom:'1rem'}}>
+            <button className="btn btn-p" style={{width:'100%', marginBottom:'0.5rem'}} disabled={!canUseServerFeatures} onClick={async () => {
+              if (parseProgress.total > 0) return;
+              await batchParse([currentPage]);
+            }}>
+              {parseProgress.total > 0 ? '解析中...' : '解析当前页'}
+            </button>
+            <button className="btn" style={{width:'100%'}} disabled={!canUseServerFeatures} onClick={async () => {
+              if (parseProgress.total > 0) return;
+              const pageNums = [];
+              for (let i = 1; i <= currentDoc.total_pages; i++) {
+                if (!ocrResults[i]) pageNums.push(i);
+              }
+              if (pageNums.length === 0) {
+                showAlert('所有页面已解析', '提示');
+                return;
+              }
+              const confirmed = await showConfirm(`将解析 ${pageNums.length} 个页面，继续？`);
+              if (!confirmed) return;
+              await batchParse(pageNums);
+            }}>
+              {parseProgress.total > 0 ? `解析中 ${parseProgress.current}/${parseProgress.total}` : '批量解析全部'}
+            </button>
+          </div>
+
+          {parseProgress.status && (
+            <div style={{padding:'0.5rem', background:'var(--bg3)', borderRadius:'4px', fontSize:'0.8rem', marginBottom:'1rem'}}>
+              {parseProgress.status}
+            </div>
+          )}
+
+          <div style={{borderTop:'1px solid var(--border)', paddingTop:'1rem'}}>
+            <div style={{fontSize:'0.8rem', color:'var(--fg3)', marginBottom:'0.5rem'}}>页面导航</div>
+            <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, 1fr)', gap:'0.3rem', maxHeight:'60vh', overflow:'auto'}}>
+              {Array.from({length: currentDoc.total_pages}, (_, i) => i + 1).map(pageNum => (
+                <button
+                  key={pageNum}
+                  className="btn"
+                  style={{
+                    padding:'0.4rem',
+                    fontSize:'0.8rem',
+                    background: pageNum === currentPage ? 'var(--gold)' : ocrResults[pageNum] ? 'var(--bg3)' : 'var(--bg4)',
+                    color: pageNum === currentPage ? '#000' : 'var(--fg)',
+                  }}
+                  onClick={() => setCurrentPage(pageNum)}
+                >
+                  {pageNum}
+                  {ocrResults[pageNum] && '✓'}
+                </button>
+              ))}
+            </div>
+          </div>
+        </aside>
+
+        {/* 中间 - PDF查看器 + OCR结果 */}
+        <main style={{flex:1, display:'flex', flexDirection:'column', padding:'1rem', overflow:'hidden'}}>
+          <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'1rem', background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:'12px', padding:'0.7rem 1rem'}}>
+            <div>
+              <button className="btn" onClick={() => setCurrentPage(Math.max(1, currentPage - 1))} disabled={currentPage <= 1}>
+                ← 上一页
+              </button>
+              <span style={{margin:'0 1rem'}}>
+                第 {currentPage} / {currentDoc.total_pages} 页
+              </span>
+              <button className="btn" onClick={() => setCurrentPage(Math.min(currentDoc.total_pages, currentPage + 1))} disabled={currentPage >= currentDoc.total_pages}>
+                下一页 →
+              </button>
+            </div>
+            <button className="btn" onClick={() => setV('chat')} disabled={!canUseServerFeatures}>
+              <span className="with-ic"><Icon name="chat" size={13}/> AI 对话 →</span>
+            </button>
+          </div>
+          {!canUseServerFeatures && (
+            <div style={{marginBottom:'1rem', background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:'10px', padding:'0.7rem 0.9rem', color:'var(--fg3)', fontSize:'0.85rem'}}>
+              当前为本地临时阅读，OCR 解析和 AI 对话不可用。通过“导入 PDF”创建项目后可启用这些能力。
+            </div>
+          )}
+
+          <div style={{flex:1, display:'flex', gap:'1rem', overflow:'hidden'}}>
+            {/* PDF查看器 */}
+            <div style={{flex:1, background:'var(--bg2)', borderRadius:'8px', padding:'1rem', overflow:'auto'}}>
+              {currentDoc.file_type === 'pdf' ? (
+                <div style={{display:'flex', justifyContent:'center'}}>
+                  <canvas
+                    ref={async (canvas) => {
+                      if (!canvas || !pdfDoc) return;
+                      const page = await pdfDoc.getPage(currentPage);
+                      const viewport = page.getViewport({scale: pageScale});
+                      canvas.height = viewport.height;
+                      canvas.width = viewport.width;
+                      const context = canvas.getContext('2d');
+                      await page.render({canvasContext: context, viewport: viewport}).promise;
+                    }}
+                    style={{maxWidth:'100%', boxShadow:'0 2px 8px rgba(0,0,0,0.1)'}}
+                  />
+                </div>
+              ) : (
+                <div style={{padding:'1rem', whiteSpace:'pre-wrap', fontFamily:'monospace'}}>
+                  {/* MD/TXT内容 */}
+                </div>
+              )}
+            </div>
+
+            {/* OCR结果 - 可视化分段 */}
+            <div style={{width:'350px', background:'var(--bg2)', borderRadius:'8px', padding:'1rem', overflow:'auto'}}>
+              <h4 style={{margin:'0 0 1rem 0', color:'var(--gold)'}}>解析结果</h4>
+
+              {!ocrData ? (
+                <div style={{color:'var(--fg3)', fontSize:'0.9rem'}}>
+                  {parseProgress.status || '点击"解析当前页"开始解析'}
+                </div>
+              ) : (
+                <div>
+                  <div style={{marginBottom:'1rem'}}>
+                    <button className="btn btn-p" style={{fontSize:'0.8rem', padding:'0.3rem 0.6rem'}} onClick={() => {
+                      const allTexts = layoutDetails.map((seg, i) => seg.content || '');
+                      setSelectedSegments(allTexts);
+                    }}>
+                      全选
+                    </button>
+                    <button className="btn" style={{fontSize:'0.8rem', padding:'0.3rem 0.6rem', marginLeft:'0.5rem'}} onClick={() => setSelectedSegments([])}>
+                      清空
+                    </button>
+                    <span style={{fontSize:'0.8rem', color:'var(--fg3)', marginLeft:'0.5rem'}}>
+                      已选 {selectedSegments.length} 段
+                    </span>
+                  </div>
+
+                  {layoutDetails.map((segment, idx) => (
+                    <div
+                      key={idx}
+                      style={{
+                        padding:'0.5rem',
+                        marginBottom:'0.5rem',
+                        background: selectedSegments.includes(segment.content) ? 'var(--gold)' : 'var(--bg3)',
+                        color: selectedSegments.includes(segment.content) ? '#000' : 'var(--fg)',
+                        borderRadius:'4px',
+                        cursor:'pointer',
+                        fontSize:'0.85rem',
+                        border: selectedSegments.includes(segment.content) ? '2px solid var(--gold)' : '1px solid var(--border)',
+                      }}
+                      onClick={() => {
+                        if (selectedSegments.includes(segment.content)) {
+                          setSelectedSegments(prev => prev.filter(s => s !== segment.content));
+                        } else {
+                          setSelectedSegments(prev => [...prev, segment.content]);
+                        }
+                      }}
+                    >
+                      <div style={{fontSize:'0.7rem', color:'var(--fg3)', marginBottom:'0.2rem'}}>
+                        <span className="with-ic">
+                          <Icon name={segment.label === 'text' ? 'note' : segment.label === 'image' ? 'image' : 'grid'} size={11}/>
+                          <span>索引 {segment.index}</span>
+                        </span>
+                      </div>
+                      <div style={{maxHeight:'100px', overflow:'hidden'}}>
+                        {(segment.content || '').substring(0, 200)}
+                        {(segment.content || '').length > 200 && '...'}
+                      </div>
+                    </div>
+                  ))}
+
+                  {selectedSegments.length > 0 && (
+                    <button
+                      className="btn btn-p"
+                      style={{width:'100%', marginTop:'1rem'}}
+                      disabled={!canUseServerFeatures}
+                      onClick={() => setV('chat')}
+                    >
+                      发送到 AI 对话 →
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  // AI 对话视图
+  if (v === 'chat' && currentDoc) {
+    return (
+      <div className="app" style={{height:'100vh'}}>
+        {/* 左侧 - 选中文本预览 */}
+        <aside style={{width:'300px', background:'var(--bg2)', padding:'1rem', borderRight:'1px solid var(--border)'}}>
+          <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'1rem'}}>
+            <h3 style={{margin:0, fontSize:'1rem', color:'var(--gold)'}}>选中的文本</h3>
+            <button className="btn" onClick={() => setV('reader')} style={{padding:'0.3rem 0.6rem'}}>
+              ← 返回
+            </button>
+          </div>
+
+          <div style={{maxHeight:'60vh', overflow:'auto', fontSize:'0.9rem'}}>
+            {selectedSegments.length === 0 ? (
+              <div style={{color:'var(--fg3)'}}>未选择任何文本</div>
+            ) : (
+              selectedSegments.map((text, idx) => (
+                <div key={idx} style={{
+                  padding:'0.5rem',
+                  marginBottom:'0.5rem',
+                  background:'var(--bg3)',
+                  borderRadius:'4px',
+                  fontSize:'0.85rem'
+                }}>
+                  {text.substring(0, 200)}
+                  {text.length > 200 && '...'}
+                </div>
+              ))
+            )}
+          </div>
+
+          <div style={{marginTop:'1rem', borderTop:'1px solid var(--border)', paddingTop:'1rem'}}>
+            <div style={{fontSize:'0.8rem', color:'var(--fg3)', marginBottom:'0.5rem'}}>预设指令</div>
+            <select
+              value={instructionType}
+              onChange={(e) => setInstructionType(e.target.value)}
+              style={{width:'100%', padding:'0.5rem', background:'var(--bg3)', border:'1px solid var(--border)', color:'var(--fg)', borderRadius:'4px'}}
+            >
+              <option value="custom">自定义对话</option>
+              <option value="translate">翻译（中文）</option>
+              <option value="summarize">总结内容</option>
+              <option value="explain">详细讲解</option>
+            </select>
+          </div>
+        </aside>
+
+        {/* 右侧 - 对话区域 */}
+        <main style={{flex:1, display:'flex', flexDirection:'column', padding:'1rem'}}>
+          <h3 style={{margin:'0 0 1rem 0'}}>AI 对话助手</h3>
+
+          <div style={{flex:1, overflow:'auto', marginBottom:'1rem', padding:'1rem', background:'var(--bg2)', borderRadius:'8px'}}>
+            {chatMessages.length === 0 && !streamingContent ? (
+              <div style={{textAlign:'center', color:'var(--fg3)', marginTop:'2rem'}}>
+                <div style={{marginBottom:'1rem'}}><Icon name="chat" size={26}/></div>
+                <p>选择文本后开始对话</p>
+                <p style={{fontSize:'0.9rem'}}>支持翻译、总结、讲解等功能</p>
+              </div>
+            ) : (
+              <>
+                {chatMessages.map((msg, idx) => (
+                  <div key={idx} style={{
+                    marginBottom:'1rem',
+                    padding:'0.8rem',
+                    borderRadius:'8px',
+                    background: msg.role === 'user' ? 'var(--bg3)' : 'var(--bg4)',
+                  }}>
+                    <div style={{fontSize:'0.8rem', color:'var(--fg3)', marginBottom:'0.3rem'}}>
+                      <span className="with-ic"><Icon name={msg.role === 'user' ? 'user' : 'bot'} size={11}/> {msg.role === 'user' ? '你' : '助手'}</span>
+                    </div>
+                    <div style={{whiteSpace:'pre-wrap'}}>{msg.content}</div>
+                  </div>
+                ))}
+                {streamingContent && (
+                  <div style={{
+                    padding:'0.8rem',
+                    borderRadius:'8px',
+                    background:'var(--bg4)',
+                  }}>
+                    <div style={{fontSize:'0.8rem', color:'var(--fg3)', marginBottom:'0.3rem'}} className="with-ic"><Icon name="bot" size={11}/> 助手</div>
+                    <div style={{whiteSpace:'pre-wrap'}}>
+                      {streamingContent}
+                      <span style={{animation:'blink 1s infinite'}}>▌</span>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
+          <div style={{display:'flex', gap:'0.5rem'}}>
+            <input
+              type="text"
+              value={userMessage}
+              onChange={(e) => setUserMessage(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
+              placeholder={instructionType === 'custom' ? '输入你的问题...' : '点击发送开始处理'}
+              disabled={loading}
+              style={{
+                flex:1,
+                padding:'0.8rem',
+                background:'var(--bg3)',
+                border:'1px solid var(--border)',
+                color:'var(--fg)',
+                borderRadius:'8px',
+                fontSize:'1rem',
+              }}
+            />
+            <button
+              className="btn btn-p"
+              onClick={sendMessage}
+              disabled={loading || (selectedSegments.length === 0 && instructionType !== 'custom')}
+            >
+              {loading ? '...' : '发送'}
+            </button>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  return null;
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<Root/>);
+{% endverbatim %}

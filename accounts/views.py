@@ -1,7 +1,11 @@
+import os
 import uuid
 from django.conf import settings
 from django.contrib.auth import authenticate
+from django.core.files.storage import default_storage
 from django.core.mail import send_mail
+from django.http import FileResponse, Http404
+from django.utils.text import get_valid_filename
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 from rest_framework.views import APIView
@@ -9,7 +13,11 @@ from rest_framework.response import Response
 from rest_framework.authtoken.models import Token
 from rest_framework.permissions import AllowAny, IsAuthenticated
 
-from accounts.models import User, VerificationCode, SiteConfig, PasswordResetToken
+from accounts.models import (
+    User, VerificationCode, SiteConfig, PasswordResetToken,
+    CloudFile, ALLOWED_EXTENSIONS, ALLOWED_MIME_PREFIXES,
+    EXT_TO_TYPE, sha256_of_file, CLOUD_QUOTA_BYTES,
+)
 
 
 class SiteConfigPublicView(APIView):
@@ -245,11 +253,14 @@ class MeView(APIView):
         cfg = SiteConfig.get()
         has_own_key = bool(request.user.user_api_key)
         is_guest = getattr(request.user, 'is_guest', False)
+        used_bytes = 0 if is_guest else request.user.cloud_used_bytes
         return Response({
             'authenticated': True,
             'email': request.user.email,
             'is_guest': is_guest,
+            'is_staff': request.user.is_staff,
             'has_own_key': has_own_key,
+            'joined': request.user.created_at.strftime('%Y-%m-%d') if request.user.created_at else None,
             'usage': {
                 'prompt_count': usage.prompt_count if usage else 0,
                 'input_tokens': usage.input_tokens if usage else 0,
@@ -264,4 +275,138 @@ class MeView(APIView):
                 'daily_input_tokens': cfg.free_daily_input_tokens,
                 'daily_output_tokens': cfg.free_daily_output_tokens,
             },
+            'cloud': {
+                'used_bytes': used_bytes,
+                'quota_bytes': CLOUD_QUOTA_BYTES,
+            },
         })
+
+
+# ─── Cloud Drive ──────────────────────────────────────────────
+
+@method_decorator(csrf_exempt, name='dispatch')
+class CloudListUploadView(APIView):
+    """GET: list user files. POST: upload a new file."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if request.user.is_guest:
+            return Response({'error': '访客无法使用云盘'}, status=403)
+        files = request.user.cloud_files.all()
+        data = []
+        for f in files:
+            data.append({
+                'id': f.id,
+                'name': f.name,
+                'size': f.size,
+                'file_type': f.file_type,
+                'uploaded_at': f.uploaded_at.strftime('%Y-%m-%d %H:%M'),
+            })
+        return Response({
+            'files': data,
+            'used_bytes': request.user.cloud_used_bytes,
+            'quota_bytes': CLOUD_QUOTA_BYTES,
+        })
+
+    def post(self, request):
+        if request.user.is_guest:
+            return Response({'error': '请先登录以使用云盘'}, status=403)
+
+        uploaded = request.FILES.get('file')
+        if not uploaded:
+            return Response({'error': '未选择文件'}, status=400)
+
+        # --- extension check ---
+        _, ext = os.path.splitext(uploaded.name.lower())
+        if ext not in ALLOWED_EXTENSIONS:
+            return Response({'error': f'不支持的文件类型 {ext}，请上传 PDF、图片、文档或代码文件'}, status=400)
+
+        # --- MIME check ---
+        mime = uploaded.content_type or ''
+        if not any(mime.startswith(p) for p in ALLOWED_MIME_PREFIXES):
+            # fallback: still allow if extension is in whitelist
+            if ext not in ALLOWED_EXTENSIONS:
+                return Response({'error': f'不允许上传此类型文件（{mime}）'}, status=400)
+
+        # --- size check ---
+        file_size = uploaded.size
+        if file_size > 10 * 1024 * 1024:  # 10 MB single file limit
+            return Response({'error': '单个文件不能超过 10 MB'}, status=400)
+
+        used = request.user.cloud_used_bytes
+        if used + file_size > CLOUD_QUOTA_BYTES:
+            remaining = max(0, CLOUD_QUOTA_BYTES - used)
+            return Response({'error': f'云盘空间不足，剩余 {remaining / 1024 / 1024:.1f} MB'}, status=400)
+
+        # --- compute sha256 ---
+        file_hash = sha256_of_file(uploaded)
+
+        # --- sanitize filename ---
+        safe_name = get_valid_filename(uploaded.name)[:200]
+
+        file_type = EXT_TO_TYPE.get(ext, 'other')
+        cloud_file = CloudFile(
+            user=request.user,
+            name=safe_name,
+            size=file_size,
+            file_type=file_type,
+            sha256=file_hash,
+        )
+        cloud_file.file = uploaded
+        cloud_file.save()
+
+        return Response({
+            'id': cloud_file.id,
+            'name': cloud_file.name,
+            'size': cloud_file.size,
+            'file_type': cloud_file.file_type,
+            'uploaded_at': cloud_file.uploaded_at.strftime('%Y-%m-%d %H:%M'),
+            'used_bytes': request.user.cloud_used_bytes,
+            'quota_bytes': CLOUD_QUOTA_BYTES,
+        }, status=201)
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class CloudFileDetailView(APIView):
+    """DELETE: delete a cloud file."""
+    permission_classes = [IsAuthenticated]
+
+    def _get_obj(self, request, pk):
+        try:
+            return request.user.cloud_files.get(pk=pk)
+        except CloudFile.DoesNotExist:
+            return None
+
+    def delete(self, request, pk):
+        if request.user.is_guest:
+            return Response({'error': '请先登录'}, status=403)
+        obj = self._get_obj(request, pk)
+        if not obj:
+            return Response({'error': '文件不存在'}, status=404)
+        # delete the actual file from storage
+        if obj.file and default_storage.exists(obj.file.name):
+            default_storage.delete(obj.file.name)
+        obj.delete()
+        return Response({'ok': True, 'used_bytes': request.user.cloud_used_bytes})
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class CloudFileDownloadView(APIView):
+    """GET: serve / download a cloud file."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        if request.user.is_guest:
+            return Response({'error': '请先登录'}, status=403)
+        try:
+            obj = request.user.cloud_files.get(pk=pk)
+        except CloudFile.DoesNotExist:
+            raise Http404
+        if not obj.file or not default_storage.exists(obj.file.name):
+            raise Http404
+        response = FileResponse(
+            default_storage.open(obj.file.name, 'rb'),
+            as_attachment=True,
+            filename=obj.name,
+        )
+        return response

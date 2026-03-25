@@ -1,0 +1,328 @@
+{% verbatim %}
+function Settings({cfg, onSave}) {
+  const [newKey, setNewKey] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [removing, setRemoving] = useState(false);
+
+  const saveUserKey = async () => {
+    if (!newKey.trim()) return showAlert('请输入API密钥', '提示');
+
+    // 先显示免责声明
+    showDialog({
+      title: 'API 密钥使用免责声明',
+      message: `<div style="line-height:1.8">
+        <p style="margin-bottom:12px"><strong style="color:var(--gold)">重要提示：</strong></p>
+        <ul style="margin:0;padding-left:20px;">
+          <li style="margin-bottom:8px">本平台<strong>不对</strong>您的 API 调用和费用支出承担任何责任</li>
+          <li style="margin-bottom:8px">所有 API 消耗均由您的 API 密钥所属账户直接计费</li>
+          <li style="margin-bottom:8px"><strong style="color:var(--gold)">强烈建议</strong>您使用<strong style="color:var(--gold)">月付套餐</strong>而非按量付费，以避免意外高额账单</li>
+          <li style="margin-bottom:8px">请妥善保管您的 API 密钥，不要泄露给他人</li>
+        </ul>
+        <p style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border2)">
+          点击"我已了解并同意"即表示您接受以上条款
+        </p>
+      </div>`,
+      confirmText: '我已了解并同意',
+      cancelText: '取消',
+      showCancel: true,
+      type: 'warning',
+      onConfirm: async () => {
+        setSaving(true);
+        try {
+          await F(`${API}/auth/user-api-key/`, {method:'POST', body:JSON.stringify({api_key:newKey.trim()})});
+          setNewKey('');
+          onSave();
+          showAlert('API 密钥已保存', '成功');
+        } catch(e) {
+          showAlert(e.message, '保存失败');
+        }
+        setSaving(false);
+      }
+    });
+  };
+
+  const removeUserKey = async () => {
+    const confirmed = await showConfirm('确定要移除您的API密钥吗？移除后将使用平台密钥（如有）', '确认移除');
+    if (!confirmed) return;
+
+    setRemoving(true);
+    try {
+      await F(`${API}/auth/user-api-key/`, {method:'DELETE'});
+      onSave();
+      showAlert('API 密钥已移除', '成功');
+    } catch(e) {
+      showAlert(e.message, '移除失败');
+    }
+    setRemoving(false);
+  };
+
+  const usingUserKey = cfg?.user_key_configured;
+  const platformConfigured = cfg?.platform_configured;
+  const platformAllowed = cfg?.platform_allowed ?? platformConfigured;
+  const platformOk = platformAllowed;
+
+  return (
+    <div style={{maxWidth:560}}>
+      <h2 style={{fontFamily:'var(--serif)',fontSize:22,marginBottom:16}}>API 密钥设置</h2>
+
+      {/* Current status */}
+      <div className="card" style={{marginBottom:20,borderColor: usingUserKey?'var(--blue)': platformOk?'var(--green)':'var(--red)'}}>
+        <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:6}}>
+          <Icon name={usingUserKey ? 'key' : platformOk ? 'check' : 'alert'} size={16} />
+          <span style={{fontWeight:500,fontSize:13,color: usingUserKey?'var(--blue)': platformOk?'var(--green)':'var(--red)'}}>
+            {usingUserKey?'使用您的专属密钥': platformOk?'使用平台密钥':'未配置任何密钥'}
+          </span>
+        </div>
+        {usingUserKey && <p style={{fontSize:12,color:'var(--fg3)'}}>当前密钥: {cfg.api_key_preview} &nbsp;·&nbsp; 对话模型: {cfg.chat_model}</p>}
+        {!usingUserKey && platformOk && <p style={{fontSize:12,color:'var(--fg3)'}}>平台提供 · 对话模型: {cfg.chat_model}</p>}
+        {!usingUserKey && !platformOk && (
+          <p style={{fontSize:12,color:'var(--fg3)'}}>
+            {platformConfigured ? '平台密钥仅对登录用户可用，请添加您的API密钥或登录使用平台额度' : '请添加您的API密钥以使用本应用'}
+          </p>
+        )}
+      </div>
+
+      {/* User key management */}
+      <h3 style={{fontFamily:'var(--serif)',fontSize:15,marginBottom:10,color:'var(--fg2)'}}>
+        {usingUserKey ? '更换 / 移除您的密钥' : '添加您的专属密钥'}
+      </h3>
+      <p style={{fontSize:12,color:'var(--fg3)',marginBottom:12,lineHeight:1.7}}>
+        使用自己的密钥可独立计费，不受平台配额限制。获取密钥请访问&nbsp;
+        <a href="https://open.bigmodel.cn" target="_blank" style={{color:'var(--blue)'}}>open.bigmodel.cn</a>。
+      </p>
+      <div className="fg">
+        <label>{usingUserKey ? '输入新密钥（留空则不更换）' : '您的 API 密钥'}</label>
+        <input type="password" value={newKey} onChange={e=>setNewKey(e.target.value)} placeholder="输入密钥..."/>
+      </div>
+      <div style={{display:'flex',gap:8,marginBottom:24}}>
+        <button className="btn btn-p" onClick={saveUserKey} disabled={saving||!newKey.trim()}>{saving?'保存中...':'保存密钥'}</button>
+        {usingUserKey && <button className="btn btn-d btn-sm" onClick={removeUserKey} disabled={removing} style={{alignSelf:'center'}}>{removing?'移除中...':'移除密钥'}</button>}
+      </div>
+
+      {/* Platform key info */}
+      <div className="card" style={{borderColor:'var(--border2)',marginBottom:24}}>
+        <p style={{fontSize:12,color:'var(--fg2)',lineHeight:1.7}}>
+          <b style={{color:'var(--fg)'}}>平台密钥：</b>
+          {platformConfigured ? (
+            <span style={{color:'var(--green)'}}>
+              <span className="with-ic">
+                <Icon name="check" size={12} />
+                已配置（由管理员管理）
+              </span>
+            </span>
+          ) : (
+            <span style={{color:'var(--fg3)'}}>未配置</span>
+          )}
+          <br/>平台密钥由管理员在后台统一设置，您无需额外配置即可使用平台额度。
+          {platformConfigured && !platformAllowed && <span style={{color:'var(--fg3)'}}> 访客模式下需要登录后才能使用平台额度。</span>}
+          {usingUserKey && <span style={{color:'var(--fg3)'}}> 当您设置了专属密钥后，系统优先使用您的密钥。</span>}
+        </p>
+      </div>
+
+      <div style={{marginTop:32}}>
+        <h3 style={{fontFamily:'var(--serif)',fontSize:16,marginBottom:10}}>关于记忆熔炉</h3>
+        <div className="card">
+          <p style={{fontSize:12,lineHeight:1.8,color:'var(--fg2)'}}>
+            记忆熔炉实现了基于 H-MEM 和 MemGPT 研究的分层记忆金字塔系统，
+            专为中文网络小说长篇创作设计。核心特性：
+          </p>
+          <div style={{fontSize:12,lineHeight:1.8,color:'var(--fg2)',marginTop:8}}>
+            <p>
+              <span className="with-ic">
+                <Icon name="triangle" size={12} />
+                <b style={{color:'var(--gold)'}}>L0 世界</b> — 全局故事概览、主题基调
+              </span>
+            </p>
+            <p>
+              <span className="with-ic">
+                <Icon name="triangle" size={12} />
+                <b style={{color:'var(--purple)'}}>L1 大陆</b> — 主要故事线/篇章
+              </span>
+            </p>
+            <p>
+              <span className="with-ic">
+                <Icon name="triangle" size={12} />
+                <b style={{color:'var(--blue)'}}>L2 王国</b> — 章节摘要
+              </span>
+            </p>
+            <p>
+              <span className="with-ic">
+                <Icon name="triangle" size={12} />
+                <b style={{color:'var(--green)'}}>L3 城池</b> — 场景级细节
+              </span>
+            </p>
+            <p>
+              <span className="with-ic">
+                <Icon name="triangle" size={12} />
+                <b style={{color:'var(--red)'}}>L4 街巷</b> — 原始文本块 + 向量嵌入
+              </span>
+            </p>
+          </div>
+          <p style={{fontSize:12,lineHeight:1.8,color:'var(--fg2)',marginTop:10}}>
+            <b>动态记忆演变：</b>每个记忆节点都有版本历史，角色有成长快照。
+            Agent在写作时不仅检索当前记忆，还能追溯信念、目标、关系的变化轨迹——
+            就像人类回忆自己理念和观点的动态变化。
+          </p>
+          <p style={{fontSize:12,lineHeight:1.8,color:'var(--fg2)',marginTop:6}}>
+            <b>时间线系统：</b>自动从文本提取剧情事件、角色变化、转折点、伏笔，
+            构建完整的故事时间线。让Agent对故事的演变脉络有全局视野。
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Theme System ──
+const THEMES = [
+  {id:'dark_gold', name:'暗金', swatches:['#08080b','#c9a86c','#5a8ac4'],
+   vars:{bg:'#08080b',bg2:'#0f1014',bg3:'#181820',bg4:'#22222c',bg5:'#2c2c38',gold:'#c9a86c','gold2':'#dbb97a','gold-dim':'#8a7548'}},
+  {id:'dark_blue', name:'深蓝', swatches:['#07090f','#5a8ac4','#5ac4b4'],
+   vars:{bg:'#07090f',bg2:'#0c1220',bg3:'#131a2e',bg4:'#1c2540',bg5:'#243050',gold:'#5a8ac4','gold2':'#6a9ad4','gold-dim':'#3a5a94'}},
+  {id:'dark_green', name:'暗翠', swatches:['#06100a','#3eb87a','#5ac4b4'],
+   vars:{bg:'#06100a',bg2:'#0c1810',bg3:'#142218',bg4:'#1c2e22',bg5:'#243a2c',gold:'#3eb87a','gold2':'#4ec88a','gold-dim':'#1e884a'}},
+  {id:'dark_purple', name:'紫夜', swatches:['#09070e','#9a6ac4','#c45a9a'],
+   vars:{bg:'#09070e',bg2:'#110e1a',bg3:'#1a1428',bg4:'#221c36',bg5:'#2c2444',gold:'#9a6ac4','gold2':'#aa7ad4','gold-dim':'#6a3a94'}},
+];
+
+const ACCENT_PRESETS = [
+  '#c9a86c','#dbb97a','#5a8ac4','#3eb87a','#9a6ac4',
+  '#c45a5a','#5ac4b4','#d49a5a','#e87890','#68c87a',
+];
+
+const STATIC_APPS = [
+  {name:'学术研究站', slug:'paper_lab', description:'论文深度阅读 · 零幻觉检索 · 精确引用 · 知识探索 · 辅助写作', icon:'search', color:'#5ac4b4'},
+  {name:'知识图谱', slug:'knowledge_graph', description:'LLM自动提取 · 图谱可视化 · 跨应用知识链接 · PageRank · 路径探索', icon:'share-2', color:'#c9a86c'},
+  {name:'代码助手', slug:'code_agent', description:'AI辅助代码重构 · 行级Diff审查 · 记忆金字塔 · 版本历史 · 跨文件理解', icon:'code', color:'#5a8ac4'},
+  {name:'Claude Bridge', slug:'claude_bridge', description:'本地 Claude Code 远程接入 · 全工具可视化 · 权限管控 · Diff预览 · 多端同步', icon:'zap', color:'#e85d2f'},
+  {name:'扫描增强', slug:'scan_enhance', description:'浏览器端处理 · 曲面平整化 · 透视校正 · CLAHE增强 · 自适应二值化 · 纠偏 · 降噪 · 零服务器CPU', icon:'scan', color:'#5ac480'},
+  {name:'AI 题库', slug:'question_bank', description:'拍题OCR识别 · GLM-4.7解答 · 视觉模型几何题 · 最终答案沉淀 · 共享题库 · 点赞收藏评论', icon:'book', color:'#e8a05a'},
+  {name:'文档阅读器', slug:'doc_reader', description:'PDF/MD阅读 · GLM-OCR解析 · 可视化分段 · 多选交互 · 智能问答 · 翻译总结', icon:'file-text', color:'#c9a86c'},
+  {name:'放逐之城', slug:'banished', description:'Canvas 2D城市建造 · 资源链 · 村民AI · 水源系统 · 季节循环 · 全球交易市场 · AI协同托管', icon:'home', color:'#5ac480'},
+  {name:'MineAI Chat', slug:'chat', description:'原生集成的对标ChatGPT界面的全能AI对话，支持切换模型与渲染LaTeX、代码', icon:'chat', color:'#5a8ac4'},
+];
+
+function applyTheme(vars) {
+  Object.entries(vars).forEach(([k,v]) => document.documentElement.style.setProperty(`--${k}`, v));
+}
+
+const isLight = (hex) => {
+  try {
+    const c = hex.replace('#','');
+    const r=parseInt(c.slice(0,2),16), g=parseInt(c.slice(2,4),16), b=parseInt(c.slice(4,6),16);
+    return (r*299+g*587+b*114)/1000 > 128;
+  } catch { return false; }
+};
+
+function ThemeSettings({onClose}) {
+  const [tid, setTid] = useState(() => localStorage.getItem('mf_tid') || 'dark_gold');
+  const [accent, setAccent] = useState(() => localStorage.getItem('mf_accent') || '');
+
+  const selTheme = (t) => {
+    setTid(t.id); setAccent('');
+    localStorage.setItem('mf_tid', t.id);
+    localStorage.removeItem('mf_accent');
+    applyTheme(t.vars);
+  };
+
+  const selAccent = (c) => {
+    setAccent(c);
+    localStorage.setItem('mf_accent', c);
+    document.documentElement.style.setProperty('--gold', c);
+    document.documentElement.style.setProperty('--gold2', c);
+    const base = THEMES.find(t => t.id === tid);
+    if (base) {
+      const {gold:_g, 'gold2':_g2, 'gold-dim':_gd, ...rest} = base.vars;
+      applyTheme(rest);
+    }
+  };
+
+  const reset = () => {
+    setTid('dark_gold'); setAccent('');
+    localStorage.removeItem('mf_tid'); localStorage.removeItem('mf_accent');
+    applyTheme(THEMES[0].vars);
+  };
+
+  return (
+    <div className="modal-ov" onClick={e => e.target===e.currentTarget && onClose()}>
+      <div className="modal" style={{maxWidth:400}}>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:20}}>
+          <h2 style={{margin:0,fontSize:18}}>个性化设置</h2>
+          <button className="btn btn-s btn-sm" onClick={onClose} style={{padding:'4px 8px'}}><Icon name="refresh" size={14} /></button>
+        </div>
+        
+        <div style={{marginBottom:24}}>
+          <div className="sec-title" style={{marginBottom:12,fontSize:10,opacity:0.6}}>主题视觉</div>
+          <div className="tp-presets" style={{gridTemplateColumns:'repeat(2, 1fr)',gap:10}}>
+            {THEMES.map(t => (
+              <div key={t.id} className={`tp-preset${tid===t.id&&!accent?' on':''}`} 
+                onClick={() => selTheme(t)}
+                style={{padding:'12px',borderRadius:10,border:'1px solid var(--border)'}}>
+                <div className="tp-swatches" style={{marginBottom:8}}>
+                  {t.swatches.map((c,i) => <div key={i} className="tp-sw" style={{background:c,width:16,height:16,borderRadius:4}} />)}
+                </div>
+                <div className="tp-pn" style={{fontSize:12}}>{t.name}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <div className="sec-title" style={{marginBottom:12,fontSize:10,opacity:0.6}}>强调色</div>
+          <div className="csw-grid" style={{gridTemplateColumns:'repeat(5, 1fr)',gap:8}}>
+            {ACCENT_PRESETS.map(c => (
+              <div key={c} className={`csw${accent===c?' on':''}`} 
+                style={{background:c,height:32,borderRadius:8}} 
+                onClick={() => selAccent(c)} />
+            ))}
+          </div>
+          <div className="tp-row" style={{marginTop:16,display:'flex',alignItems:'center',gap:12}}>
+            <label style={{fontSize:12,color:'var(--fg2)'}}>自定义色值</label>
+            <input type="color" value={accent||'#c9a86c'} 
+              onChange={e => selAccent(e.target.value)}
+              style={{width:40,height:28,padding:2,borderRadius:4,background:'var(--bg3)',border:'1px solid var(--border2)'}} />
+          </div>
+        </div>
+
+        <div style={{marginTop:32,display:'flex',justifyContent:'space-between'}}>
+          <button className="btn btn-s btn-sm" onClick={reset}>恢复默认</button>
+          <button className="btn btn-p btn-sm" onClick={onClose}>完成</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AppColorModal({app, appColors, onSave, onClose}) {
+  const [color, setColor] = useState(appColors[app.slug] || app.color || '#c9a86c');
+  return (
+    <div className="modal-ov" onClick={e => e.target===e.currentTarget && onClose()}>
+      <div className="modal" style={{maxWidth:300}}>
+        <h2 style={{fontSize:16,marginBottom:14}}>自定义「{app.name}」颜色</h2>
+        <div className="csw-grid">
+          {ACCENT_PRESETS.map(c => (
+            <div key={c} className={`csw${color===c?' on':''}`} style={{background:c}} onClick={() => setColor(c)} />
+          ))}
+        </div>
+        <div className="tp-row" style={{marginTop:10}}>
+          <label>自定义颜色</label>
+          <input type="color" value={color} onChange={e => setColor(e.target.value)} />
+        </div>
+        <div style={{display:'flex',gap:8,marginTop:16,justifyContent:'flex-end'}}>
+          <button className="btn btn-s btn-sm" onClick={onClose}>取消</button>
+          <button className="btn btn-p btn-sm" onClick={() => { onSave(app.slug, color); onClose(); }}>保存</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── 功能导航图谱 ─────────────────────────────────────────────────
+const KG_API_BASE = '/api/kg';
+const SLUG_MAP = {
+  '网文写作':'memoryforge','学术研究站':'paper_lab','知识图谱':'knowledge_graph',
+  '代码助手':'code_agent','Claude Bridge':'claude_bridge','OCR 工作室':'ocr_studio',
+  '扫描增强':'scan_enhance','AI 题库':'question_bank','放逐之城':'banished','MineAI Chat':'chat',
+};
+
+{% endverbatim %}

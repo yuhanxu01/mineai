@@ -1,0 +1,1041 @@
+{% verbatim %}
+// ── AI 题库 ──────────────────────────────────────────────────────────────────
+
+function QBMd({content}) {
+  const ref = React.useRef(null);
+  React.useEffect(() => {
+    if (!ref.current || !content) return;
+    ref.current.innerHTML = window.marked ? window.marked.parse(content) : content.replace(/\n/g,'<br>');
+    if (window.MathJax && window.MathJax.typesetPromise) {
+      window.MathJax.typesetPromise([ref.current]).catch(()=>{});
+    }
+  }, [content]);
+  return <div ref={ref} style={{lineHeight:1.7, fontSize:14}} className="md-body" />;
+}
+
+function QBModelBadge({model}) {
+  const isVision = model === 'glm-4v-flash';
+  return (
+    <span style={{
+      display:'inline-flex', alignItems:'center', gap:4, padding:'2px 7px',
+      borderRadius:10, fontSize:11,
+      background: isVision ? 'rgba(154,106,196,0.18)' : 'rgba(90,138,196,0.18)',
+      color: isVision ? 'var(--purple)' : 'var(--blue)',
+      border: `1px solid ${isVision ? 'rgba(154,106,196,0.35)' : 'rgba(90,138,196,0.35)'}`,
+    }}>
+      <Icon name={isVision ? 'eye' : 'chat'} size={12} />
+      <span>{isVision ? 'GLM-4V' : 'GLM-4.7'}</span>
+    </span>
+  );
+}
+
+function QuestionBankApp({user, onLogout, onUpdateUser}) {
+  const token = localStorage.getItem('mf_token');
+  const [view, setView] = React.useState('list'); // list | edit | shared | shared-detail
+  const [questions, setQuestions] = React.useState([]);
+  const [currentQ, setCurrentQ] = React.useState(null);
+  const [sharedList, setSharedList] = React.useState([]);
+  const [currentShared, setCurrentShared] = React.useState(null);
+  const [sbOpen, setSbOpen] = React.useState(false);
+  const [loading, setLoading] = React.useState(false);
+  const [sharedSearch, setSharedSearch] = React.useState('');
+  const [sharedSubject, setSharedSubject] = React.useState('');
+
+  const headers = React.useMemo(() => ({
+    'Content-Type': 'application/json',
+    ...(token ? {'Authorization': `Token ${token}`} : {}),
+  }), [token]);
+
+  const authFetch = React.useCallback(async (url, opts = {}) => {
+    const r = await fetch(url, {...opts, headers: {...headers, ...(opts.headers||{})}});
+    if (!r.ok) throw new Error(await r.text());
+    return r.json();
+  }, [headers]);
+
+  const loadQuestions = React.useCallback(async () => {
+    if (!token) return;
+    try {
+      const data = await authFetch('/api/qbank/questions/');
+      setQuestions(data);
+    } catch {}
+  }, [authFetch, token]);
+
+  const loadShared = React.useCallback(async (search='', subject='') => {
+    try {
+      const params = new URLSearchParams();
+      if (search) params.set('q', search);
+      if (subject) params.set('subject', subject);
+      const r = await fetch(`/api/qbank/shared/?${params}`, {headers});
+      if (!r.ok) return;
+      setSharedList(await r.json());
+    } catch {}
+  }, [headers]);
+
+  React.useEffect(() => {
+    if (view === 'list') loadQuestions();
+    if (view === 'shared') loadShared(sharedSearch, sharedSubject);
+  }, [view, loadQuestions, loadShared, sharedSearch, sharedSubject]);
+
+  const openNew = () => {
+    setCurrentQ({
+      id: null, title: '', content: '', model_used: 'glm-4.7-flash',
+      tags: '', subject: '', has_image: false, image_data_url: '',
+      original_image: '', image_type: 'jpeg',
+      messages: [], final_answer_content: '',
+      standard_answer_md: '', standard_answer_image: '', is_published: false,
+    });
+    setView('edit');
+  };
+
+  const openQuestion = async (q) => {
+    setLoading(true);
+    try {
+      const data = await authFetch(`/api/qbank/questions/${q.id}/`);
+      setCurrentQ(data);
+      setView('edit');
+    } catch (e) { showAlert('加载失败: ' + e.message, '错误'); }
+    setLoading(false);
+  };
+
+  const openSharedDetail = async (sq) => {
+    setLoading(true);
+    try {
+      const data = await authFetch(`/api/qbank/shared/${sq.id}/`);
+      setCurrentShared(data);
+      setView('shared-detail');
+    } catch (e) { showAlert('加载失败: ' + e.message, '错误'); }
+    setLoading(false);
+  };
+
+  const deleteQuestion = async (q) => {
+    const confirmed = await showConfirm(`确认删除「${q.title}」？`);
+    if (!confirmed) return;
+    try {
+      await fetch(`/api/qbank/questions/${q.id}/`, {method:'DELETE', headers});
+      loadQuestions();
+    } catch {}
+  };
+
+  return (
+    <div className="qb-minimal" style={{display:'flex', height:'100vh', overflow:'hidden', fontFamily:'var(--sans)'}}>
+      {/* 侧边栏 */}
+      <div className={`sb${sbOpen?' open':''}`} style={{position:'relative',zIndex:10}}>
+        <div className="sb-hd">
+          <h1>AI 题库</h1>
+          <p style={{fontSize:10,color:'var(--fg3)',marginTop:3,letterSpacing:2}}>QUESTION BANK</p>
+        </div>
+        <div className="sb-nav">
+          <div className="ns">
+            <div className="ns-t">功能</div>
+            {[
+              {v:'list', label:'我的题目', icon:'note'},
+              {v:'shared', label:'共享题库', icon:'share-2'},
+            ].map(item => (
+              <div key={item.v}
+                className={`ni${view===item.v||(!['shared','shared-detail'].includes(view)&&item.v==='list'&&view==='list')?' on':''}`}
+                onClick={() => { setView(item.v); setSbOpen(false); }}>
+                <span style={{display:'inline-flex',alignItems:'center'}}><Icon name={item.icon} size={13} /></span>
+                <span>{item.label}</span>
+              </div>
+            ))}
+          </div>
+          {view === 'edit' && currentQ && (
+            <div className="ns">
+              <div className="ns-t">当前题目</div>
+              <div className="ni on" style={{fontSize:12,wordBreak:'break-word',whiteSpace:'normal',lineHeight:1.4}}>
+                {currentQ.title || '新题目'}
+              </div>
+            </div>
+          )}
+        </div>
+        <div style={{padding:'10px 14px', borderTop:'1px solid var(--border)'}}>
+          <div style={{fontSize:11, color:'var(--fg3)', marginBottom:6}}>{user?.email || '访客'}</div>
+          <div style={{display:'flex', gap:6}}>
+            <button onClick={() => window.location.hash='#/'} style={{flex:1,background:'var(--bg3)',color:'var(--fg2)',padding:'5px 0',borderRadius:'var(--r)',fontSize:11}}>← 平台首页</button>
+            <button onClick={onLogout} style={{flex:1,background:'var(--bg3)',color:'var(--fg2)',padding:'5px 0',borderRadius:'var(--r)',fontSize:11}}>退出</button>
+          </div>
+        </div>
+      </div>
+
+      {/* 主内容 */}
+      <div style={{flex:1, display:'flex', flexDirection:'column', overflow:'hidden', minWidth:0}}>
+        {/* 顶栏 */}
+        <div style={{height:46,borderBottom:'1px solid var(--border)',display:'flex',alignItems:'center',padding:'0 16px',gap:10,background:'var(--bg2)',flexShrink:0}}>
+          <button style={{background:'transparent',border:'none',color:'var(--fg3)',cursor:'pointer',padding:'4px',display:'flex',alignItems:'center'}} onClick={()=>setSbOpen(o=>!o)}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+          </button>
+          <span style={{fontSize:14,fontWeight:500,color:'var(--fg)'}}>
+            {view==='list'?'我的题目':view==='edit'?(currentQ?.id?`编辑: ${currentQ.title||'题目'}` :'新建题目'):view==='shared'?'共享题库':'题目详情'}
+          </span>
+          {view === 'edit' && currentQ?.id && (
+            <button onClick={()=>setView('list')} style={{background:'transparent',color:'var(--fg3)',fontSize:12,marginLeft:8}}>← 返回列表</button>
+          )}
+          {view === 'shared-detail' && (
+            <button onClick={()=>setView('shared')} style={{background:'transparent',color:'var(--fg3)',fontSize:12,marginLeft:8}}>← 返回题库</button>
+          )}
+          {view === 'list' && (
+            <button className="btn btn-p btn-sm" style={{marginLeft:'auto'}} onClick={openNew}>+ 新建题目</button>
+          )}
+        </div>
+
+        {/* 内容区 */}
+        <div style={{flex:1,overflow:'auto',minHeight:0}}>
+          {loading && <div style={{textAlign:'center',padding:40,color:'var(--fg3)'}}>加载中…</div>}
+          {!loading && view === 'list' && (
+            <QBMyQuestions questions={questions} onOpen={openQuestion} onDelete={deleteQuestion} onNew={openNew} />
+          )}
+          {!loading && view === 'edit' && currentQ && (
+            <QBEditView
+              question={currentQ}
+              onSaved={(q) => { setCurrentQ(q); }}
+              onBack={() => { loadQuestions(); setView('list'); }}
+              token={token}
+              headers={headers}
+              authFetch={authFetch}
+              user={user}
+            />
+          )}
+          {!loading && view === 'shared' && (
+            <QBSharedList
+              list={sharedList}
+              search={sharedSearch}
+              subject={sharedSubject}
+              onSearchChange={setSharedSearch}
+              onSubjectChange={setSharedSubject}
+              onSearch={()=>loadShared(sharedSearch,sharedSubject)}
+              onOpen={openSharedDetail}
+              user={user}
+              headers={headers}
+            />
+          )}
+          {!loading && view === 'shared-detail' && currentShared && (
+            <QBSharedDetail
+              shared={currentShared}
+              onBack={() => setView('shared')}
+              token={token}
+              headers={headers}
+              authFetch={authFetch}
+              user={user}
+              onReload={async () => {
+                try { const d = await authFetch(`/api/qbank/shared/${currentShared.id}/`); setCurrentShared(d); } catch {}
+              }}
+            />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── 我的题目列表 ──────────────────────────────────────────────────────────────
+
+function QBMyQuestions({questions, onOpen, onDelete, onNew}) {
+  if (questions.length === 0) {
+    return (
+      <div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',height:'100%',gap:16,color:'var(--fg3)'}}>
+        <div style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:48,height:48,borderRadius:12,border:'1px solid var(--border2)',background:'var(--bg3)'}}><Icon name="note" size={22}/></div>
+        <div style={{fontSize:16,color:'var(--fg2)'}}>还没有题目</div>
+        <div style={{fontSize:13}}>上传题目图片，用 OCR 或视觉模型识别，然后让 AI 解答</div>
+        <button className="btn btn-p" style={{marginTop:8}} onClick={onNew}>新建题目</button>
+      </div>
+    );
+  }
+  return (
+    <div style={{padding:'20px',display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))',gap:14}}>
+      {questions.map(q => (
+        <div key={q.id} style={{background:'var(--bg2)',borderRadius:8,border:'1px solid var(--border)',padding:'14px',cursor:'pointer',transition:'border .15s'}}
+          onMouseEnter={e=>e.currentTarget.style.borderColor='var(--gold-dim)'}
+          onMouseLeave={e=>e.currentTarget.style.borderColor='var(--border)'}>
+          <div style={{display:'flex',gap:8,alignItems:'flex-start',marginBottom:8}}>
+            <div style={{flex:1,minWidth:0}} onClick={()=>onOpen(q)}>
+              <div style={{fontWeight:500,color:'var(--fg)',marginBottom:4,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{q.title || '未命名题目'}</div>
+              <div style={{fontSize:12,color:'var(--fg3)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{q.content || '(无文字内容)'}</div>
+            </div>
+            <button onClick={e=>{e.stopPropagation();onDelete(q);}}
+              style={{background:'transparent',color:'var(--fg3)',fontSize:16,padding:'0 2px',lineHeight:1,flexShrink:0}}>×</button>
+          </div>
+          <div style={{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center'}} onClick={()=>onOpen(q)}>
+            <QBModelBadge model={q.model_used} />
+            {q.subject && <span style={{fontSize:11,color:'var(--fg3)',padding:'1px 6px',borderRadius:8,background:'var(--bg4)'}}>{q.subject}</span>}
+            {q.is_published && <span style={{fontSize:11,color:'var(--green)',padding:'1px 6px',borderRadius:8,background:'rgba(94,184,122,0.12)'}}>已发布</span>}
+            {q.has_final_answer && <span style={{fontSize:11,color:'var(--gold)',padding:'1px 6px',borderRadius:8,background:'rgba(201,168,108,0.12)'}}>有答案</span>}
+            {q.has_image && <span style={{fontSize:11,color:'var(--cyan)',padding:'1px 6px',borderRadius:8,background:'rgba(90,196,180,0.12)'}}>有图片</span>}
+          </div>
+          <div style={{fontSize:11,color:'var(--fg3)',marginTop:8,cursor:'pointer'}} onClick={()=>onOpen(q)}>
+            {new Date(q.created_at).toLocaleDateString('zh-CN')}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── 题目编辑视图 ──────────────────────────────────────────────────────────────
+
+function QBEditView({question, onSaved, onBack, token, headers, authFetch, user}) {
+  const [q, setQ] = React.useState(question);
+  const [tab, setTab] = React.useState('question'); // question | chat | answer | standard | publish
+  const [ocrLoading, setOcrLoading] = React.useState(false);
+  const [saving, setSaving] = React.useState(false);
+  const [model, setModel] = React.useState(question.model_used || 'glm-4.7-flash');
+  const [msgs, setMsgs] = React.useState(question.messages || []);
+  const [chatInput, setChatInput] = React.useState('');
+  const [streaming, setStreaming] = React.useState(false);
+  const [streamText, setStreamText] = React.useState('');
+  const [finalAnswer, setFinalAnswer] = React.useState(question.final_answer_content || '');
+  const [editingFinal, setEditingFinal] = React.useState(false);
+  const [stdMd, setStdMd] = React.useState(question.standard_answer_md || '');
+  const [stdImage, setStdImage] = React.useState('');
+  const [stdImageType, setStdImageType] = React.useState('jpeg');
+  const [stdPreview, setStdPreview] = React.useState(question.standard_answer_image || '');
+  const [publishing, setPublishing] = React.useState(false);
+  const chatEndRef = React.useRef(null);
+
+  React.useEffect(() => {
+    chatEndRef.current?.scrollIntoView({behavior:'smooth'});
+  }, [msgs, streamText]);
+
+  // 处理图片上传（题目图片）
+  const handleImageUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (ev) => {
+      const dataUrl = ev.target.result;
+      const [meta, b64] = dataUrl.split(',');
+      const imgType = meta.match(/image\/([^;]+)/)?.[1] || 'jpeg';
+      setQ(prev => ({...prev, image_data_url: dataUrl, original_image: b64, image_type: imgType, has_image: true}));
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // OCR 识别
+  const runOCR = async () => {
+    if (!q.original_image) return;
+    setOcrLoading(true);
+    try {
+      const resp = await fetch('/api/qbank/ocr/', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({image_b64: q.original_image, image_type: q.image_type}),
+      });
+      const data = await resp.json();
+      if (data.error) throw new Error(data.error);
+      setQ(prev => ({...prev, content: data.text || ''}));
+    } catch (e) { showAlert('OCR 失败: ' + e.message, '错误'); }
+    setOcrLoading(false);
+  };
+
+  // 保存题目（新建或更新）
+  const saveQuestion = async () => {
+    setSaving(true);
+    try {
+      let saved;
+      if (!q.id) {
+        saved = await authFetch('/api/qbank/questions/', {
+          method: 'POST',
+          body: JSON.stringify({
+            title: q.title || q.content.slice(0,60) || '新题目',
+            content: q.content,
+            original_image: q.original_image,
+            image_type: q.image_type,
+            model_used: model,
+            tags: q.tags,
+            subject: q.subject,
+          }),
+        });
+      } else {
+        saved = await authFetch(`/api/qbank/questions/${q.id}/`, {
+          method: 'PUT',
+          body: JSON.stringify({
+            title: q.title || q.content.slice(0,60) || '新题目',
+            content: q.content,
+            original_image: q.original_image,
+            image_type: q.image_type,
+            model_used: model,
+            tags: q.tags,
+            subject: q.subject,
+          }),
+        });
+      }
+      setQ(prev => ({...prev, ...saved, image_data_url: prev.image_data_url}));
+      onSaved({...saved, image_data_url: q.image_data_url});
+      return saved;
+    } catch (e) { showAlert('保存失败: ' + e.message, '错误'); return null; }
+    finally { setSaving(false); }
+  };
+
+  // 切换模型
+  const handleModelChange = (newModel) => {
+    setModel(newModel);
+    setQ(prev => ({...prev, model_used: newModel}));
+  };
+
+  // 发送消息 (SSE)
+  const sendMessage = async () => {
+    if (!chatInput.trim() || streaming) return;
+    let qid = q.id;
+    if (!qid) {
+      const saved = await saveQuestion();
+      if (!saved) return;
+      qid = saved.id;
+    }
+    const userMsg = chatInput.trim();
+    setChatInput('');
+    setMsgs(prev => [...prev, {role:'user', content:userMsg, model_used:model}]);
+    setStreaming(true);
+    setStreamText('');
+
+    const isVision = model === 'glm-4v-flash';
+    const includeImage = isVision && q.has_image && msgs.length === 0;
+
+    try {
+      const resp = await fetch(`/api/qbank/questions/${qid}/chat-stream/`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({message: userMsg, model, include_image: includeImage}),
+      });
+      if (!resp.ok) throw new Error(await resp.text());
+      const reader = resp.body.getReader();
+      const dec = new TextDecoder();
+      let buf = '';
+      let full = '';
+      while (true) {
+        const {done, value} = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, {stream:true});
+        const lines = buf.split('\n');
+        buf = lines.pop();
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const ev = JSON.parse(line.slice(6));
+            if (ev.content) { full += ev.content; setStreamText(full); }
+            if (ev.done) {
+              setMsgs(prev => [...prev, {role:'assistant', content:full, model_used:model}]);
+              setStreamText('');
+            }
+          } catch {}
+        }
+      }
+    } catch (e) {
+      setMsgs(prev => [...prev, {role:'assistant', content:`错误: ${e.message}`, model_used:model}]);
+    }
+    setStreaming(false);
+    setStreamText('');
+  };
+
+  // 保存最终答案
+  const saveFinal = async () => {
+    let qid = q.id;
+    if (!qid) { const s = await saveQuestion(); if (!s) return; qid = s.id; }
+    try {
+      await authFetch(`/api/qbank/questions/${qid}/final/`, {
+        method:'POST', body:JSON.stringify({content: finalAnswer}),
+      });
+      setEditingFinal(false);
+      setQ(prev => ({...prev, has_final_answer: true, final_answer_content: finalAnswer}));
+    } catch (e) { showAlert('保存失败: ' + e.message, '错误'); }
+  };
+
+  // 将 AI 回答复制到最终答案编辑器
+  const importFromChat = (content) => {
+    setFinalAnswer(content);
+    setEditingFinal(true);
+    setTab('answer');
+  };
+
+  // 处理标准答案图片
+  const handleStdImage = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const dataUrl = ev.target.result;
+      const [meta, b64] = dataUrl.split(',');
+      const imgType = meta.match(/image\/([^;]+)/)?.[1] || 'jpeg';
+      setStdImage(b64);
+      setStdImageType(imgType);
+      setStdPreview(dataUrl);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // 保存标准答案
+  const saveStandard = async () => {
+    let qid = q.id;
+    if (!qid) { const s = await saveQuestion(); if (!s) return; qid = s.id; }
+    try {
+      await authFetch(`/api/qbank/questions/${qid}/standard/`, {
+        method:'POST',
+        body: JSON.stringify({content_md: stdMd, image: stdImage, image_type: stdImageType}),
+      });
+      setQ(prev => ({...prev, has_standard_answer: true}));
+      showAlert('标准答案已保存', '保存成功');
+    } catch (e) { showAlert('保存失败: ' + e.message, '错误'); }
+  };
+
+  // 发布
+  const publish = async () => {
+    let qid = q.id;
+    if (!qid) { const s = await saveQuestion(); if (!s) return; qid = s.id; }
+    setPublishing(true);
+    try {
+      await authFetch(`/api/qbank/questions/${qid}/publish/`, {method:'POST', body:JSON.stringify({})});
+      setQ(prev => ({...prev, is_published: true}));
+      showAlert('发布成功！题目已出现在共享题库中。', '发布成功');
+    } catch (e) { showAlert('发布失败: ' + e.message, '错误'); }
+    setPublishing(false);
+  };
+
+  // 取消发布
+  const unpublish = async () => {
+    if (!q.id) return;
+    const confirmed = await showConfirm('确认取消发布？');
+    if (!confirmed) return;
+    try {
+      await fetch(`/api/qbank/questions/${q.id}/publish/`, {method:'DELETE', headers});
+      setQ(prev => ({...prev, is_published: false}));
+    } catch (e) { showAlert('操作失败: ' + e.message, '错误'); }
+  };
+
+  const tabStyle = (t) => ({
+    padding:'7px 14px', fontSize:13, cursor:'pointer', borderRadius:0,
+    background:'transparent', border:'none',
+    borderBottom: tab===t ? '2px solid var(--gold)' : '2px solid transparent',
+    color: tab===t ? 'var(--gold)' : 'var(--fg3)',
+    transition:'all .15s',
+  });
+
+  return (
+    <div style={{display:'flex',flexDirection:'column',height:'100%'}}>
+      {/* Tab 导航 */}
+      <div style={{display:'flex',borderBottom:'1px solid var(--border)',background:'var(--bg2)',flexShrink:0,paddingLeft:8}}>
+        <button style={tabStyle('question')} onClick={()=>setTab('question')}><span className="with-ic"><Icon name="scan" size={12}/>题目</span></button>
+        <button style={tabStyle('chat')} onClick={()=>setTab('chat')}><span className="with-ic"><Icon name="chat" size={12}/>AI 对话</span></button>
+        <button style={tabStyle('answer')} onClick={()=>setTab('answer')}><span className="with-ic"><Icon name="pen" size={12}/>最终答案</span></button>
+        <button style={tabStyle('standard')} onClick={()=>setTab('standard')}><span className="with-ic"><Icon name="clipboard" size={12}/>标准答案</span></button>
+        <button style={tabStyle('publish')} onClick={()=>setTab('publish')}><span className="with-ic"><Icon name="share-2" size={12}/>发布</span></button>
+        <button className="btn btn-p btn-sm" style={{marginLeft:'auto',marginRight:8,marginTop:4,marginBottom:4}} onClick={saveQuestion} disabled={saving}>
+          {saving ? '保存中…' : '保存'}
+        </button>
+      </div>
+
+      {/* Tab 内容 */}
+      <div style={{flex:1,overflow:'auto',padding:20}}>
+
+        {/* ── 题目面板 ─────────────────────────────────────────── */}
+        {tab === 'question' && (
+          <div style={{maxWidth:800,margin:'0 auto',display:'flex',flexDirection:'column',gap:16}}>
+            <div style={{display:'flex',gap:12,alignItems:'center',flexWrap:'wrap'}}>
+              <label style={{fontSize:13,color:'var(--fg2)'}}>模型选择：</label>
+              <button onClick={()=>handleModelChange('glm-4.7-flash')}
+                style={{padding:'5px 12px',borderRadius:20,border:`1px solid ${model==='glm-4.7-flash'?'var(--blue)':'var(--border2)'}`,
+                  background:model==='glm-4.7-flash'?'rgba(90,138,196,0.15)':'transparent',
+                  color:model==='glm-4.7-flash'?'var(--blue)':'var(--fg3)',fontSize:12,cursor:'pointer'}}>
+                <span className="with-ic"><Icon name="chat" size={12}/>GLM-4.7（文字题）</span>
+              </button>
+              <button onClick={()=>handleModelChange('glm-4v-flash')}
+                style={{padding:'5px 12px',borderRadius:20,border:`1px solid ${model==='glm-4v-flash'?'var(--purple)':'var(--border2)'}`,
+                  background:model==='glm-4v-flash'?'rgba(154,106,196,0.15)':'transparent',
+                  color:model==='glm-4v-flash'?'var(--purple)':'var(--fg3)',fontSize:12,cursor:'pointer'}}>
+                <span className="with-ic"><Icon name="eye" size={12}/>GLM-4V（几何/图形题）</span>
+              </button>
+            </div>
+
+            <div style={{display:'flex',gap:12,flexWrap:'wrap'}}>
+              <div style={{flex:'1 1 140px'}}>
+                <div style={{fontSize:12,color:'var(--fg3)',marginBottom:4}}>科目/标签</div>
+                <input value={q.subject} onChange={e=>setQ(p=>({...p,subject:e.target.value}))} placeholder="如：数学、物理…" style={{width:'100%'}} />
+              </div>
+              <div style={{flex:'2 1 200px'}}>
+                <div style={{fontSize:12,color:'var(--fg3)',marginBottom:4}}>题目标题</div>
+                <input value={q.title} onChange={e=>setQ(p=>({...p,title:e.target.value}))} placeholder="题目标题（可选，留空自动截取）" style={{width:'100%'}} />
+              </div>
+            </div>
+
+            {/* 图片上传区 */}
+            <div style={{border:'1px dashed var(--border2)',borderRadius:8,padding:16,textAlign:'center',background:'var(--bg3)'}}>
+              {q.image_data_url ? (
+                <div>
+                  <img src={q.image_data_url} alt="题目图片" style={{maxWidth:'100%',maxHeight:320,borderRadius:6,marginBottom:10}} />
+                  <div style={{display:'flex',gap:8,justifyContent:'center',flexWrap:'wrap'}}>
+                    {model !== 'glm-4v-flash' && (
+                      <button className="btn btn-p btn-sm" onClick={runOCR} disabled={ocrLoading}>
+                        {ocrLoading ? '识别中…' : <span className="with-ic"><Icon name="search" size={12}/>OCR 识别文字</span>}
+                      </button>
+                    )}
+                    <label className="btn btn-s btn-sm" style={{cursor:'pointer',display:'inline-flex',alignItems:'center',gap:4}}>
+                      <span className="with-ic"><Icon name="refresh" size={12}/>换图片</span>
+                      <input type="file" accept="image/*" style={{display:'none'}} onChange={handleImageUpload} />
+                    </label>
+                    <button className="btn btn-sm" style={{background:'var(--bg5)',color:'var(--fg3)'}}
+                      onClick={()=>setQ(p=>({...p,image_data_url:'',original_image:'',has_image:false}))}>
+                      <span className="with-ic"><Icon name="x" size={12}/>移除</span>
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <label style={{cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',gap:8,padding:12}}>
+                  <div style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:42,height:42,borderRadius:10,border:'1px solid var(--border2)',background:'var(--bg2)'}}><Icon name="scan" size={18}/></div>
+                  <div style={{fontSize:14,color:'var(--fg2)'}}>点击上传题目图片</div>
+                  <div style={{fontSize:12,color:'var(--fg3)'}}>支持 JPG / PNG，上传后可 OCR 识别文字或直接用视觉模型解题</div>
+                  <input type="file" accept="image/*" style={{display:'none'}} onChange={handleImageUpload} />
+                </label>
+              )}
+            </div>
+
+            {/* 题目文字内容 */}
+            <div>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
+                <span style={{fontSize:12,color:'var(--fg3)'}}>
+                  题目文字内容
+                  {model !== 'glm-4v-flash' && <span style={{marginLeft:6,color:'var(--fg3)',fontSize:11}}>（OCR识别后可在此编辑）</span>}
+                  {model === 'glm-4v-flash' && <span style={{marginLeft:6,color:'var(--purple)',fontSize:11}}>（视觉模型将直接读取图片，文字可选填）</span>}
+                </span>
+              </div>
+              <textarea value={q.content} onChange={e=>setQ(p=>({...p,content:e.target.value}))}
+                placeholder={model === 'glm-4v-flash' ? '可选：用文字补充描述题目…' : '在此粘贴或编辑题目文字…'}
+                style={{width:'100%',minHeight:140,fontFamily:'var(--mono)',fontSize:13}} />
+            </div>
+
+            <div style={{display:'flex',justifyContent:'flex-end',gap:8}}>
+              <button className="btn btn-p" onClick={()=>{ saveQuestion().then(()=>setTab('chat')); }}>
+                保存并去 AI 对话 →
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── AI 对话面板 ──────────────────────────────────────── */}
+        {tab === 'chat' && (
+          <div style={{display:'flex',flexDirection:'column',height:'calc(100vh - 140px)',maxWidth:800,margin:'0 auto'}}>
+            {/* 模型切换提示 */}
+            <div style={{display:'flex',gap:8,alignItems:'center',marginBottom:12,padding:'8px 12px',background:'var(--bg3)',borderRadius:8,flexShrink:0}}>
+              <span style={{fontSize:12,color:'var(--fg3)',marginRight:4}}>当前模型：</span>
+              <button onClick={()=>handleModelChange('glm-4.7-flash')}
+                style={{padding:'3px 10px',borderRadius:14,border:`1px solid ${model==='glm-4.7-flash'?'var(--blue)':'var(--border2)'}`,
+                  background:model==='glm-4.7-flash'?'rgba(90,138,196,0.15)':'transparent',
+                  color:model==='glm-4.7-flash'?'var(--blue)':'var(--fg3)',fontSize:11,cursor:'pointer'}}>
+                <span className="with-ic"><Icon name="chat" size={11}/>GLM-4.7</span>
+              </button>
+              <button onClick={()=>handleModelChange('glm-4v-flash')}
+                style={{padding:'3px 10px',borderRadius:14,border:`1px solid ${model==='glm-4v-flash'?'var(--purple)':'var(--border2)'}`,
+                  background:model==='glm-4v-flash'?'rgba(154,106,196,0.15)':'transparent',
+                  color:model==='glm-4v-flash'?'var(--purple)':'var(--fg3)',fontSize:11,cursor:'pointer'}}>
+                <span className="with-ic"><Icon name="eye" size={11}/>GLM-4V</span>
+              </button>
+              <span style={{fontSize:11,color:'var(--fg3)',marginLeft:4}}>切换模型不会清空对话历史</span>
+              {msgs.length > 0 && (
+                <button style={{marginLeft:'auto',background:'transparent',color:'var(--fg3)',fontSize:12,cursor:'pointer',border:'1px solid var(--border2)',borderRadius:4,padding:'2px 8px'}}
+                  onClick={async ()=>{ const confirmed = await showConfirm('确认清空对话历史？'); if(confirmed) setMsgs([]); }}>
+                  清空对话
+                </button>
+              )}
+            </div>
+
+            {/* 消息列表 */}
+            <div style={{flex:1,overflow:'auto',display:'flex',flexDirection:'column',gap:12,paddingBottom:8}}>
+              {msgs.length === 0 && !streaming && (
+                <div style={{textAlign:'center',color:'var(--fg3)',padding:30}}>
+                  <div style={{marginBottom:8}}><Icon name="bot" size={20}/></div>
+                  <div style={{fontSize:14,marginBottom:4}}>向 AI 提问</div>
+                  <div style={{fontSize:12}}>描述你的问题，或让 AI 解答题目图片中的内容</div>
+                  {q.content && (
+                    <button className="btn btn-p btn-sm" style={{marginTop:12}} onClick={()=>setChatInput(`请解答以下题目：\n\n${q.content}`)}>
+                      一键发送题目内容
+                    </button>
+                  )}
+                  {model === 'glm-4v-flash' && q.has_image && (
+                    <button className="btn btn-sm" style={{marginTop:8,marginLeft:8,background:'rgba(154,106,196,0.15)',color:'var(--purple)',border:'1px solid var(--purple)'}}
+                      onClick={()=>setChatInput('请解答这道题，请给出详细解题步骤。')}>
+                      让 GLM-4V 直接看图解题
+                    </button>
+                  )}
+                </div>
+              )}
+              {msgs.map((m, i) => (
+                <div key={i} style={{display:'flex',flexDirection:'column',alignItems:m.role==='user'?'flex-end':'flex-start'}}>
+                  <div style={{fontSize:11,color:'var(--fg3)',marginBottom:3,display:'flex',alignItems:'center',gap:6}}>
+                    <span>{m.role==='user'?'你':'AI'}</span>
+                    {m.model_used && <QBModelBadge model={m.model_used} />}
+                  </div>
+                  <div style={{
+                    maxWidth:'80%', padding:'10px 14px', borderRadius:8,
+                    background: m.role==='user' ? 'var(--bg4)' : 'var(--bg3)',
+                    border: '1px solid var(--border)',
+                    position:'relative',
+                  }}>
+                    {m.role === 'assistant' ? <QBMd content={m.content} /> : <span style={{fontSize:13,whiteSpace:'pre-wrap'}}>{m.content}</span>}
+                    {m.role === 'assistant' && (
+                      <button onClick={()=>importFromChat(m.content)}
+                        style={{marginTop:8,background:'transparent',color:'var(--gold)',fontSize:11,cursor:'pointer',
+                          border:'1px solid var(--gold-dim)',borderRadius:4,padding:'2px 8px',display:'block'}}>
+                        → 用作最终答案
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+              {streaming && streamText && (
+                <div style={{display:'flex',flexDirection:'column',alignItems:'flex-start'}}>
+                  <div style={{fontSize:11,color:'var(--fg3)',marginBottom:3,display:'flex',alignItems:'center',gap:6}}>
+                    <span>AI</span><QBModelBadge model={model} />
+                  </div>
+                  <div style={{maxWidth:'80%',padding:'10px 14px',borderRadius:8,background:'var(--bg3)',border:'1px solid var(--border)'}}>
+                    <QBMd content={streamText} />
+                    <span style={{animation:'blink 1s infinite'}}>▌</span>
+                  </div>
+                </div>
+              )}
+              {streaming && !streamText && <div style={{color:'var(--fg3)',fontSize:12,textAlign:'center'}}>AI 思考中…</div>}
+              <div ref={chatEndRef} />
+            </div>
+
+            {/* 输入框 */}
+            <div style={{display:'flex',gap:8,marginTop:8,flexShrink:0}}>
+              <textarea value={chatInput} onChange={e=>setChatInput(e.target.value)}
+                onKeyDown={e=>{ if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage();} }}
+                placeholder="输入消息… (Enter 发送, Shift+Enter 换行)"
+                style={{flex:1,minHeight:60,maxHeight:120,resize:'vertical',fontFamily:'var(--sans)',fontSize:13}} />
+              <button className="btn btn-p" style={{alignSelf:'flex-end'}} onClick={sendMessage} disabled={streaming||!chatInput.trim()}>
+                {streaming ? '…' : '发送'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── 最终答案面板 ────────────────────────────────────── */}
+        {tab === 'answer' && (
+          <div style={{maxWidth:800,margin:'0 auto',display:'flex',flexDirection:'column',gap:16}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              <h3 style={{fontSize:16,color:'var(--fg)'}}>最终答案（Markdown）</h3>
+              <div style={{display:'flex',gap:8}}>
+                {!editingFinal && finalAnswer && (
+                  <button className="btn btn-s btn-sm" onClick={()=>setEditingFinal(true)}>编辑</button>
+                )}
+                {editingFinal && (
+                  <button className="btn btn-p btn-sm" onClick={saveFinal}>保存答案</button>
+                )}
+              </div>
+            </div>
+            {editingFinal || !finalAnswer ? (
+              <div>
+                <textarea value={finalAnswer} onChange={e=>setFinalAnswer(e.target.value)}
+                  placeholder="在此编写最终答案（支持 Markdown 和 LaTeX 数学公式）"
+                  style={{width:'100%',minHeight:300,fontFamily:'var(--mono)',fontSize:13}} />
+                {!editingFinal && (
+                  <div style={{marginTop:8,display:'flex',gap:8}}>
+                    <button className="btn btn-p btn-sm" onClick={()=>{setEditingFinal(true);}} disabled={!finalAnswer.trim()}>
+                      保存为最终答案
+                    </button>
+                  </div>
+                )}
+                {editingFinal && (
+                  <div style={{marginTop:8,display:'flex',gap:8}}>
+                    <button className="btn btn-p btn-sm" onClick={saveFinal}>保存</button>
+                    <button className="btn btn-s btn-sm" onClick={()=>setEditingFinal(false)}>取消</button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div style={{background:'var(--bg2)',borderRadius:8,border:'1px solid var(--border)',padding:20}}>
+                <QBMd content={finalAnswer} />
+              </div>
+            )}
+            {!finalAnswer && msgs.length === 0 && (
+              <div style={{color:'var(--fg3)',fontSize:13,textAlign:'center',padding:20}}>
+                先在「AI 对话」标签页与 AI 交流，然后点击「→ 用作最终答案」将 AI 回答引入到此处进行编辑和完善。
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── 标准答案面板 ────────────────────────────────────── */}
+        {tab === 'standard' && (
+          <div style={{maxWidth:800,margin:'0 auto',display:'flex',flexDirection:'column',gap:16}}>
+            <h3 style={{fontSize:16,color:'var(--fg)'}}>标准答案（可选）</h3>
+            <div style={{fontSize:13,color:'var(--fg3)'}}>上传官方标准答案，支持图片或 Markdown 文字，发布后其他用户可查看。</div>
+
+            <div>
+              <div style={{fontSize:12,color:'var(--fg3)',marginBottom:6}}>文字标准答案（Markdown）</div>
+              <textarea value={stdMd} onChange={e=>setStdMd(e.target.value)}
+                placeholder="在此粘贴标准答案文字，支持 Markdown 和 LaTeX…"
+                style={{width:'100%',minHeight:160,fontFamily:'var(--mono)',fontSize:13}} />
+            </div>
+
+            <div style={{border:'1px dashed var(--border2)',borderRadius:8,padding:16,background:'var(--bg3)'}}>
+              <div style={{fontSize:12,color:'var(--fg3)',marginBottom:8}}>标准答案图片（可选）</div>
+              {stdPreview ? (
+                <div>
+                  <img src={stdPreview} alt="标准答案" style={{maxWidth:'100%',maxHeight:300,borderRadius:6,marginBottom:8}} />
+                  <div style={{display:'flex',gap:8}}>
+                    <label className="btn btn-s btn-sm" style={{cursor:'pointer'}}>
+                      换图片
+                      <input type="file" accept="image/*" style={{display:'none'}} onChange={handleStdImage} />
+                    </label>
+                    <button className="btn btn-sm" style={{background:'var(--bg5)',color:'var(--fg3)'}}
+                      onClick={()=>{ setStdImage(''); setStdPreview(''); }}>移除</button>
+                  </div>
+                </div>
+              ) : (
+                <label style={{cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',gap:6,padding:12}}>
+                  <div style={{fontSize:28}}>🖼</div>
+                  <div style={{fontSize:13,color:'var(--fg2)'}}>点击上传标准答案图片</div>
+                  <input type="file" accept="image/*" style={{display:'none'}} onChange={handleStdImage} />
+                </label>
+              )}
+            </div>
+
+            <button className="btn btn-p btn-sm" style={{width:'fit-content'}} onClick={saveStandard}>
+              保存标准答案
+            </button>
+          </div>
+        )}
+
+        {/* ── 发布面板 ─────────────────────────────────────────── */}
+        {tab === 'publish' && (
+          <div style={{maxWidth:600,margin:'0 auto',display:'flex',flexDirection:'column',gap:16,alignItems:'center',textAlign:'center',paddingTop:20}}>
+            <div style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:56,height:56,borderRadius:16,border:'1px solid var(--border2)',background:'var(--bg3)'}}><Icon name="share-2" size={24}/></div>
+            <h3 style={{fontSize:18,color:'var(--fg)'}}>发布到共享题库</h3>
+            <div style={{fontSize:13,color:'var(--fg3)',maxWidth:400,lineHeight:1.8}}>
+              发布后，所有用户可以查看题目内容、AI 解答和标准答案。
+              其他用户可以点赞、收藏和评论。
+            </div>
+            <div style={{display:'flex',gap:12,flexWrap:'wrap',justifyContent:'center'}}>
+              {[
+                {label:'题目内容', ok: !!q.content || !!q.original_image},
+                {label:'最终答案', ok: !!finalAnswer || q.has_final_answer},
+                {label:'标准答案', ok: q.has_standard_answer || !!stdMd},
+              ].map(item => (
+                <div key={item.label} style={{padding:'6px 14px',borderRadius:20,fontSize:12,
+                  background:item.ok?'rgba(94,184,122,0.12)':'var(--bg3)',
+                  color:item.ok?'var(--green)':'var(--fg3)',
+                  border:`1px solid ${item.ok?'rgba(94,184,122,0.3)':'var(--border2)'}`}}>
+                  {item.ok ? '✓' : '○'} {item.label}
+                </div>
+              ))}
+            </div>
+            {!q.id && <div style={{color:'var(--orange)',fontSize:13}}>请先保存题目</div>}
+            {q.is_published ? (
+              <div style={{display:'flex',flexDirection:'column',gap:12,alignItems:'center'}}>
+                <div style={{color:'var(--green)',fontSize:14}}>✓ 已发布到共享题库</div>
+                <div style={{display:'flex',gap:8}}>
+                  <button className="btn btn-p btn-sm" onClick={publish} disabled={publishing}>更新发布</button>
+                  <button className="btn btn-sm" style={{background:'rgba(196,90,90,0.15)',color:'var(--red)',border:'1px solid var(--red)'}}
+                    onClick={unpublish}>取消发布</button>
+                </div>
+              </div>
+            ) : (
+              <button className="btn btn-p" onClick={publish} disabled={publishing || !q.id} style={{padding:'10px 28px'}}>
+                {publishing ? '发布中…' : '发布到共享题库'}
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── 共享题库列表 ──────────────────────────────────────────────────────────────
+
+function QBSharedList({list, search, subject, onSearchChange, onSubjectChange, onSearch, onOpen, user, headers}) {
+  return (
+    <div style={{padding:20}}>
+      <div style={{display:'flex',gap:10,marginBottom:20,flexWrap:'wrap',alignItems:'center'}}>
+        <input value={search} onChange={e=>onSearchChange(e.target.value)}
+          onKeyDown={e=>e.key==='Enter'&&onSearch()}
+          placeholder="搜索题目…" style={{flex:'1 1 200px',maxWidth:300}} />
+        <input value={subject} onChange={e=>onSubjectChange(e.target.value)}
+          onKeyDown={e=>e.key==='Enter'&&onSearch()}
+          placeholder="科目筛选…" style={{flex:'1 1 120px',maxWidth:160}} />
+        <button className="btn btn-p btn-sm" onClick={onSearch}>搜索</button>
+        <span style={{fontSize:12,color:'var(--fg3)',marginLeft:'auto'}}>{list.length} 道题</span>
+      </div>
+      {list.length === 0 && (
+        <div style={{textAlign:'center',padding:40,color:'var(--fg3)'}}>
+          <div style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:46,height:46,borderRadius:12,border:'1px solid var(--border2)',background:'var(--bg3)',marginBottom:8}}><Icon name="share-2" size={18}/></div>
+          <div>共享题库暂无内容</div>
+        </div>
+      )}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(300px,1fr))',gap:14}}>
+        {list.map(sq => (
+          <div key={sq.id} onClick={()=>onOpen(sq)}
+            style={{background:'var(--bg2)',borderRadius:8,border:'1px solid var(--border)',padding:14,cursor:'pointer',transition:'border .15s'}}
+            onMouseEnter={e=>e.currentTarget.style.borderColor='var(--gold-dim)'}
+            onMouseLeave={e=>e.currentTarget.style.borderColor='var(--border)'}>
+            <div style={{fontWeight:500,marginBottom:6,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',color:'var(--fg)'}}>
+              {sq.title || '无标题'}
+            </div>
+            <div style={{fontSize:12,color:'var(--fg3)',marginBottom:8,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+              {sq.content || '(无文字预览)'}
+            </div>
+            {sq.subject && <span style={{fontSize:11,color:'var(--fg3)',padding:'1px 6px',borderRadius:8,background:'var(--bg4)',marginRight:4}}>{sq.subject}</span>}
+            <div style={{display:'flex',gap:10,marginTop:8,fontSize:12,color:'var(--fg3)',alignItems:'center'}}>
+              <span className="with-ic"><Icon name="check" size={11}/> {sq.like_count}</span>
+              <span className="with-ic"><Icon name="star" size={11}/> {sq.favorite_count}</span>
+              <span className="with-ic"><Icon name="chat" size={11}/> {sq.comment_count}</span>
+              <span style={{marginLeft:'auto'}}>{sq.author}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── 共享题目详情 ──────────────────────────────────────────────────────────────
+
+function QBSharedDetail({shared, onBack, token, headers, authFetch, user, onReload}) {
+  const [comment, setComment] = React.useState('');
+  const [submitting, setSubmitting] = React.useState(false);
+  const [liked, setLiked] = React.useState(shared.liked);
+  const [favorited, setFavorited] = React.useState(shared.favorited);
+  const [likeCount, setLikeCount] = React.useState(shared.like_count);
+  const [favCount, setFavCount] = React.useState(shared.favorite_count);
+  const [comments, setComments] = React.useState(shared.comments || []);
+  const [activeSection, setActiveSection] = React.useState('question'); // question | answer | standard
+
+  const toggleLike = async () => {
+    if (!user) { showAlert('请先登录', '提示'); return; }
+    try {
+      const d = await authFetch(`/api/qbank/shared/${shared.id}/like/`, {method:'POST', body:JSON.stringify({})});
+      setLiked(d.liked);
+      setLikeCount(d.count);
+    } catch {}
+  };
+
+  const toggleFav = async () => {
+    if (!user) { showAlert('请先登录', '提示'); return; }
+    try {
+      const d = await authFetch(`/api/qbank/shared/${shared.id}/favorite/`, {method:'POST', body:JSON.stringify({})});
+      setFavorited(d.favorited);
+      setFavCount(d.count);
+    } catch {}
+  };
+
+  const postComment = async () => {
+    if (!user) { showAlert('请先登录', '提示'); return; }
+    if (!comment.trim()) return;
+    setSubmitting(true);
+    try {
+      const c = await authFetch(`/api/qbank/shared/${shared.id}/comment/`, {method:'POST', body:JSON.stringify({content:comment})});
+      setComments(prev => [...prev, c]);
+      setComment('');
+    } catch (e) { showAlert('评论失败: ' + e.message, '错误'); }
+    setSubmitting(false);
+  };
+
+  const sectionStyle = (s) => ({
+    padding:'6px 14px', fontSize:13, cursor:'pointer',
+    borderRadius:0, background:'transparent', border:'none',
+    borderBottom: activeSection===s ? '2px solid var(--gold)' : '2px solid transparent',
+    color: activeSection===s ? 'var(--gold)' : 'var(--fg3)',
+  });
+
+  return (
+    <div style={{maxWidth:860,margin:'0 auto',padding:'20px 20px 40px'}}>
+      {/* 标题栏 */}
+      <div style={{marginBottom:16}}>
+        <h2 style={{fontSize:18,color:'var(--fg)',marginBottom:6}}>{shared.title || '无标题'}</h2>
+        <div style={{display:'flex',gap:10,alignItems:'center',flexWrap:'wrap'}}>
+          {shared.subject && <span style={{fontSize:12,color:'var(--fg3)',padding:'2px 8px',borderRadius:8,background:'var(--bg4)'}}>{shared.subject}</span>}
+          <QBModelBadge model={shared.model_used} />
+          <span style={{fontSize:12,color:'var(--fg3)'}}>作者：{shared.author}</span>
+          <span style={{fontSize:12,color:'var(--fg3)'}} className="with-ic"><Icon name="eye" size={12}/> {shared.view_count} 次浏览</span>
+          {/* 互动按钮 */}
+          <div style={{marginLeft:'auto',display:'flex',gap:8}}>
+            <button onClick={toggleLike}
+              style={{padding:'5px 12px',borderRadius:20,border:`1px solid ${liked?'var(--red)':'var(--border2)'}`,
+                background:liked?'rgba(196,90,90,0.15)':'transparent',
+                color:liked?'var(--red)':'var(--fg3)',fontSize:12,cursor:'pointer'}}>
+              <span className="with-ic"><Icon name="check" size={11}/> {likeCount}</span>
+            </button>
+            <button onClick={toggleFav}
+              style={{padding:'5px 12px',borderRadius:20,border:`1px solid ${favorited?'var(--gold)':'var(--border2)'}`,
+                background:favorited?'rgba(201,168,108,0.15)':'transparent',
+                color:favorited?'var(--gold)':'var(--fg3)',fontSize:12,cursor:'pointer'}}>
+              <span className="with-ic"><Icon name="star" size={11}/> {favCount}</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* 内容区域 */}
+      <div style={{borderBottom:'1px solid var(--border)',marginBottom:16,display:'flex'}}>
+        <button style={sectionStyle('question')} onClick={()=>setActiveSection('question')}><span className="with-ic"><Icon name="note" size={12}/>题目</span></button>
+        {shared.final_answer && <button style={sectionStyle('answer')} onClick={()=>setActiveSection('answer')}><span className="with-ic"><Icon name="pen" size={12}/>AI 解答</span></button>}
+        {(shared.standard_answer_md || shared.standard_answer_image) && <button style={sectionStyle('standard')} onClick={()=>setActiveSection('standard')}><span className="with-ic"><Icon name="clipboard" size={12}/>标准答案</span></button>}
+        <button style={sectionStyle('comments')} onClick={()=>setActiveSection('comments')}><span className="with-ic"><Icon name="chat" size={12}/>评论 ({comments.length})</span></button>
+      </div>
+
+      {activeSection === 'question' && (
+        <div>
+          {shared.has_image && shared.image_data_url && (
+            <img src={shared.image_data_url} alt="题目图片" style={{maxWidth:'100%',maxHeight:400,borderRadius:8,marginBottom:14,display:'block'}} />
+          )}
+          {shared.content ? (
+            <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:8,padding:16}}>
+              <QBMd content={shared.content} />
+            </div>
+          ) : <div style={{color:'var(--fg3)',fontSize:13}}>（仅图片题目）</div>}
+        </div>
+      )}
+
+      {activeSection === 'answer' && shared.final_answer && (
+        <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:8,padding:16}}>
+          <QBMd content={shared.final_answer} />
+        </div>
+      )}
+
+      {activeSection === 'standard' && (
+        <div style={{display:'flex',flexDirection:'column',gap:14}}>
+          {shared.standard_answer_image && (
+            <img src={shared.standard_answer_image} alt="标准答案" style={{maxWidth:'100%',maxHeight:500,borderRadius:8,display:'block'}} />
+          )}
+          {shared.standard_answer_md && (
+            <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:8,padding:16}}>
+              <QBMd content={shared.standard_answer_md} />
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeSection === 'comments' && (
+        <div>
+          {/* 评论列表 */}
+          <div style={{display:'flex',flexDirection:'column',gap:10,marginBottom:16}}>
+            {comments.length === 0 && <div style={{color:'var(--fg3)',fontSize:13,textAlign:'center',padding:16}}>暂无评论</div>}
+            {comments.map(c => (
+              <div key={c.id} style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:8,padding:'10px 14px'}}>
+                <div style={{display:'flex',gap:10,marginBottom:4,alignItems:'center'}}>
+                  <span style={{fontSize:12,color:'var(--gold)'}}>{c.user}</span>
+                  <span style={{fontSize:11,color:'var(--fg3)'}}>{new Date(c.created_at).toLocaleString('zh-CN')}</span>
+                </div>
+                <div style={{fontSize:13,color:'var(--fg)',lineHeight:1.6}}>{c.content}</div>
+              </div>
+            ))}
+          </div>
+          {/* 评论输入 */}
+          {user ? (
+            <div style={{display:'flex',gap:8}}>
+              <textarea value={comment} onChange={e=>setComment(e.target.value)}
+                onKeyDown={e=>{ if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();postComment();} }}
+                placeholder="写下你的评论…" style={{flex:1,minHeight:72,fontFamily:'var(--sans)'}} />
+              <button className="btn btn-p" style={{alignSelf:'flex-end'}} onClick={postComment} disabled={submitting||!comment.trim()}>
+                {submitting ? '…' : '发送'}
+              </button>
+            </div>
+          ) : (
+            <div style={{textAlign:'center',color:'var(--fg3)',fontSize:13}}>
+              <a href="#/login" style={{color:'var(--gold)'}}>登录</a> 后可以评论
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+{% endverbatim %}

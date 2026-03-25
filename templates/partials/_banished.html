@@ -1,0 +1,870 @@
+{% verbatim %}
+// ── Banished UI Components ──────────────────────────────────────────
+// Note: FOOD_KEYS, B_CATS, RESOURCE_LABELS, B_TILE, BUILDINGS_DATA are
+// defined in the plain <script> _banished_engine.html (runs before this).
+
+const BIcon=({name,size=16,color='#fff'})=>{
+  const icons={
+    logs:<svg viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"><rect x="3" y="8" width="18" height="8" rx="1"/><line x1="8" y1="8" x2="8" y2="16"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="16" y1="8" x2="16" y2="16"/></svg>,
+    stone:<svg viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"><path d="M4 12l4-8 8 2 4 6-4 8-8-2-4-6z"/></svg>,
+    firewood:<svg viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"><path d="M12 2v20M8 18c0-3 2-5 4-8M16 18c0-3-2-5-4-8"/><path d="M10 14a4 4 0 004 4"/></svg>,
+    food:<svg viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"><path d="M12 2a10 10 0 000 20 10 10 0 000-20zm0 0v20"/></svg>,
+    build:<svg viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"><path d="M3 21h18M5 21V7l8-4 8 4v14M8 21v-6a2 2 0 012-2h4a2 2 0 012 2v6"/></svg>,
+    market:<svg viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"><path d="M3 3h18v18H3z"/><path d="M9 3v18M15 3v18"/></svg>,
+    ai:<svg viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="8" strokeDasharray="4 2"/><circle cx="12" cy="12" r="11" strokeDasharray="2 3"/></svg>,
+    save:<svg viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/></svg>,
+    raw:<svg viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6M9 15h6"/></svg>,
+    crafted:<svg viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 12h6M12 9v6"/></svg>,
+    housing:<svg viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"><path d="M3 21h18M5 21V7l8-4 8 4v14"/></svg>,
+    resource:<svg viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"><path d="M2 12l4-8 8 2 4 6-4 8-8-2-4-6z"/></svg>,
+    storage:<svg viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"><path d="M4 10h16v10H4zM4 6h16M4 14h16"/></svg>,
+    service:<svg viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>,
+    transport:<svg viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"><path d="M3 6h18M3 12h18M3 18h18"/></svg>,
+    hunger:<svg viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"><path d="M12 2a10 10 0 000 20 10 10 0 000-20zm0 0v20"/></svg>,
+    thirst:<svg viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"><path d="M12 2L6 22h12L12 2z"/></svg>,
+    warmth:<svg viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"><path d="M12 2v20M8 18c0-3 2-5 4-8M16 18c0-3-2-5-4-8"/><path d="M10 14a4 4 0 004 4"/></svg>,
+    health:<svg viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>,
+    mood:<svg viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"><circle cx="12" cy="12" r="9"/><path d="M8.5 10.5h.01M15.5 10.5h.01"/><path d="M8 15c1.1 1.2 2.4 1.8 4 1.8s2.9-.6 4-1.8"/></svg>,
+    trade:<svg viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"><path d="M7 16V4M7 4L3 8M7 4L11 8M17 8v12M17 20l-4-4M17 20l4-4"/></svg>,
+    trophy:<svg viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"><path d="M6 9H4.5a2.5 2.5 0 010-5H6"/><path d="M18 9h1.5a2.5 2.5 0 000-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0012 0V2Z"/></svg>,
+  };
+  return <span style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:size,height:size}}>{icons[name]||null}</span>;
+};
+
+// ── HUD ──────────────────────────────────────────────────────────────
+function BanishedHUD({state,speed,onSetSpeed,onToggleRes,syncStatus}){
+  if(!state?.time)return null;
+  const {time,resources,population}=state;
+  const SZH={spring:'春',summer:'夏',autumn:'秋',winter:'冬'};
+  const SC={spring:'#4ec87a',summer:'#c9a86c',autumn:'#d49a5a',winter:'#9ab4d4'};
+  const food=FOOD_KEYS.reduce((a,k)=>a+(resources[k]||0),0);
+  return(
+    <div style={{position:'absolute',top:0,left:0,right:0,display:'flex',alignItems:'center',gap:10,padding:'6px 14px',background:'rgba(8,8,11,0.92)',backdropFilter:'blur(8px)',borderBottom:'1px solid rgba(201,168,108,0.2)',boxShadow:'0 2px 16px rgba(0,0,0,0.5)',zIndex:10,fontSize:13,flexWrap:'wrap'}}>
+      <button className="btn btn-s btn-sm" onClick={onToggleRes} style={{padding:'4px 8px',borderRadius:'6px',background:'rgba(201,168,108,0.12)',border:'1px solid rgba(201,168,108,0.25)'}}><Icon name="menu" size={14}/></button>
+      <span style={{color:SC[time.season],fontWeight:700,fontSize:14,textShadow:'0 0 8px '+SC[time.season],minWidth:14}}>{SZH[time.season]}</span>
+      <span style={{color:'var(--fg3)',fontWeight:500}}>第{time.year}年</span>
+      <div style={{display:'flex',gap:10,marginLeft:6,marginRight:6,flexWrap:'wrap'}}>
+        <span style={{display:'flex',alignItems:'center',gap:3,color:'var(--fg)',fontWeight:600}}><span style={{fontSize:10,color:'var(--fg3)'}}>人口</span>{population.total}</span>
+        <span style={{display:'flex',alignItems:'center',gap:3,color:'var(--gold)',fontWeight:700}}><span style={{fontSize:10,color:'var(--fg3)'}}>金</span>{resources.gold||0}</span>
+        <span style={{display:'flex',alignItems:'center',gap:3,color:'var(--fg2)'}}><span style={{fontSize:10,color:'var(--fg3)'}}>木</span>{resources.logs||0}</span>
+        <span style={{display:'flex',alignItems:'center',gap:3,color:'var(--fg2)'}}><span style={{fontSize:10,color:'var(--fg3)'}}>石</span>{resources.stone||0}</span>
+        <span style={{display:'flex',alignItems:'center',gap:3,color:'#e8903a',fontWeight:500}}><span style={{fontSize:10,color:'var(--fg3)'}}>柴</span>{resources.firewood||0}</span>
+        <span style={{display:'flex',alignItems:'center',gap:3,color:'#8fd0ff',fontWeight:500}}><span style={{fontSize:10,color:'var(--fg3)'}}>劳</span>{Math.floor(resources.labor||0)}</span>
+        <span style={{display:'flex',alignItems:'center',gap:3,color:'#4ec87a',fontWeight:500}}><span style={{fontSize:10,color:'var(--fg3)'}}>食</span>{Math.floor(food)}</span>
+        <span style={{display:'flex',alignItems:'center',gap:3,color:'#ffb86b',fontWeight:500}}><span style={{fontSize:10,color:'var(--fg3)'}}>心情</span>{Math.floor(population.avg_happiness||0)}</span>
+      </div>
+      <div style={{display:'flex',gap:5,marginLeft:'auto'}}>
+        {[1,5,10].map(s=>(
+          <button key={s} className={`btn btn-sm ${speed===s?'btn-p':'btn-s'}`} onClick={()=>onSetSpeed(s)} style={{padding:'3px 10px',fontSize:11,borderRadius:'5px',fontWeight:600,transition:'all 0.15s',background:speed===s?'var(--gold)':'rgba(255,255,255,0.07)',border:speed===s?'none':'1px solid rgba(255,255,255,0.12)',color:speed===s?'#000':'var(--fg2)',boxShadow:speed===s?'0 0 10px rgba(201,168,108,0.4)':'none'}}>{s}x</button>
+        ))}
+      </div>
+      {syncStatus&&<span style={{fontSize:10,padding:'2px 7px',borderRadius:'4px',background:syncStatus.ok?'rgba(78,200,122,0.15)':'rgba(196,90,90,0.15)',color:syncStatus.ok?'#4ec87a':'#c45a5a',fontWeight:500}}>{syncStatus.ok?'✓ 已同步':syncStatus.msg}</span>}
+    </div>
+  );
+}
+
+// ── ResourcePanel ────────────────────────────────────────────────────
+function BanishedResourcePanel({state,open,onClose}){
+  if(!state?.resources)return null;
+  const res=state.resources;
+  const groups=[
+    {label:'原材料',keys:['logs','stone','iron','coal','labor'],color:'#5ac480',icon:'raw'},
+    {label:'加工品',keys:['firewood','iron_tools','steel_tools'],color:'#c9a86c',icon:'crafted'},
+    {label:'食物',keys:FOOD_KEYS,color:'#3eb87a',icon:'food'},
+    {label:'手工品',keys:['wool','leather','herbs','hide_coat','wool_coat','warm_coat'],color:'#d49a5a',icon:'crafted'},
+    {label:'货币',keys:['gold'],color:'#ffd700',icon:'gold'},
+  ];
+  const seasonName={spring:'春',summer:'夏',autumn:'秋',winter:'冬'};
+  const prodBuildings=(state.buildings||[]).filter(b=>b.built&&b.workers_max>0);
+  return(
+    <div style={{position:'absolute',left:open?0:'-220px',top:46,bottom:0,width:200,background:'var(--bg2)',borderRight:'1px solid rgba(201,168,108,0.2)',overflowY:'auto',transition:'left 0.25s cubic-bezier(0.4,0,0.2,1)',zIndex:9,padding:'12px',boxShadow:'2px 0 20px rgba(0,0,0,0.5)'}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12,paddingBottom:8,borderBottom:'1px solid rgba(201,168,108,0.15)'}}>
+        <span style={{fontWeight:700,fontSize:14,color:'var(--gold)'}}>资源</span>
+        <button className="btn btn-s btn-sm" onClick={onClose} style={{padding:'4px 6px',borderRadius:'6px',background:'rgba(255,255,255,0.06)'}}><Icon name="x" size={13}/></button>
+      </div>
+      {groups.map(g=>(
+        <div key={g.label} style={{marginBottom:14}}>
+          <div style={{fontSize:11,color:g.color,fontWeight:600,marginBottom:6}}>{g.label}</div>
+          {g.keys.filter(k=>(res[k]||0)>0||k==='gold').map(k=>(
+            <div key={k} style={{display:'flex',justifyContent:'space-between',alignItems:'center',fontSize:13,marginBottom:4,padding:'4px 6px',borderRadius:'4px',background:'rgba(255,255,255,0.02)',transition:'background 0.2s'}} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.06)'} onMouseLeave={e=>e.currentTarget.style.background='rgba(255,255,255,0.02)'}>
+              <span style={{color:'rgba(255,255,255,0.9)'}}>{RESOURCE_LABELS[k]||k}</span>
+              <span style={{color:k==='gold'?'#ffd700':k==='food'?'#3eb87a':k==='firewood'?'#ff8c42':'rgba(255,255,255,0.95)',fontWeight:600}}>{Math.floor(res[k]||0)}</span>
+            </div>
+          ))}
+        </div>
+      ))}
+      {prodBuildings.length>0&&(
+        <div style={{marginTop:8,paddingTop:10,borderTop:'1px solid rgba(201,168,108,0.12)'}}>
+          <div style={{fontSize:11,color:'var(--gold)',fontWeight:700,marginBottom:8}}>季度产量总览</div>
+          {prodBuildings.slice(0,12).map(b=>{
+            const bd=BUILDINGS_DATA[b.type];
+            return(
+              <div key={b.id} style={{fontSize:11,marginBottom:6,padding:'5px 6px',borderRadius:5,background:'rgba(255,255,255,0.03)'}}>
+                <div style={{display:'flex',justifyContent:'space-between',marginBottom:3}}>
+                  <span style={{color:'rgba(255,255,255,0.88)'}}>{bd?.name||b.type}</span>
+                  <span style={{color:'#8fd0ff'}}>本季 {Math.floor(b.yield_current_total||0)}</span>
+                </div>
+                <div style={{display:'flex',justifyContent:'space-between',color:'rgba(255,255,255,0.5)'}}>
+                  <span>上季({seasonName[b.yield_last_season]||'-'})</span>
+                  <span>{Math.floor(b.yield_last_total||0)}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── BuildPanel ───────────────────────────────────────────────────────
+function BanishedBuildPanel({state,buildMode,onSetBuild,onCancel}){
+  const [cat,setCat]=React.useState('housing');
+  const res=state?.resources||{};
+  const canAfford=cost=>Object.entries(cost).every(([r,a])=>(res[r]||0)>=a);
+  const catColors={housing:'#5ac480',resource:'#c9a86c',food:'#4ec87a',storage:'#9ab4d4',trade:'#d49a5a',service:'#5a8ac4',transport:'#8d8d8d'};
+  return(
+    <div style={{position:'absolute',right:0,bottom:44,width:230,background:'var(--bg2)',border:'1px solid rgba(201,168,108,0.2)',borderBottom:'none',borderRight:'none',borderTopLeftRadius:'12px',zIndex:9,maxHeight:'65vh',overflowY:'auto',boxShadow:'-2px -2px 20px rgba(0,0,0,0.5)'}}>
+      <div style={{padding:'8px',borderBottom:'1px solid rgba(201,168,108,0.12)',display:'flex',gap:4,flexWrap:'wrap',background:'rgba(201,168,108,0.05)',position:'sticky',top:0}}>
+        {Object.entries(B_CATS).map(([k,v])=>(
+          <button key={k} className={`btn btn-sm ${cat===k?'btn-p':'btn-s'}`} onClick={()=>setCat(k)} style={{fontSize:11,padding:'4px 8px',borderRadius:'6px',fontWeight:600,background:cat===k?catColors[k]||'#5ac480':'rgba(255,255,255,0.06)',border:cat===k?'none':'1px solid rgba(255,255,255,0.1)',color:cat===k?'#fff':'rgba(255,255,255,0.7)',transition:'all 0.2s'}}>{v.name}</button>
+        ))}
+        {buildMode&&<button className="btn btn-d btn-sm" onClick={onCancel} style={{fontSize:11,padding:'4px 8px',borderRadius:'6px',fontWeight:600,marginLeft:'auto',background:'rgba(196,90,90,0.2)',border:'1px solid rgba(196,90,90,0.3)',color:'#c45a5a'}}>取消</button>}
+      </div>
+      <div style={{padding:8}}>
+        {Object.entries(BUILDINGS_DATA).filter(([,b])=>b.cat===cat).map(([type,b])=>{
+          const ok=canAfford(b.cost);
+          const selected=buildMode===type;
+          return(
+            <div key={type} onClick={()=>ok&&onSetBuild(type)} style={{padding:'10px',marginBottom:6,borderRadius:'8px',border:`1.5px solid ${selected?(catColors[cat]||'#5ac480'):'rgba(255,255,255,0.1)'}`,cursor:ok?'pointer':'not-allowed',opacity:ok?1:0.45,background:selected?`${(catColors[cat]||'#5ac480')}20`:'rgba(255,255,255,0.03)',transition:'all 0.2s',boxShadow:selected?`0 0 15px ${(catColors[cat]||'#5ac480')}40`:'none'}} onMouseEnter={e=>{if(ok&&!selected)e.currentTarget.style.background='rgba(255,255,255,0.06)';e.currentTarget.style.transform='translateX(-2px)';}} onMouseLeave={e=>{if(ok&&!selected)e.currentTarget.style.background='rgba(255,255,255,0.03)';e.currentTarget.style.transform='translateX(0)';}}>
+              <div style={{fontWeight:600,fontSize:13,marginBottom:4,color:selected?(catColors[cat]||'#5ac480'):'rgba(255,255,255,0.95)'}}>{b.name}</div>
+              <div style={{fontSize:11,color:ok?'rgba(255,255,255,0.6)':'rgba(196,90,90,0.8)',marginBottom:3}}>{Object.entries(b.cost).map(([r,a])=>`${RESOURCE_LABELS[r]||r}:${a}`).join(' ')||'免费'}</div>
+              {b.workers>0&&<div style={{fontSize:10,color:'rgba(255,255,255,0.5)',display:'flex',alignItems:'center',gap:4}}>工人: {b.workers}</div>}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── InfoPanel ────────────────────────────────────────────────────────
+function BanishedInfoPanel({selBuilding,selVillager,onClose,onUpgradeBlacksmith,onSetForesterMode,time}){
+  if(!selBuilding&&!selVillager)return null;
+  const Bar=({val,max,color,label})=>(
+    <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
+      <span style={{fontSize:11,width:36,color:'rgba(255,255,255,0.7)',fontWeight:500}}>{label}</span>
+      <div style={{height:8,background:'rgba(255,255,255,0.08)',borderRadius:4,flex:1,overflow:'hidden',boxShadow:'inset 0 1px 3px rgba(0,0,0,0.3)'}}>
+        <div style={{height:'100%',width:`${Math.max(0,Math.min(100,(val/max)*100))}%`,background:`linear-gradient(90deg,${color},${color}dd)`,borderRadius:4,transition:'width 0.3s',boxShadow:`0 0 10px ${color}40`}}/>
+      </div>
+      <span style={{fontSize:11,width:28,textAlign:'right',fontWeight:600,color:color}}>{Math.floor(val||0)}</span>
+    </div>
+  );
+  if(selVillager){
+    const v=selVillager;
+    const moodColor=(v.happiness||0)>=70?'#4ec87a':(v.happiness||0)>=50?'#d4b06a':(v.happiness||0)>=35?'#d4905a':'#c45a5a';
+    return(
+      <div style={{position:'absolute',bottom:44,left:0,width:250,background:'var(--bg2)',border:'1px solid rgba(201,168,108,0.25)',borderRadius:'0 12px 0 0',padding:14,zIndex:9,boxShadow:'0 -4px 24px rgba(0,0,0,0.5)',backdropFilter:'blur(8px)'}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10,paddingBottom:8,borderBottom:'1px solid rgba(201,168,108,0.15)'}}>
+          <div>
+            <span style={{fontWeight:700,fontSize:15,color:'var(--fg)'}}>{v.name}</span>
+            <span style={{fontSize:13,color:'var(--fg3)',marginLeft:6}}>({v.age}岁)</span>
+          </div>
+          <button className="btn btn-s btn-sm" onClick={onClose} style={{padding:'4px 6px',borderRadius:'6px',background:'rgba(255,255,255,0.06)'}}><Icon name="x" size={13}/></button>
+        </div>
+        <div style={{display:'inline-block',fontSize:11,padding:'3px 8px',borderRadius:'4px',background:`${VILLAGER_COLORS[v.state]||'#888'}20`,color:VILLAGER_COLORS[v.state]||'rgba(255,255,255,0.7)',fontWeight:600,marginBottom:10,border:`1px solid ${VILLAGER_COLORS[v.state]||'#888'}40`}}>{v.state}</div>
+        <div style={{marginTop:10}}>
+          <Bar val={v.hunger||0} max={100} color="#e88a1a" label="饱食"/>
+          <Bar val={v.thirst||0} max={100} color="#5ad4e8" label="水分"/>
+          <Bar val={v.warmth||0} max={100} color="#9ab4d4" label="保暖"/>
+          <Bar val={v.health||100} max={100} color="#3eb87a" label="健康"/>
+          <Bar val={v.happiness||0} max={100} color={moodColor} label="心情"/>
+        </div>
+        <div style={{fontSize:11,color:moodColor,marginTop:2,fontWeight:700}}>
+          心情状态: {v.mood_tag||'平稳'}
+        </div>
+        <div style={{fontSize:10,color:'rgba(255,255,255,0.55)',marginTop:3}}>
+          受饱食、水分、保暖、健康、家庭与住房影响
+        </div>
+        {v.educated&&<div style={{marginTop:8,fontSize:11,padding:'6px 10px',background:'rgba(90,138,196,0.15)',borderRadius:'6px',color:'#5a8ac4',fontWeight:600,display:'flex',alignItems:'center',gap:6,border:'1px solid rgba(90,138,196,0.3)'}}>受教育 · 效率×2</div>}
+        <div style={{marginTop:8,fontSize:11,color:'rgba(255,255,255,0.7)'}}>
+          携带: {Object.entries(v.carrying||{}).map(([k,n])=>`${RESOURCE_LABELS[k]||k}:${Math.floor(n)}`).join(' ')||'无'} / {v.has_cart?50:10}
+        </div>
+        <div style={{marginTop:4,fontSize:11,color:v.has_cart?'#8fd0ff':'rgba(255,255,255,0.5)'}}>
+          {v.has_cart?'已配推车（50格）':'背包（10格）'}
+        </div>
+      </div>
+    );
+  }
+  const b=selBuilding,bd=BUILDINGS_DATA[b.type];
+  const seasonName={spring:'春',summer:'夏',autumn:'秋',winter:'冬'};
+  const houseTypes=['house','stone_house','boarding_house'];
+  const storageTypes=['barn','stockpile','market','trading_post'];
+  const isHouse=houseTypes.includes(b.type);
+  const isStorage=storageTypes.includes(b.type);
+  const isProduction=b.workers_max>0;
+  const hasWorkRange=['woodcutter','forester','mine','quarry','gatherer','hunter','fishing_dock','herbalist'].includes(b.type);
+  const workRange=8;
+  const storageUsed=Math.floor(b.storage_used||0);
+  const storageCap=Math.max(1,Math.floor(b.storage_cap||0));
+  const storageEntries=Object.entries(b.storage||{}).filter(([,n])=>(n||0)>0).sort((a,b)=>b[1]-a[1]);
+  const residentNames=(b.resident_names||[]);
+  return(
+    <div style={{position:'absolute',bottom:44,left:0,width:250,background:'var(--bg2)',border:'1px solid rgba(201,168,108,0.25)',borderRadius:'0 12px 0 0',padding:14,zIndex:9,boxShadow:'0 -4px 24px rgba(0,0,0,0.5)',backdropFilter:'blur(8px)'}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10,paddingBottom:8,borderBottom:'1px solid rgba(201,168,108,0.15)'}}>
+        <span style={{fontWeight:700,fontSize:15,color:'var(--gold)'}}>{bd?.name||b.type}</span>
+        <button className="btn btn-s btn-sm" onClick={onClose} style={{padding:'4px 6px',borderRadius:'6px',background:'rgba(255,255,255,0.06)'}}><Icon name="x" size={13}/></button>
+      </div>
+      {!b.built&&(
+        <div style={{marginBottom:10}}>
+          <div style={{display:'flex',justifyContent:'space-between',fontSize:11,color:'rgba(255,255,255,0.6)',marginBottom:4}}>建造进度</div>
+          <div style={{height:10,background:'rgba(255,255,255,0.08)',borderRadius:5,overflow:'hidden'}}>
+            <div style={{height:'100%',width:`${(b.progress||0)*100}%`,background:'linear-gradient(90deg,#5ac480,#3eb87a)',borderRadius:5,transition:'width 0.3s',boxShadow:'0 0 10px rgba(58,184,122,0.4)'}}/>
+          </div>
+          <div style={{fontSize:10,color:'rgba(255,255,255,0.5)',marginTop:2,textAlign:'right'}}>{Math.floor((b.progress||0)*100)}%</div>
+        </div>
+      )}
+      {b.built&&b.workers_max>0&&(
+        <div style={{fontSize:12,color:'rgba(255,255,255,0.85)',marginBottom:8,padding:'6px 10px',background:'rgba(58,184,122,0.1)',borderRadius:'6px',display:'flex',alignItems:'center',gap:8}}>
+          <span>工人: <strong style={{color:'#5ac480'}}>{b.workers_assigned}</strong> / {b.workers_max}</span>
+        </div>
+      )}
+      {b.type==='well'&&(
+        <div style={{fontSize:12,color:'#5ad4e8',marginBottom:8,padding:'6px 10px',background:'rgba(90,212,232,0.1)',borderRadius:'6px',display:'flex',alignItems:'center',gap:8}}>
+          <span>水量: <strong>{Math.floor(b.water_storage||0)}</strong> / 200</span>
+        </div>
+      )}
+      {b.type==='forester'&&(
+        <div style={{marginBottom:8,padding:'8px 10px',background:'rgba(90,196,128,0.1)',border:'1px solid rgba(90,196,128,0.3)',borderRadius:6}}>
+          <div style={{fontSize:11,color:'rgba(255,255,255,0.8)',marginBottom:6}}>护林范围: 半径{workRange}（圆形）</div>
+          <div style={{display:'flex',gap:6}}>
+            {[
+              {k:'auto',n:'自动'},
+              {k:'cut',n:'伐木'},
+              {k:'plant',n:'种植'},
+            ].map(m=>(
+              <button key={m.k} className={`btn btn-sm ${(b.forester_mode||'auto')===m.k?'btn-p':'btn-s'}`} onClick={()=>onSetForesterMode&&onSetForesterMode(b.id,m.k)} style={{padding:'4px 8px',fontSize:11,borderRadius:6,fontWeight:600,background:(b.forester_mode||'auto')===m.k?'#5ac480':'rgba(255,255,255,0.06)',border:(b.forester_mode||'auto')===m.k?'none':'1px solid rgba(255,255,255,0.15)',color:(b.forester_mode||'auto')===m.k?'#08130a':'var(--fg2)'}}>
+                {m.n}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      {b.built&&hasWorkRange&&b.type!=='forester'&&(
+        <div style={{marginBottom:8,padding:'7px 10px',background:'rgba(90,196,128,0.1)',border:'1px solid rgba(90,196,128,0.24)',borderRadius:6,fontSize:11,color:'rgba(255,255,255,0.8)'}}>
+          作业范围: 半径{workRange}（圆形）
+        </div>
+      )}
+      <div style={{fontSize:11,color:'rgba(255,255,255,0.5)',padding:'6px 10px',background:'rgba(255,255,255,0.03)',borderRadius:'6px',display:'flex',alignItems:'center',gap:6}}>
+        <span>({b.x}, {b.y}) · {b.w}×{b.h}</span>
+      </div>
+      {b.built&&isHouse&&(
+        <div style={{marginTop:8,padding:'8px 10px',background:'rgba(90,160,212,0.12)',border:'1px solid rgba(90,160,212,0.3)',borderRadius:6}}>
+          <div style={{fontSize:11,color:'#8fd0ff',fontWeight:700,marginBottom:6}}>住宅信息</div>
+          <div style={{fontSize:11,color:'rgba(255,255,255,0.88)',marginBottom:3}}>
+            居住: {(b.residents||[]).length} / {b.type==='boarding_house'?8:2}
+          </div>
+          <div style={{fontSize:11,color:'rgba(255,255,255,0.72)',marginBottom:6}}>
+            住宅库存: {storageUsed} / {storageCap}
+          </div>
+          <div style={{fontSize:11,color:'rgba(255,255,255,0.85)',marginBottom:3}}>
+            居民: {residentNames.join('、')||'暂无'}
+          </div>
+          <div style={{fontSize:10,color:'rgba(255,255,255,0.55)'}}>
+            库存明细: {storageEntries.slice(0,6).map(([k,n])=>`${RESOURCE_LABELS[k]||k}:${Math.floor(n)}`).join(' ')||'空'}
+          </div>
+        </div>
+      )}
+      {b.built&&isStorage&&(
+        <div style={{marginTop:8,padding:'8px 10px',background:'rgba(200,160,100,0.12)',border:'1px solid rgba(200,160,100,0.3)',borderRadius:6}}>
+          <div style={{fontSize:11,color:'var(--gold)',fontWeight:700,marginBottom:6}}>仓储信息</div>
+          <div style={{fontSize:11,color:'rgba(255,255,255,0.9)',marginBottom:5}}>
+            库存/容量: {storageUsed} / {storageCap}
+          </div>
+          <div style={{fontSize:10,color:'rgba(255,255,255,0.62)'}}>
+            明细: {storageEntries.slice(0,8).map(([k,n])=>`${RESOURCE_LABELS[k]||k}:${Math.floor(n)}`).join(' ')||'空'}
+          </div>
+        </div>
+      )}
+      {b.built&&isProduction&&!isStorage&&(
+        <div style={{marginTop:8,padding:'8px 10px',background:'rgba(90,196,128,0.12)',border:'1px solid rgba(90,196,128,0.3)',borderRadius:6}}>
+          <div style={{fontSize:11,color:'#5ac480',fontWeight:700,marginBottom:6}}>生产库存</div>
+          <div style={{fontSize:11,color:'rgba(255,255,255,0.9)',marginBottom:5}}>
+            库存/容量: {storageUsed} / {storageCap}
+          </div>
+          <div style={{fontSize:10,color:'rgba(255,255,255,0.62)'}}>
+            明细: {storageEntries.slice(0,8).map(([k,n])=>`${RESOURCE_LABELS[k]||k}:${Math.floor(n)}`).join(' ')||'空'}
+          </div>
+        </div>
+      )}
+      {b.built&&b.workers_max>0&&(
+        <div style={{marginTop:8,padding:'8px 10px',background:'rgba(143,208,255,0.1)',border:'1px solid rgba(143,208,255,0.28)',borderRadius:6}}>
+          <div style={{fontSize:11,color:'#8fd0ff',marginBottom:6,fontWeight:700}}>
+            季度产量（当前: {seasonName[time?.season]||'-'}）
+          </div>
+          <div style={{fontSize:11,color:'rgba(255,255,255,0.85)',marginBottom:4}}>
+            本季度: {Object.entries(b.yield_current||{}).map(([k,n])=>`${RESOURCE_LABELS[k]||k}:${Math.floor(n)}`).join(' ')||'暂无'}
+          </div>
+          <div style={{fontSize:11,color:'rgba(255,255,255,0.58)'}}>
+            上季度({seasonName[b.yield_last_season]||'-'}): {Object.entries(b.yield_last||{}).map(([k,n])=>`${RESOURCE_LABELS[k]||k}:${Math.floor(n)}`).join(' ')||'暂无'}
+          </div>
+        </div>
+      )}
+      {b.type==='blacksmith'&&b.built&&(
+        <div style={{marginTop:10}}>
+          <div style={{fontSize:11,color:b.carts_unlocked?'#8fd0ff':'rgba(255,255,255,0.6)',marginBottom:6}}>
+            推车工艺: {b.carts_unlocked?'已解锁（可制造推车）':'未解锁'}
+          </div>
+          {!b.carts_unlocked&&(
+            <button className="btn btn-sm btn-p" onClick={()=>onUpgradeBlacksmith&&onUpgradeBlacksmith(b.id)} style={{padding:'6px 10px',fontSize:11,borderRadius:6,background:'#8fd0ff',color:'#0b1520',fontWeight:700}}>
+              升级铁匠铺（铁8 木20 工具5 人工10）
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── MarketPanel ──────────────────────────────────────────────────────
+function BanishedMarketPanel({onClose}){
+  const [res,setRes]=React.useState('logs');
+  const [summary,setSummary]=React.useState(null);
+  const [hist,setHist]=React.useState([]);
+  const [ot,setOt]=React.useState('buy');
+  const [amt,setAmt]=React.useState('');
+  const [price,setPrice]=React.useState('');
+  const [msg,setMsg]=React.useState('');
+  const load=async()=>{
+    try{
+      const[s,h]=await Promise.all([F(`/api/banished/market/`),F(`/api/banished/market/history/${res}/`)]);
+      setSummary((s.summary||{})[res]||s);setHist(h.history||[]);
+    }catch{}
+  };
+  React.useEffect(()=>{load();},[res]);
+  const place=async()=>{
+    if(!amt||!price)return;
+    setMsg('');
+    try{await P(`/api/banished/market/order/`,{resource:res,order_type:ot,amount:parseInt(amt),price:parseInt(price)});setMsg('✓ 挂单成功');setAmt('');setPrice('');load();}
+    catch(e){setMsg('✗ '+e.message);}
+  };
+  return(
+    <div style={{position:'absolute',top:'8%',left:'50%',transform:'translateX(-50%)',width:'min(500px,94vw)',maxHeight:'82vh',background:'linear-gradient(135deg,rgba(15,20,18,0.98) 0%,rgba(8,12,10,0.98) 100%)',border:'1px solid rgba(201,168,108,0.3)',borderRadius:16,overflow:'hidden',zIndex:20,display:'flex',flexDirection:'column',boxShadow:'0 8px 32px rgba(0,0,0,0.6)',backdropFilter:'blur(12px)'}}>
+      <div style={{padding:'14px 18px',borderBottom:'1px solid rgba(201,168,108,0.2)',display:'flex',justifyContent:'space-between',alignItems:'center',background:'linear-gradient(90deg,rgba(201,168,108,0.1),transparent)'}}>
+        <div style={{display:'flex',alignItems:'center',gap:8}}>
+          <span style={{fontWeight:700,fontSize:16,color:'#c9a86c'}}>全球交易市场</span>
+        </div>
+        <button className="btn btn-s btn-sm" onClick={onClose} style={{padding:'5px 8px',borderRadius:'6px',background:'rgba(255,255,255,0.06)'}}><Icon name="x" size={15}/></button>
+      </div>
+      <div style={{flex:1,overflowY:'auto',padding:14}}>
+        <div style={{display:'flex',gap:6,marginBottom:12,flexWrap:'wrap'}}>
+          {['logs','stone','iron','coal','firewood','wheat','fish'].map(r=>(
+            <button key={r} className={`btn btn-sm ${res===r?'btn-p':'btn-s'}`} onClick={()=>setRes(r)} style={{fontSize:11,padding:'4px 10px',borderRadius:'6px',fontWeight:600,background:res===r?'linear-gradient(135deg,#c9a86c,#b89760)':'rgba(255,255,255,0.06)',border:res===r?'none':'1px solid rgba(255,255,255,0.1)',color:res===r?'#fff':'rgba(255,255,255,0.7)'}}>{RESOURCE_LABELS[r]||r}</button>
+          ))}
+        </div>
+        {summary&&(
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:12}}>
+            <div style={{background:'linear-gradient(135deg,rgba(196,90,90,0.12),rgba(196,90,90,0.05))',border:'1px solid rgba(196,90,90,0.25)',borderRadius:10,padding:12}}>
+              <div style={{fontSize:11,color:'#c45a5a',fontWeight:600,marginBottom:6,display:'flex',alignItems:'center',gap:6}}>卖单 (最低5)</div>
+              {(summary.sell_orders||[]).slice(0,5).map((o,i)=>(
+                <div key={i} style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:3,padding:'4px 6px',background:'rgba(255,255,255,0.03)',borderRadius:4}}>
+                  <span style={{color:'rgba(255,255,255,0.9)'}}>{o.amount}</span><span style={{color:'#c45a5a',fontWeight:600}}>{o.price}💰</span>
+                </div>
+              ))}
+              {!(summary.sell_orders?.length)&&<div style={{fontSize:11,color:'rgba(255,255,255,0.4)',textAlign:'center',padding:8}}>暂无卖单</div>}
+            </div>
+            <div style={{background:'linear-gradient(135deg,rgba(58,184,122,0.12),rgba(58,184,122,0.05))',border:'1px solid rgba(58,184,122,0.25)',borderRadius:10,padding:12}}>
+              <div style={{fontSize:11,color:'#3eb87a',fontWeight:600,marginBottom:6,display:'flex',alignItems:'center',gap:6}}>买单 (最高5)</div>
+              {(summary.buy_orders||[]).slice(0,5).map((o,i)=>(
+                <div key={i} style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:3,padding:'4px 6px',background:'rgba(255,255,255,0.03)',borderRadius:4}}>
+                  <span style={{color:'#3eb87a',fontWeight:600}}>{o.price}💰</span><span style={{color:'rgba(255,255,255,0.9)'}}>{o.amount}</span>
+                </div>
+              ))}
+              {!(summary.buy_orders?.length)&&<div style={{fontSize:11,color:'rgba(255,255,255,0.4)',textAlign:'center',padding:8}}>暂无买单</div>}
+            </div>
+          </div>
+        )}
+        {summary?.last_price&&<div style={{textAlign:'center',fontSize:14,padding:10,background:'linear-gradient(90deg,transparent,rgba(201,168,108,0.15),transparent)',borderRadius:8,marginBottom:12,color:'#ffd700',fontWeight:700}}>最新成交: {summary.last_price}</div>}
+        {hist.length>0&&(
+          <div style={{marginBottom:12}}>
+            <div style={{fontSize:11,color:'rgba(255,255,255,0.6)',marginBottom:6,fontWeight:500}}>成交历史 ({hist.length}笔)</div>
+            <div style={{display:'flex',alignItems:'flex-end',gap:1.5,height:44,padding:'8px',background:'rgba(255,255,255,0.02)',borderRadius:8}}>
+              {hist.slice(-30).map((h,i)=>{
+                const mx=Math.max(...hist.map(x=>x.price)),mn=Math.min(...hist.map(x=>x.price));
+                const n=mx>mn?(h.price-mn)/(mx-mn):0.5;
+                return<div key={i} style={{flex:1,height:`${Math.max(4,n*36)}px`,background:`linear-gradient(180deg,#c9a86c,#a88750)`,opacity:0.75,borderRadius:2,transition:'all 0.2s'}} title={`${h.price}💰`} onMouseEnter={e=>{e.currentTarget.style.opacity='1';e.currentTarget.style.height=`${Math.max(6,n*38)}px`;}} onMouseLeave={e=>{e.currentTarget.style.opacity='0.75';e.currentTarget.style.height=`${Math.max(4,n*36)}px`;}}/>;
+              })}
+            </div>
+          </div>
+        )}
+        <div style={{borderTop:'1px solid rgba(201,168,108,0.15)',paddingTop:12}}>
+          <div style={{display:'flex',gap:8,marginBottom:10}}>
+            <button className={`btn btn-sm ${ot==='buy'?'btn-p':'btn-s'}`} onClick={()=>setOt('buy')} style={{flex:1,padding:'8px',fontSize:13,borderRadius:'8px',fontWeight:600,background:ot==='buy'?'linear-gradient(135deg,#3eb87a,#2d9a62)':'rgba(255,255,255,0.06)',border:ot==='buy'?'none':'1px solid rgba(255,255,255,0.1)',color:ot==='buy'?'#fff':'rgba(255,255,255,0.7)'}}>买入</button>
+            <button className={`btn btn-sm ${ot==='sell'?'btn-d':'btn-s'}`} onClick={()=>setOt('sell')} style={{flex:1,padding:'8px',fontSize:13,borderRadius:'8px',fontWeight:600,background:ot==='sell'?'linear-gradient(135deg,#c45a5a,#a33d3d)':'rgba(255,255,255,0.06)',border:ot==='sell'?'none':'1px solid rgba(255,255,255,0.1)',color:ot==='sell'?'#fff':'rgba(255,255,255,0.7)'}}>卖出</button>
+          </div>
+          <div style={{display:'flex',gap:10,marginBottom:10}}>
+            <div className="fg" style={{flex:1}}><label style={{fontSize:11,color:'rgba(255,255,255,0.6)',marginBottom:4,display:'block'}}>数量</label><input type="number" value={amt} onChange={e=>setAmt(e.target.value)} placeholder="0" style={{fontSize:13,padding:'8px',borderRadius:'6px'}}/></div>
+            <div className="fg" style={{flex:1}}><label style={{fontSize:11,color:'rgba(255,255,255,0.6)',marginBottom:4,display:'block'}}>单价</label><input type="number" value={price} onChange={e=>setPrice(e.target.value)} placeholder="0" style={{fontSize:13,padding:'8px',borderRadius:'6px'}}/></div>
+          </div>
+          <button className="btn btn-p" style={{width:'100%',fontSize:13,padding:'10px',borderRadius:'8px',fontWeight:600,background:'linear-gradient(135deg,#c9a86c,#b89760)',border:'none'}} onClick={place}>挂单</button>
+          {msg&&<div style={{fontSize:12,padding:'8px',borderRadius:'6px',textAlign:'center',marginTop:8,background:msg.includes('成功')?'rgba(58,184,122,0.15)':'rgba(196,90,90,0.15)',color:msg.includes('成功')?'#3eb87a':'#c45a5a',fontWeight:500}}>{msg}</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── AIPanel ──────────────────────────────────────────────────────────
+function BanishedAIPanel({token,gameState,onClose}){
+  const [active,setActive]=React.useState(false);
+  const [perms,setPerms]=React.useState({build:false,assign:false,trade:false});
+  const [log,setLog]=React.useState('');
+  const [streaming,setStreaming]=React.useState(false);
+  const toggle=async()=>{try{const r=await P(`/api/banished/ai/toggle/`,{});setActive(r.is_ai_active);}catch{}};
+  const savePerms=async(p)=>{try{await P(`/api/banished/ai/permissions/`,p);setPerms(p);}catch{}};
+  const run=async()=>{
+    setStreaming(true);setLog('');
+    try{
+      for await(const chunk of streamSSE(`/api/banished/ai/action/`,{state:gameState,permissions:perms},token)){
+        if(chunk.type==='reasoning')setLog(l=>l+chunk.text);
+        if(chunk.type==='action')setLog(l=>l+'\n[动作] '+JSON.stringify(chunk.action));
+        if(chunk.done)break;
+      }
+    }catch(e){setLog(l=>l+'\n错误:'+e.message);}
+    setStreaming(false);
+  };
+  return(
+    <div style={{position:'absolute',top:'8%',right:0,width:'min(320px,94vw)',maxHeight:'82vh',background:'linear-gradient(135deg,rgba(15,20,18,0.98) 0%,rgba(8,12,10,0.98) 100%)',border:'1px solid rgba(90,138,196,0.3)',borderRadius:'16px 0 0 16px',overflow:'hidden',zIndex:20,display:'flex',flexDirection:'column',boxShadow:'-4px 0 24px rgba(0,0,0,0.5)',backdropFilter:'blur(12px)'}}>
+      <div style={{padding:'14px 18px',borderBottom:'1px solid rgba(90,138,196,0.2)',display:'flex',justifyContent:'space-between',alignItems:'center',background:'linear-gradient(90deg,rgba(90,138,196,0.15),transparent)'}}>
+        <div style={{display:'flex',alignItems:'center',gap:8}}>
+          <span style={{fontWeight:700,fontSize:16,color:'#5a8ac4'}}>AI 协同</span>
+        </div>
+        <button className="btn btn-s btn-sm" onClick={onClose} style={{padding:'5px 8px',borderRadius:'6px',background:'rgba(255,255,255,0.06)'}}><Icon name="x" size={15}/></button>
+      </div>
+      <div style={{flex:1,overflowY:'auto',padding:14}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14,padding:'10px 12px',background:'rgba(90,138,196,0.1)',borderRadius:8,border:'1px solid rgba(90,138,196,0.2)'}}>
+          <span style={{fontSize:13,color:'rgba(255,255,255,0.9)'}}>运行状态</span>
+          <button className={`btn btn-sm ${active?'btn-p':'btn-s'}`} onClick={toggle} style={{padding:'5px 12px',fontSize:11,borderRadius:'6px',fontWeight:600,background:active?'linear-gradient(135deg,#5a8ac4,#4a7ab4)':'rgba(255,255,255,0.06)',border:active?'none':'1px solid rgba(255,255,255,0.1)',color:active?'#fff':'rgba(255,255,255,0.7)'}}>{active?'● 运行中':'○ 已停止'}</button>
+        </div>
+        <div style={{marginBottom:14}}>
+          <div style={{fontSize:11,color:'rgba(255,255,255,0.6)',marginBottom:8,fontWeight:500,textTransform:'uppercase',letterSpacing:'0.5px'}}>权限设置</div>
+          {[['build','建筑规划'],['assign','工人分配'],['trade','市场交易']].map(([k,lbl])=>(
+            <div key={k} style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8,padding:'8px 10px',background:'rgba(255,255,255,0.03)',borderRadius:6,transition:'background 0.2s'}} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.06)'} onMouseLeave={e=>e.currentTarget.style.background='rgba(255,255,255,0.03)'}>
+              <span style={{fontSize:12,color:'rgba(255,255,255,0.9)'}}>{lbl}</span>
+              <button className={`btn btn-sm ${perms[k]?'btn-p':'btn-s'}`} onClick={()=>savePerms({...perms,[k]:!perms[k]})} style={{fontSize:10,padding:'4px 10px',borderRadius:'5px',fontWeight:600,background:perms[k]?'linear-gradient(135deg,#5a8ac4,#4a7ab4)':'rgba(255,255,255,0.06)',border:perms[k]?'none':'1px solid rgba(255,255,255,0.1)',color:perms[k]?'#fff':'rgba(255,255,255,0.7)'}}>{perms[k]?'✓ 允许':'✗ 禁止'}</button>
+            </div>
+          ))}
+        </div>
+        <button className="btn btn-p" style={{width:'100%',marginBottom:10,padding:'10px',fontSize:13,borderRadius:'8px',fontWeight:600,background:'linear-gradient(135deg,#5a8ac4,#4a7ab4)',border:'none'}} onClick={run} disabled={streaming}>{streaming?'思考中...':'AI决策一次'}</button>
+        {log&&<div style={{background:'linear-gradient(135deg,rgba(90,138,196,0.08),rgba(90,138,196,0.03))',border:'1px solid rgba(90,138,196,0.2)',borderRadius:10,padding:12,fontSize:11,color:'rgba(255,255,255,0.85)',whiteSpace:'pre-wrap',lineHeight:1.7,maxHeight:200,overflowY:'auto',fontFamily:'monospace'}}>{log}{streaming&&<span style={{animation:'blink 1s infinite',color:'#5a8ac4'}}>▌</span>}</div>}
+      </div>
+    </div>
+  );
+}
+
+// ── SavePanel ────────────────────────────────────────────────────────
+function BanishedSavePanel({currentState,onLoad,onClose}){
+  const [saves,setSaves]=React.useState([]);
+  const [busy,setBusy]=React.useState(false);
+  const [msg,setMsg]=React.useState('');
+  const load=async()=>{try{const d=await F(`/api/banished/saves/`);setSaves(d.saves||[]);}catch{}};
+  React.useEffect(()=>{load();},[]);
+  const save=async slot=>{setBusy(true);try{await P(`/api/banished/saves/${slot}/`,{name:`存档${slot}-第${currentState?.time?.year||1}年`});setMsg(`✓ 存档${slot}成功`);load();}catch(e){setMsg('✗ '+e.message);}setBusy(false);};
+  const loadSlot=async slot=>{setBusy(true);try{const d=await P(`/api/banished/saves/${slot}/load/`,{});onLoad(d.state);onClose();}catch(e){setMsg('✗ '+e.message);}setBusy(false);};
+  return(
+    <div style={{position:'absolute',top:'8%',left:'50%',transform:'translateX(-50%)',width:'min(400px,94vw)',background:'linear-gradient(135deg,rgba(15,20,18,0.98) 0%,rgba(8,12,10,0.98) 100%)',border:'1px solid rgba(201,168,108,0.3)',borderRadius:16,overflow:'hidden',zIndex:20,boxShadow:'0 8px 32px rgba(0,0,0,0.6)',backdropFilter:'blur(12px)'}}>
+      <div style={{padding:'14px 18px',borderBottom:'1px solid rgba(201,168,108,0.2)',display:'flex',justifyContent:'space-between',alignItems:'center',background:'linear-gradient(90deg,rgba(201,168,108,0.1),transparent)'}}>
+        <div style={{display:'flex',alignItems:'center',gap:8}}>
+          <span style={{fontWeight:700,fontSize:16,color:'#c9a86c'}}>云存档</span>
+        </div>
+        <button className="btn btn-s btn-sm" onClick={onClose} style={{padding:'5px 8px',borderRadius:'6px',background:'rgba(255,255,255,0.06)'}}><Icon name="x" size={15}/></button>
+      </div>
+      <div style={{padding:14}}>
+        {[1,2,3].map(slot=>{
+          const sv=saves.find(s=>s.slot===slot);
+          return(
+            <div key={slot} style={{display:'flex',alignItems:'center',gap:10,padding:12,background:'linear-gradient(135deg,rgba(201,168,108,0.08),rgba(201,168,108,0.03))',border:'1px solid rgba(201,168,108,0.2)',borderRadius:10,marginBottom:10,transition:'all 0.2s'}} onMouseEnter={e=>e.currentTarget.style.background='linear-gradient(135deg,rgba(201,168,108,0.12),rgba(201,168,108,0.06))'} onMouseLeave={e=>e.currentTarget.style.background='linear-gradient(135deg,rgba(201,168,108,0.08),rgba(201,168,108,0.03))'}>
+              <div style={{flex:1}}>
+                <div style={{fontSize:14,fontWeight:600,color:'#c9a86c',marginBottom:2}}>存档 {slot}</div>
+                {sv?<div style={{fontSize:12,color:'rgba(255,255,255,0.6)'}}>{sv.name} · 第{sv.year}年 · {sv.population}人</div>:<div style={{fontSize:12,color:'rgba(255,255,255,0.4)'}}>空插槽</div>}
+              </div>
+              <div style={{display:'flex',gap:6}}>
+                <button className="btn btn-p btn-sm" onClick={()=>save(slot)} disabled={busy} style={{padding:'6px 12px',fontSize:12,borderRadius:'6px',fontWeight:600,background:'linear-gradient(135deg,#c9a86c,#b89760)',border:'none'}}>保存</button>
+                {sv&&<button className="btn btn-s btn-sm" onClick={()=>loadSlot(slot)} disabled={busy} style={{padding:'6px 12px',fontSize:12,borderRadius:'6px',fontWeight:600,background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.1)'}}>读取</button>}
+              </div>
+            </div>
+          );
+        })}
+        {msg&&<div style={{textAlign:'center',fontSize:12,padding:8,borderRadius:'6px',background:msg.includes('成功')?'rgba(58,184,122,0.15)':'rgba(196,90,90,0.15)',color:msg.includes('成功')?'#3eb87a':'#c45a5a',fontWeight:500,marginTop:6}}>{msg}</div>}
+      </div>
+    </div>
+  );
+}
+
+// ── Leaderboard ──────────────────────────────────────────────────────
+function BanishedLeaderboard({onClose}){
+  const [board,setBoard]=React.useState([]);
+  React.useEffect(()=>{F(`/api/banished/leaderboard/`).then(d=>setBoard(d.leaderboard||[])).catch(()=>{});},[]);
+  const rankColors=['#ffd700','#c0c0c0','#cd7f32'];
+  return(
+    <div style={{position:'absolute',top:'8%',left:'50%',transform:'translateX(-50%)',width:'min(400px,94vw)',background:'linear-gradient(135deg,rgba(15,20,18,0.98) 0%,rgba(8,12,10,0.98) 100%)',border:'1px solid rgba(201,168,108,0.3)',borderRadius:16,overflow:'hidden',zIndex:20,boxShadow:'0 8px 32px rgba(0,0,0,0.6)',backdropFilter:'blur(12px)'}}>
+      <div style={{padding:'14px 18px',borderBottom:'1px solid rgba(201,168,108,0.2)',display:'flex',justifyContent:'space-between',alignItems:'center',background:'linear-gradient(90deg,rgba(201,168,108,0.1),transparent)'}}>
+        <div style={{display:'flex',alignItems:'center',gap:8}}>
+          <span style={{fontWeight:700,fontSize:16,color:'#c9a86c'}}>排行榜</span>
+        </div>
+        <button className="btn btn-s btn-sm" onClick={onClose} style={{padding:'5px 8px',borderRadius:'6px',background:'rgba(255,255,255,0.06)'}}><Icon name="x" size={15}/></button>
+      </div>
+      <div style={{padding:12,maxHeight:'60vh',overflowY:'auto'}}>
+        {!board.length&&<div style={{textAlign:'center',color:'rgba(255,255,255,0.4)',padding:24,fontSize:13}}>暂无数据</div>}
+        {board.map((e,i)=>{
+          const isTop3=i<3;
+          return(
+          <div key={i} style={{
+            display:'flex',alignItems:'center',gap:12,
+            padding:isTop3?'12px':'10px',
+            borderRadius:10,
+            background:isTop3?`linear-gradient(135deg,${rankColors[i]}15,${rankColors[i]}05)`:'transparent',
+            border:isTop3?`1px solid ${rankColors[i]}30`:'none',
+            marginBottom:6,transition:'all 0.2s'
+          }} onMouseEnter={e=>{if(isTop3===false)e.currentTarget.style.background='rgba(255,255,255,0.04)';}} onMouseLeave={e=>{if(isTop3===false)e.currentTarget.style.background='transparent';}}>
+            <span style={{width:28,textAlign:'center',fontSize:isTop3?18:14,fontWeight:isTop3?800:700,color:isTop3?rankColors[i]:'rgba(255,255,255,0.5)'}}>{isTop3?`${i+1}`:`#${i+1}`}</span>
+            <span style={{flex:1,fontSize:14,color:'rgba(255,255,255,0.95)',fontWeight:500}}>{e.username}</span>
+            <div style={{textAlign:'right'}}>
+              <div style={{color:'#ffd700',fontSize:15,fontWeight:700}}>{e.score}分</div>
+              <div style={{color:'rgba(255,255,255,0.5)',fontSize:11}}>人口{e.population} · 第{e.year}年</div>
+            </div>
+          </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── Map Setup Dialog ─────────────────────────────────────────────────
+function BanishedMapSetup({onConfirm,onCancel}){
+  const [params,setParams]=React.useState({
+    preset:'default',
+    mountain_threshold:0.72,
+    forest_density:0.52,
+    forest_elevation_min:0.22,
+    forest_elevation_max:0.70,
+    forest_river_distance:5,
+    stone_threshold:0.934,
+    iron_threshold:0.957,
+    terrain_freq:0.0008,
+    forest_freq_mult:1.2,
+  });
+
+  const presets={
+    default:{name:'默认平衡',mountain_threshold:0.72,forest_density:0.52,forest_river_distance:5,stone_threshold:0.934,iron_threshold:0.957,terrain_freq:0.0008,forest_freq_mult:1.2},
+    mountainous:{name:'山地丰富',mountain_threshold:0.60,forest_density:0.50,forest_river_distance:4,stone_threshold:0.92,iron_threshold:0.95,terrain_freq:0.0018,forest_freq_mult:1.4},
+    forested:{name:'森林茂密',mountain_threshold:0.75,forest_density:0.40,forest_river_distance:3,stone_threshold:0.94,iron_threshold:0.956,terrain_freq:0.0010,forest_freq_mult:1.8},
+    flat:{name:'平原广阔',mountain_threshold:0.82,forest_density:0.55,forest_river_distance:6,stone_threshold:0.93,iron_threshold:0.955,terrain_freq:0.0004,forest_freq_mult:0.8},
+    rich:{name:'矿物丰富',mountain_threshold:0.70,forest_density:0.50,forest_river_distance:5,stone_threshold:0.88,iron_threshold:0.93,terrain_freq:0.0012,forest_freq_mult:1.2},
+    harsh:{name:'严酷荒原',mountain_threshold:0.58,forest_density:0.62,forest_river_distance:7,stone_threshold:0.955,iron_threshold:0.965,terrain_freq:0.0028,forest_freq_mult:2.4},
+  };
+
+  const applyPreset=(key)=>{
+    const p=presets[key];
+    setParams({...params,...p});
+  };
+
+  return(
+    <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.85)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:1000,padding:20}}>
+      <div style={{background:'var(--bg2)',borderRadius:16,padding:28,maxWidth:680,width:'100%',maxHeight:'90vh',overflow:'auto',border:'1px solid rgba(201,168,108,0.2)',boxShadow:'0 8px 40px rgba(0,0,0,0.6)'}}>
+        <h2 style={{margin:'0 0 20px',fontSize:22,color:'var(--gold)',fontFamily:'var(--serif)',fontWeight:700,letterSpacing:'2px'}}>世界生成设置</h2>
+
+        {/* 预设选择 */}
+        <div style={{marginBottom:24}}>
+          <div style={{fontSize:13,color:'var(--fg3)',marginBottom:10,fontWeight:600,letterSpacing:'1px'}}>快速预设</div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))',gap:8}}>
+            {Object.entries(presets).map(([key,p])=>(
+              <button key={key} onClick={()=>applyPreset(key)} style={{padding:'10px 12px',borderRadius:8,border:params.preset===key?'2px solid var(--gold)':'1px solid rgba(201,168,108,0.25)',background:params.preset===key?'rgba(201,168,108,0.15)':'rgba(255,255,255,0.04)',color:'var(--fg)',fontSize:12,cursor:'pointer',transition:'all 0.2s',textAlign:'left'}}>
+                <div style={{fontWeight:600,marginBottom:2,color:params.preset===key?'var(--gold)':'var(--fg2)'}}>{p.name}</div>
+                <div style={{fontSize:10,color:'var(--fg3)',opacity:0.8}}>{key==='default'?'平衡的各种地形':key==='mountainous'?'更多山地和矿石':key==='forested'?'茂密的森林':key==='flat'?'广阔平原':key==='rich'?'丰富矿物资源':'严酷的生存环境'}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* 详细参数 */}
+        <div style={{marginBottom:24}}>
+          <div style={{fontSize:13,color:'var(--fg3)',marginBottom:12,fontWeight:600,letterSpacing:'1px'}}>高级参数</div>
+
+          {/* 山脉 */}
+          <div style={{marginBottom:16,padding:14,background:'rgba(0,0,0,0.2)',borderRadius:10}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+              <label style={{fontSize:12,fontWeight:600,color:'var(--fg2)'}}>🏔️ 山脉阈值 <span style={{fontSize:10,color:'var(--fg3)',fontWeight:400}}>越低越多山地</span></label>
+              <span style={{fontSize:12,color:'var(--gold)',fontWeight:600}}>{params.mountain_threshold.toFixed(2)}</span>
+            </div>
+            <input type="range" min="0.45" max="0.90" step="0.01" value={params.mountain_threshold} onChange={e=>setParams({...params,mountain_threshold:parseFloat(e.target.value),preset:'custom'})} style={{width:'100%',cursor:'pointer'}}/>
+          </div>
+
+          {/* 森林 */}
+          <div style={{marginBottom:16,padding:14,background:'rgba(0,0,0,0.2)',borderRadius:10}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+              <label style={{fontSize:12,fontWeight:600,color:'var(--fg2)'}}>🌲 森林密度 <span style={{fontSize:10,color:'var(--fg3)',fontWeight:400}}>越低森林越茂密</span></label>
+              <span style={{fontSize:12,color:'var(--gold)',fontWeight:600}}>{params.forest_density.toFixed(2)}</span>
+            </div>
+            <input type="range" min="0.20" max="0.80" step="0.01" value={params.forest_density} onChange={e=>setParams({...params,forest_density:parseFloat(e.target.value),preset:'custom'})} style={{width:'100%',cursor:'pointer'}}/>
+            <div style={{marginTop:8,display:'flex',justifyContent:'space-between'}}>
+              <label style={{fontSize:11,color:'var(--fg3)'}}>河边距离: {params.forest_river_distance}格</label>
+              <input type="range" min="1" max="14" step="1" value={params.forest_river_distance} onChange={e=>setParams({...params,forest_river_distance:parseInt(e.target.value),preset:'custom'})} style={{width:120,cursor:'pointer'}}/>
+            </div>
+          </div>
+
+          {/* 矿物 */}
+          <div style={{marginBottom:16,padding:14,background:'rgba(0,0,0,0.2)',borderRadius:10}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+              <label style={{fontSize:12,fontWeight:600,color:'var(--fg2)'}}>⛏️ 石矿/铁矿 <span style={{fontSize:10,color:'var(--fg3)',fontWeight:400}}>越低矿物越丰富</span></label>
+              <span style={{fontSize:12,color:'var(--gold)',fontWeight:600}}>{params.stone_threshold.toFixed(3)} / {params.iron_threshold.toFixed(3)}</span>
+            </div>
+            <div style={{marginTop:8}}>
+              <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}>
+                <label style={{fontSize:11,color:'var(--fg3)'}}>石矿阈值</label>
+                <input type="range" min="0.70" max="0.99" step="0.001" value={params.stone_threshold} onChange={e=>setParams({...params,stone_threshold:parseFloat(e.target.value),preset:'custom'})} style={{width:150,cursor:'pointer'}}/>
+              </div>
+              <div style={{display:'flex',justifyContent:'space-between'}}>
+                <label style={{fontSize:11,color:'var(--fg3)'}}>铁矿阈值</label>
+                <input type="range" min="0.75" max="0.995" step="0.001" value={params.iron_threshold} onChange={e=>setParams({...params,iron_threshold:parseFloat(e.target.value),preset:'custom'})} style={{width:150,cursor:'pointer'}}/>
+              </div>
+            </div>
+          </div>
+
+          {/* 地形规模 */}
+          <div style={{padding:14,background:'rgba(0,0,0,0.2)',borderRadius:10}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+              <label style={{fontSize:12,fontWeight:600,color:'var(--fg2)'}}>🌍 地形频率 <span style={{fontSize:10,color:'var(--fg3)',fontWeight:400}}>越大越崎岖，越小越平缓</span></label>
+              <span style={{fontSize:12,color:'var(--gold)',fontWeight:600}}>{params.terrain_freq.toFixed(4)}</span>
+            </div>
+            <input type="range" min="0.0002" max="0.0080" step="0.0001" value={params.terrain_freq} onChange={e=>setParams({...params,terrain_freq:parseFloat(e.target.value),preset:'custom'})} style={{width:'100%',cursor:'pointer'}}/>
+            <div style={{marginTop:8,display:'flex',justifyContent:'space-between',fontSize:10,color:'var(--fg3)'}}>
+              <span>平缓连片</span>
+              <span>崎岖破碎</span>
+            </div>
+            <div style={{marginTop:10,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              <label style={{fontSize:11,color:'var(--fg3)'}}>地形细节频率: {params.forest_freq_mult.toFixed(1)}</label>
+              <input type="range" min="0.6" max="3.5" step="0.1" value={params.forest_freq_mult} onChange={e=>setParams({...params,forest_freq_mult:parseFloat(e.target.value),preset:'custom'})} style={{width:150,cursor:'pointer'}}/>
+            </div>
+          </div>
+        </div>
+
+        {/* 按钮 */}
+        <div style={{display:'flex',gap:12}}>
+          <button onClick={onCancel} style={{flex:1,padding:'12px 20px',borderRadius:8,border:'1px solid rgba(255,255,255,0.15)',background:'rgba(255,255,255,0.05)',color:'var(--fg)',fontSize:14,cursor:'pointer',transition:'all 0.2s'}}>取消</button>
+          <button onClick={()=>onConfirm(params)} style={{flex:1,padding:'12px 20px',borderRadius:8,border:'none',background:'var(--gold)',color:'#000',fontSize:14,fontWeight:600,cursor:'pointer',transition:'all 0.2s',boxShadow:'0 4px 16px rgba(201,168,108,0.3)'}}>生成世界</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Lobby ────────────────────────────────────────────────────────────
+function BanishedLobby({onNewGame,onLoadGame,onBack}){
+  const [saves,setSaves]=React.useState([]);
+  const [showBoard,setShowBoard]=React.useState(false);
+  const [busy,setBusy]=React.useState(false);
+  const [showMapSetup,setShowMapSetup]=React.useState(false);
+  React.useEffect(()=>{F(`/api/banished/saves/`).then(d=>setSaves(d.saves||[])).catch(()=>{});},[]);
+  const cont=async()=>{
+    setBusy(true);
+    try{const d=await F(`/api/banished/game/`);if(d.state&&Object.keys(d.state).length>2)onLoadGame(d.state);else onNewGame();}
+    catch{onNewGame();}
+    setBusy(false);
+  };
+  const loadSlot=async slot=>{
+    setBusy(true);
+    try{const d=await P(`/api/banished/saves/${slot}/load/`,{});onLoadGame(d.state);}
+    catch(e){alert(e.message);}
+    setBusy(false);
+  };
+  return(
+    <div style={{height:'100vh',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',background:'radial-gradient(ellipse at 50% 20%,rgba(201,168,108,0.1) 0%,var(--bg) 55%)',gap:20,padding:24,position:'relative',overflow:'hidden'}}>
+      {/* 背景装饰 */}
+      <div style={{position:'absolute',top:0,left:0,right:0,bottom:0,opacity:0.025,backgroundImage:'repeating-linear-gradient(45deg,transparent,transparent 40px,rgba(201,168,108,0.5) 40px,rgba(201,168,108,0.5) 80px)',pointerEvents:'none'}}/>
+      <div style={{position:'absolute',top:-80,left:'50%',transform:'translateX(-50%)',width:500,height:300,background:'radial-gradient(ellipse,rgba(201,168,108,0.08),transparent 70%)',filter:'blur(40px)',pointerEvents:'none'}}/>
+      {showBoard&&<BanishedLeaderboard onClose={()=>setShowBoard(false)}/>}
+      <div style={{position:'relative',zIndex:1,textAlign:'center'}}>
+        <h1 style={{fontFamily:'var(--serif)',fontSize:44,color:'var(--gold)',margin:'0 0 8px',fontWeight:700,textShadow:'0 0 32px rgba(201,168,108,0.5)',letterSpacing:'3px'}}>放逐之城</h1>
+        <p style={{color:'var(--fg3)',fontSize:13,textAlign:'center',maxWidth:380,lineHeight:1.9,margin:'0 0 28px',fontWeight:400}}>在蛮荒之地建立并繁荣你的城市<br/>合理分配资源，养活村民，抵御严冬</p>
+        <div style={{display:'flex',flexDirection:'column',gap:10,width:'min(280px,90vw)',margin:'0 auto'}}>
+          <button className="btn btn-p" onClick={cont} disabled={busy} style={{padding:'13px 20px',fontSize:15,borderRadius:'10px',fontWeight:600,background:'var(--gold)',border:'none',color:'#000',boxShadow:'0 4px 20px rgba(201,168,108,0.35)',transition:'all 0.25s'}} onMouseEnter={e=>{e.currentTarget.style.transform='translateY(-2px)';e.currentTarget.style.boxShadow='0 6px 28px rgba(201,168,108,0.5)';}} onMouseLeave={e=>{e.currentTarget.style.transform='translateY(0)';e.currentTarget.style.boxShadow='0 4px 20px rgba(201,168,108,0.35)';}}>{busy?'加载中...':'继续游戏'}</button>
+          <button className="btn btn-s" onClick={()=>setShowMapSetup(true)} style={{padding:'13px 20px',fontSize:15,borderRadius:'10px',fontWeight:600,background:'rgba(255,255,255,0.06)',border:'1px solid rgba(201,168,108,0.25)',color:'var(--fg)',transition:'all 0.25s'}} onMouseEnter={e=>{e.currentTarget.style.background='rgba(201,168,108,0.1)';e.currentTarget.style.transform='translateY(-2px)';}} onMouseLeave={e=>{e.currentTarget.style.background='rgba(255,255,255,0.06)';e.currentTarget.style.transform='translateY(0)';}}>新游戏</button>
+        </div>
+        {saves.length>0&&(
+          <div style={{marginTop:20,width:'min(300px,90vw)',marginLeft:'auto',marginRight:'auto'}}>
+            <div style={{fontSize:12,color:'rgba(255,255,255,0.5)',marginBottom:8,textAlign:'center',fontWeight:500,letterSpacing:'1px'}}>云存档</div>
+            {saves.map(s=>(
+              <button key={s.slot} className="btn btn-s" style={{width:'100%',marginBottom:8,padding:'10px 14px',fontSize:13,display:'flex',justifyContent:'space-between',alignItems:'center',borderRadius:'8px',background:'linear-gradient(135deg,rgba(201,168,108,0.1),rgba(201,168,108,0.05))',border:'1px solid rgba(201,168,108,0.2)',transition:'all 0.2s'}} onClick={()=>loadSlot(s.slot)} disabled={busy} onMouseEnter={e=>{e.currentTarget.style.background='linear-gradient(135deg,rgba(201,168,108,0.15),rgba(201,168,108,0.08))';e.currentTarget.style.transform='translateX(4px)';}} onMouseLeave={e=>{e.currentTarget.style.background='linear-gradient(135deg,rgba(201,168,108,0.1),rgba(201,168,108,0.05))';e.currentTarget.style.transform='translateX(0)';}}>
+                <span style={{color:'rgba(255,255,255,0.9)'}}>{s.name||`存档${s.slot}`}</span>
+                <span style={{color:'rgba(255,255,255,0.5)',fontSize:12}}>第{s.year}年 · {s.population}人</span>
+              </button>
+            ))}
+          </div>
+        )}
+        <div style={{display:'flex',gap:10,marginTop:20,justifyContent:'center'}}>
+          <button className="btn btn-s btn-sm" onClick={()=>setShowBoard(true)} style={{padding:'7px 14px',fontSize:12,borderRadius:'7px',fontWeight:600,background:'rgba(201,168,108,0.1)',border:'1px solid rgba(201,168,108,0.3)',color:'var(--gold)',transition:'all 0.2s'}} onMouseEnter={e=>e.currentTarget.style.background='rgba(201,168,108,0.18)'} onMouseLeave={e=>e.currentTarget.style.background='rgba(201,168,108,0.1)'}>排行榜</button>
+          <button className="btn btn-s btn-sm" onClick={onBack} style={{padding:'7px 14px',fontSize:12,borderRadius:'7px',fontWeight:600,background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.1)',color:'var(--fg3)',transition:'all 0.2s'}} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.09)'} onMouseLeave={e=>e.currentTarget.style.background='rgba(255,255,255,0.05)'}>← 返回主页</button>
+        </div>
+      </div>
+      {showMapSetup&&<BanishedMapSetup onConfirm={onNewGame} onCancel={()=>setShowMapSetup(false)}/>}
+    </div>
+  );
+}
+
+// ── GameView ─────────────────────────────────────────────────────────
+function BanishedGameView({initialState,token,onBack}){
+  const canvasRef=React.useRef(null);
+  const engineRef=React.useRef(null);
+  const [gs,setGs]=React.useState(initialState);
+  const [speed,setSpeed]=React.useState(initialState?.time?.speed||1);
+  const [workerPolicy,setWorkerPolicy]=React.useState(initialState?.workerPolicy||'balanced');
+  const [selBuilding,setSelBuilding]=React.useState(null);
+  const [selVillager,setSelVillager]=React.useState(null);
+  const [buildMode,setBuildMode]=React.useState(null);
+  const [buildError,setBuildError]=React.useState(null);
+  const [showRes,setShowRes]=React.useState(true);
+  const [showBuild,setShowBuild]=React.useState(true);
+  const [showMarket,setShowMarket]=React.useState(false);
+  const [showAI,setShowAI]=React.useState(false);
+  const [showSave,setShowSave]=React.useState(false);
+  const [gatherType,setGatherType]=React.useState(null); // stone | iron | wood | null
+  const [syncStatus,setSyncStatus]=React.useState(null);
+
+  React.useEffect(()=>{
+    const resize=()=>{if(canvasRef.current){canvasRef.current.width=window.innerWidth;canvasRef.current.height=window.innerHeight;}};
+    resize();window.addEventListener('resize',resize);return()=>window.removeEventListener('resize',resize);
+  },[]);
+
+  React.useEffect(()=>{
+    if(!canvasRef.current||!gs)return;
+    const eng=new BanishedEngine(canvasRef.current,gs,upd=>{
+      if(upd.state)setGs(s=>({...s,...upd.state}));
+      if(upd.selectedBuilding!==undefined){setSelBuilding(upd.selectedBuilding);if(upd.selectedBuilding)setSelVillager(null);}
+      if(upd.selectedVillager!==undefined){setSelVillager(upd.selectedVillager);if(upd.selectedVillager)setSelBuilding(null);}
+      if(upd.buildError!==undefined)setBuildError(upd.buildError);
+    });
+    engineRef.current=eng;
+    eng.start(async(newState,prev,elapsed)=>{
+      setSyncStatus({ok:false,msg:'同步中...'});
+      try{const r=await P(`/api/banished/game/sync/`,{state:newState,elapsed_seconds:elapsed});setSyncStatus({ok:true,msg:r.warnings?.length?`⚠ ${r.warnings[0]}`:'已同步'});}
+      catch{setSyncStatus({ok:false,msg:'失败'});}
+    });
+    return()=>eng.destroy();
+  },[]);
+
+  const handleSpeed=s=>{setSpeed(s);if(engineRef.current)engineRef.current.setSpeed(s);};
+  const handleBuild=type=>{setBuildMode(type);setBuildError(null);setGatherType(null);if(engineRef.current)engineRef.current.setBuildMode(type);};
+  const handleCancelBuild=()=>{setBuildMode(null);if(engineRef.current)engineRef.current.cancelBuildMode();};
+  const handleGatherType=typ=>{
+    if(!engineRef.current)return;
+    if(gatherType===typ){
+      engineRef.current.cancelGatheringMode();
+      setGatherType(null);
+      return;
+    }
+    setBuildMode(null);
+    setGatherType(typ);
+    engineRef.current.setGatheringMode(typ);
+  };
+  const handleClearGather=typ=>{
+    if(!engineRef.current)return;
+    engineRef.current.clearGatheringZones(typ);
+  };
+  const handleToggleWorkerPolicy=()=>{
+    const next=workerPolicy==='natural_only'?'balanced':'natural_only';
+    setWorkerPolicy(next);
+    if(engineRef.current)engineRef.current.setWorkerPolicy(next);
+  };
+  const handleLoad=state=>{if(engineRef.current){engineRef.current.pause();engineRef.current.destroy();}setGs(state);};
+  const handleUpgradeBlacksmith=(buildingId)=>{
+    if(!engineRef.current)return;
+    const r=engineRef.current.upgradeBlacksmith(buildingId);
+    if(!r?.ok){
+      setBuildError(r?.msg||'升级失败');
+    }else{
+      setBuildError(null);
+    }
+  };
+  const handleSetForesterMode=(buildingId,mode)=>{
+    if(!engineRef.current)return;
+    const r=engineRef.current.setForesterMode(buildingId,mode);
+    if(!r?.ok)setBuildError(r?.msg||'设置失败');
+    else setBuildError(null);
+  };
+
+  return(
+    <div style={{position:'relative',width:'100vw',height:'100vh',overflow:'hidden',background:'var(--bg)'}}>
+      <canvas ref={canvasRef} style={{position:'absolute',top:0,left:0,cursor:buildMode?'crosshair':'default'}}/>
+      <BanishedHUD state={gs} speed={speed} onSetSpeed={handleSpeed} onToggleRes={()=>setShowRes(r=>!r)} syncStatus={syncStatus}/>
+      <BanishedResourcePanel state={gs} open={showRes} onClose={()=>setShowRes(false)}/>
+      {showBuild&&<BanishedBuildPanel state={gs} buildMode={buildMode} onSetBuild={handleBuild} onCancel={handleCancelBuild}/>}
+      <BanishedInfoPanel selBuilding={selBuilding} selVillager={selVillager} onClose={()=>{setSelBuilding(null);setSelVillager(null);}} onUpgradeBlacksmith={handleUpgradeBlacksmith} onSetForesterMode={handleSetForesterMode} time={gs?.time}/>
+      {showMarket&&<BanishedMarketPanel onClose={()=>setShowMarket(false)}/>}
+      {showAI&&<BanishedAIPanel token={token} gameState={gs} onClose={()=>setShowAI(false)}/>}
+      {showSave&&<BanishedSavePanel currentState={gs} onLoad={handleLoad} onClose={()=>setShowSave(false)}/>}
+      {buildError&&(
+        <div style={{position:'absolute',bottom:54,left:'50%',transform:'translateX(-50%)',background:'rgba(196,90,90,0.95)',padding:'7px 14px',borderRadius:8,fontSize:13,zIndex:30,cursor:'pointer',fontWeight:600,boxShadow:'0 4px 16px rgba(196,90,90,0.4)',border:'1px solid rgba(196,90,90,0.5)',display:'flex',alignItems:'center',gap:6,whiteSpace:'nowrap'}} onClick={()=>setBuildError(null)}>⚠ {buildError}</div>
+      )}
+      <div style={{position:'absolute',bottom:0,left:0,right:0,display:'flex',alignItems:'center',gap:6,padding:'6px 12px',background:'var(--bg2)',borderTop:'1px solid rgba(201,168,108,0.2)',zIndex:10,backdropFilter:'blur(12px)',boxShadow:'0 -2px 16px rgba(0,0,0,0.4)'}}>
+        <button className={`btn btn-sm ${showBuild?'btn-p':'btn-s'}`} onClick={()=>setShowBuild(b=>!b)} style={{padding:'5px 11px',fontSize:12,borderRadius:'7px',fontWeight:600,background:showBuild?'var(--gold)':'rgba(255,255,255,0.06)',border:showBuild?'none':'1px solid rgba(255,255,255,0.12)',color:showBuild?'#000':'var(--fg2)'}}>建造</button>
+        <button className={`btn btn-sm ${showMarket?'btn-p':'btn-s'}`} onClick={()=>setShowMarket(m=>!m)} style={{padding:'5px 11px',fontSize:12,borderRadius:'7px',fontWeight:600,background:showMarket?'var(--gold)':'rgba(255,255,255,0.06)',border:showMarket?'none':'1px solid rgba(255,255,255,0.12)',color:showMarket?'#000':'var(--fg2)'}}>市场</button>
+        <button className={`btn btn-sm ${showAI?'btn-p':'btn-s'}`} onClick={()=>setShowAI(a=>!a)} style={{padding:'5px 11px',fontSize:12,borderRadius:'7px',fontWeight:600,background:showAI?'#5a8ac4':'rgba(255,255,255,0.06)',border:showAI?'none':'1px solid rgba(255,255,255,0.12)',color:showAI?'#fff':'var(--fg2)'}}>AI</button>
+        <button className={`btn btn-sm ${showSave?'btn-p':'btn-s'}`} onClick={()=>setShowSave(s=>!s)} style={{padding:'5px 11px',fontSize:12,borderRadius:'7px',fontWeight:600,background:showSave?'var(--gold)':'rgba(255,255,255,0.06)',border:showSave?'none':'1px solid rgba(255,255,255,0.12)',color:showSave?'#000':'var(--fg2)'}}>存档</button>
+        <button className={`btn btn-sm ${gatherType==='stone'?'btn-p':'btn-s'}`} onClick={()=>handleGatherType('stone')} style={{padding:'5px 9px',fontSize:12,borderRadius:'7px',fontWeight:600,background:gatherType==='stone'?'#9f9f9f':'rgba(255,255,255,0.06)',border:gatherType==='stone'?'none':'1px solid rgba(255,255,255,0.12)',color:gatherType==='stone'?'#111':'var(--fg2)'}}>框石头</button>
+        <button className={`btn btn-sm ${gatherType==='iron'?'btn-p':'btn-s'}`} onClick={()=>handleGatherType('iron')} style={{padding:'5px 9px',fontSize:12,borderRadius:'7px',fontWeight:600,background:gatherType==='iron'?'#707070':'rgba(255,255,255,0.06)',border:gatherType==='iron'?'none':'1px solid rgba(255,255,255,0.12)',color:gatherType==='iron'?'#fff':'var(--fg2)'}}>框铁块</button>
+        <button className={`btn btn-sm ${gatherType==='wood'?'btn-p':'btn-s'}`} onClick={()=>handleGatherType('wood')} style={{padding:'5px 9px',fontSize:12,borderRadius:'7px',fontWeight:600,background:gatherType==='wood'?'#4ea86d':'rgba(255,255,255,0.06)',border:gatherType==='wood'?'none':'1px solid rgba(255,255,255,0.12)',color:gatherType==='wood'?'#08130a':'var(--fg2)'}}>框树木</button>
+        <button className="btn btn-s btn-sm" onClick={()=>{handleClearGather('stone');handleClearGather('iron');handleClearGather('wood');}} style={{padding:'5px 8px',fontSize:11,borderRadius:'7px',fontWeight:600,background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.12)',color:'var(--fg3)'}}>清采集框</button>
+        <button
+          className={`btn btn-sm ${workerPolicy==='natural_only'?'btn-p':'btn-s'}`}
+          onClick={handleToggleWorkerPolicy}
+          style={{
+            padding:'5px 11px',
+            fontSize:12,
+            borderRadius:'7px',
+            fontWeight:600,
+            background:workerPolicy==='natural_only'?'#5ac480':'rgba(255,255,255,0.06)',
+            border:workerPolicy==='natural_only'?'none':'1px solid rgba(255,255,255,0.12)',
+            color:workerPolicy==='natural_only'?'#08130a':'var(--fg2)',
+            display:'flex',
+            alignItems:'center',
+            gap:4
+          }}
+          title="开启后，小人只会优先分配到自然资源岗位"
+        >
+          {workerPolicy==='natural_only'?'仅自然采集':'全部岗位'}
+        </button>
+        <div style={{margin:'0 auto',display:'flex',gap:4,alignItems:'center'}}>
+          <button className="btn btn-s btn-sm" onClick={()=>{if(engineRef.current){const e=engineRef.current,nz=Math.min(e.maxZoom,e.zoom*1.25),cx=e.canvas.width/2,cy=e.canvas.height/2,wx=(cx+e.camX)/e.zoom,wy=(cy+e.camY)/e.zoom;e.zoom=nz;e.camX=wx*nz-cx;e.camY=wy*nz-cy;e._clampCam();}}} style={{padding:'4px 10px',fontSize:14,borderRadius:'6px',fontWeight:700,background:'rgba(255,255,255,0.08)',border:'1px solid rgba(255,255,255,0.15)',color:'var(--fg)',lineHeight:1}}>+</button>
+          <button className="btn btn-s btn-sm" onClick={()=>{if(engineRef.current){const e=engineRef.current,nz=Math.max(e.minZoom,e.zoom*0.8),cx=e.canvas.width/2,cy=e.canvas.height/2,wx=(cx+e.camX)/e.zoom,wy=(cy+e.camY)/e.zoom;e.zoom=nz;e.camX=wx*nz-cx;e.camY=wy*nz-cy;e._clampCam();}}} style={{padding:'4px 10px',fontSize:14,borderRadius:'6px',fontWeight:700,background:'rgba(255,255,255,0.08)',border:'1px solid rgba(255,255,255,0.15)',color:'var(--fg)',lineHeight:1}}>−</button>
+          <button className="btn btn-s btn-sm" onClick={onBack} style={{padding:'5px 10px',fontSize:11,borderRadius:'6px',fontWeight:500,background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.12)',color:'var(--fg3)',marginLeft:4}}>← 返回</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── BanishedApp ──────────────────────────────────────────────────────
+function BanishedApp({user,onLogout,onUpdateUser}){
+  const token=localStorage.getItem('mf_token');
+  const [view,setView]=React.useState('lobby');
+  const [gs,setGs]=React.useState(null);
+  const [starting,setStarting]=React.useState(false);
+  const newGame=async(mapParams)=>{
+    setStarting(true);
+    try{const d=await P(`/api/banished/game/new/`,{map_params:mapParams});setGs(d.state);setView('game');}
+    catch(e){alert('创建游戏失败:'+e.message);}
+    setStarting(false);
+  };
+  const loadGame=state=>{setGs(state);setView('game');};
+  if(starting)return(
+    <div style={{height:'100vh',display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',gap:12}}>
+      <div style={{color:'var(--gold)',fontSize:16}}>正在生成世界…</div>
+      <div style={{color:'var(--fg3)',fontSize:12}}>地形生成中，请稍候</div>
+    </div>
+  );
+  if(view==='lobby'||!gs)return<BanishedLobby onNewGame={newGame} onLoadGame={loadGame} onBack={()=>window.location.hash='#/'}/>;
+  return<BanishedGameView initialState={gs} token={token} onBack={()=>setView('lobby')}/>;
+}
+{% endverbatim %}

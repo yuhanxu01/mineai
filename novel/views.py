@@ -14,7 +14,7 @@ from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnl
 from core.llm import chat
 
 
-def _token_auth(request):
+def token_auth_user(request):
     """从 Authorization 头解析 Token，返回 User 或 None。"""
     auth = request.META.get('HTTP_AUTHORIZATION', '')
     if not auth.startswith('Token '):
@@ -284,7 +284,7 @@ class WriteChapterStreamView(View):
     """流式撰写章节，返回 text/event-stream。"""
 
     def post(self, request, chapter_id):
-        user = _token_auth(request)
+        user = token_auth_user(request)
         if not user:
             return JsonResponse({"error": "需要认证"}, status=401)
 
@@ -327,7 +327,7 @@ class ContinueWritingStreamView(View):
     """流式续写章节，返回 text/event-stream。"""
 
     def post(self, request, chapter_id):
-        user = _token_auth(request)
+        user = token_auth_user(request)
         if not user:
             return JsonResponse({"error": "需要认证"}, status=401)
 
@@ -370,7 +370,7 @@ class RefineTextStreamView(View):
     """流式润色/改写选中文本，返回 text/event-stream。"""
 
     def post(self, request, chapter_id):
-        user = _token_auth(request)
+        user = token_auth_user(request)
         if not user:
             return JsonResponse({"error": "需要认证"}, status=401)
 

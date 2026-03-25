@@ -1,0 +1,926 @@
+{% verbatim %}
+// ---- DiffBlock: single diff with accept/reject ----
+function DiffBlock({diff, index, onAccept, onReject, accepted, rejected}) {
+  const st = accepted ? 'accepted' : rejected ? 'rejected' : 'pending';
+  return (
+    <div style={{marginBottom:10, border:`1px solid ${st==='accepted'?'var(--green)':st==='rejected'?'var(--red)':'var(--border2)'}`, borderRadius:6, overflow:'hidden', fontSize:12}}>
+      <div style={{display:'flex',alignItems:'center',padding:'4px 8px',background:'var(--bg4)',gap:8}}>
+        <span style={{fontFamily:'var(--mono)',fontSize:11,color:'var(--fg3)'}}>变更 #{index+1}</span>
+        <span style={{marginLeft:'auto',display:'flex',gap:6}}>
+          {st==='pending' && <>
+            <button className="btn btn-sm" style={{background:'var(--green)',color:'#000',padding:'2px 8px',display:'inline-flex',alignItems:'center',gap:6}} onClick={()=>onAccept(index)}>
+              <Icon name="check" size={11} /> 接受
+            </button>
+            <button className="btn btn-sm" style={{background:'var(--red)',color:'#fff',padding:'2px 8px',display:'inline-flex',alignItems:'center',gap:6}} onClick={()=>onReject(index)}>
+              <Icon name="x" size={11} /> 拒绝
+            </button>
+          </>}
+          {st==='accepted' && <span style={{color:'var(--green)',fontSize:11,display:'inline-flex',alignItems:'center',gap:4}}><Icon name="check" size={11} /> 已接受</span>}
+          {st==='rejected' && <span style={{color:'var(--red)',fontSize:11,display:'inline-flex',alignItems:'center',gap:4}}><Icon name="x" size={11} /> 已拒绝</span>}
+        </span>
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr'}}>
+        <div style={{padding:'6px 8px',background:'rgba(196,90,90,.08)',borderRight:'1px solid var(--border)'}}>
+          <div style={{fontSize:10,color:'var(--red)',marginBottom:3}}>原始</div>
+          <pre style={{margin:0,fontFamily:'var(--mono)',whiteSpace:'pre-wrap',wordBreak:'break-word',color:'var(--fg2)',fontSize:11,lineHeight:1.5}}>{diff.original}</pre>
+        </div>
+        <div style={{padding:'6px 8px',background:'rgba(94,184,122,.08)'}}>
+          <div style={{fontSize:10,color:'var(--green)',marginBottom:3}}>修改后</div>
+          <pre style={{margin:0,fontFamily:'var(--mono)',whiteSpace:'pre-wrap',wordBreak:'break-word',color:'var(--fg)',fontSize:11,lineHeight:1.5}}>{diff.replacement}</pre>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---- FileTree ----
+function FileTree({files, selectedId, onSelect, onDelete}) {
+  // Group by directory prefix
+  const tree = {};
+  files.forEach(f => {
+    const parts = f.path.split('/');
+    const dir = parts.length > 1 ? parts.slice(0,-1).join('/') : '';
+    if (!tree[dir]) tree[dir] = [];
+    tree[dir].push(f);
+  });
+
+  const langColor = {python:'var(--blue)',javascript:'var(--gold)',typescript:'var(--blue)',
+    go:'var(--cyan)',rust:'var(--orange)',java:'var(--red)',html:'var(--orange)',
+    css:'var(--purple)',json:'var(--green)',markdown:'var(--fg2)',bash:'var(--green)'};
+
+  return (
+    <div style={{fontSize:12}}>
+      {Object.entries(tree).sort().map(([dir, dirFiles]) => (
+        <div key={dir}>
+          {dir && <div style={{padding:'4px 10px 2px',fontSize:10,color:'var(--fg3)',letterSpacing:1}}>{dir}/</div>}
+          {dirFiles.map(f => {
+            const name = f.path.split('/').pop();
+            const isSelected = f.id === selectedId;
+            return (
+              <div key={f.id}
+                style={{display:'flex',alignItems:'center',gap:6,padding:'5px 10px',
+                  borderRadius:4,cursor:'pointer',
+                  background: isSelected ? 'var(--bg4)' : 'transparent',
+                  color: isSelected ? 'var(--fg)' : 'var(--fg2)'}}
+                onClick={() => onSelect(f)}>
+                <span style={{fontFamily:'var(--mono)',fontSize:10,color:langColor[f.language]||'var(--fg3)',width:14,textAlign:'center',flexShrink:0}}>
+                  {f.language ? f.language[0].toUpperCase() : '?'}
+                </span>
+                <span style={{flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{name}</span>
+                {f.modified && <span style={{color:'var(--orange)',fontSize:10,flexShrink:0}} title="已修改未保存">●</span>}
+                <span style={{fontSize:10,color:'var(--fg3)'}}>{f.size>1024?`${(f.size/1024).toFixed(1)}k`:`${f.size}b`}</span>
+                {onDelete && <button onClick={e=>{e.stopPropagation();onDelete(f.id);}}
+                  style={{background:'none',color:'var(--fg3)',fontSize:11,padding:'0 3px',lineHeight:1}} title="删除"><Icon name="x" size={11} /></button>}
+              </div>
+            );
+          })}
+        </div>
+      ))}
+      {files.length === 0 && <div style={{padding:'20px 10px',color:'var(--fg3)',textAlign:'center',fontSize:12}}>暂无文件<br/>上传代码文件开始</div>}
+    </div>
+  );
+}
+
+// ---- 客户端 apply diffs（本地模式不走服务端）----
+function applyDiffsLocally(content, acceptedDiffs) {
+  let result = content;
+  let applied = 0;
+  for (const diff of acceptedDiffs) {
+    const idx = result.indexOf(diff.original);
+    if (idx !== -1) {
+      result = result.slice(0, idx) + diff.replacement + result.slice(idx + diff.original.length);
+      applied++;
+    }
+  }
+  return {content: result, applied};
+}
+
+// ---- 跳过目录名（本地扫描）----
+const SKIP_DIRS = new Set(['.git','node_modules','__pycache__','dist','build',
+  'venv','.venv','coverage','.next','.nuxt','target','.cache','vendor','bower_components']);
+
+// ---- Main CodeAgentApp ----
+function CodeAgentApp({user, onLogout, onUpdateUser}) {
+  const [v, setV] = useState('home');
+  const [projects, setProjects] = useState([]);
+  const [proj, setProj] = useState(null);
+  const [files, setFiles] = useState([]);
+  const [selFile, setSelFile] = useState(null);
+  const [fileContent, setFileContent] = useState('');
+  const [session, setSession] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [diffs, setDiffs] = useState([]);
+  const [diffStates, setDiffStates] = useState({}); // {idx: 'accepted'|'rejected'}
+  const [chatInput, setChatInput] = useState('');
+  const [editInstruction, setEditInstruction] = useState('');
+  const [generating, setGenerating] = useState(false);
+  const [rightPanel, setRightPanel] = useState('chat'); // 'chat' | 'diffs' | 'versions'
+  const [versions, setVersions] = useState([]);
+  const [sbOpen, setSbOpen] = useState(false);
+  const [showNewProj, setShowNewProj] = useState(false);
+  const [newProjData, setNewProjData] = useState({name:'',description:'',language:''});
+  const [memStats, setMemStats] = useState(null);
+  const [streaming, setStreaming] = useState('');
+
+  // ── 本地模式状态 ──
+  const [uploadMode, setUploadMode] = useState('local'); // 'local' | 'server'
+  const [dirHandle, setDirHandle] = useState(null);      // FSA 句柄
+  const [localFiles, setLocalFiles] = useState({});      // {path: {content, handle, modified}}
+  const [selLocalPath, setSelLocalPath] = useState(null);
+  const [scanning, setScanning] = useState(false);
+  const [scanProgress, setScanProgress] = useState(null); // {scanned, currentFile, skipped}
+  const [chatHistory, setChatHistory] = useState([]);     // 本地模式多轮历史
+  const [localContextPaths, setLocalContextPaths] = useState(new Set());
+  const [fsaSupported] = useState(() => 'showDirectoryPicker' in window);
+  const [serverLimits, setServerLimits] = useState({max_files:100,max_total_mb:50,max_file_kb:1024});
+  const [pendingDiskSave, setPendingDiskSave] = useState(false); // 本地模式是否有未写盘变更
+
+  const chatEndRef = useRef(null);
+  const scanAbortRef = useRef(false);
+  const token = localStorage.getItem('mf_token');
+
+  useEffect(() => { loadProjects(); loadServerLimits(); }, []);
+  useEffect(() => { chatEndRef.current?.scrollIntoView({behavior:'smooth'}); }, [messages, streaming]);
+
+  const loadProjects = async () => {
+    try { setProjects(await F(`${API}/code/projects/`)); } catch {}
+  };
+
+  const loadServerLimits = async () => {
+    try { setServerLimits(await F(`${API}/code/upload-limits/`)); } catch {}
+  };
+
+  const openProject = async (p) => {
+    setProj(p);
+    setSelFile(null); setSelLocalPath(null); setFileContent('');
+    setDiffs([]); setDiffStates({}); setMessages([]); setChatHistory([]);
+    setSession(null); setVersions([]);
+    try {
+      const detail = await F(`${API}/code/projects/${p.id}/`);
+      setFiles(detail.files || []);
+      setProj(detail);
+      if (uploadMode === 'server') {
+        const ss = await P(`${API}/code/projects/${p.id}/sessions/`, {title:'主对话'});
+        setSession(ss);
+        const sDetail = await F(`${API}/code/sessions/${ss.id}/`);
+        setMessages(sDetail.messages || []);
+      }
+    } catch {}
+    setV('project');
+    setSbOpen(false);
+  };
+
+  // ── 服务端模式：选择文件 ──
+  const selectFile = async (f) => {
+    setSelFile(f); setSelLocalPath(null);
+    setDiffs([]); setDiffStates({});
+    try {
+      const detail = await F(`${API}/code/files/${f.id}/`);
+      setFileContent(detail.content || '');
+      setSelFile(detail);
+    } catch {}
+  };
+
+  // ── 本地模式：选择文件 ──
+  const selectLocalFile = (path) => {
+    setSelLocalPath(path); setSelFile(null);
+    setFileContent(localFiles[path]?.content || '');
+    setDiffs([]); setDiffStates({});
+    setPendingDiskSave(false);
+  };
+
+  // ── 统一保存入口 ──
+  const saveFile = async () => {
+    if (uploadMode === 'server') {
+      if (!selFile) return;
+      try {
+        await U(`${API}/code/files/${selFile.id}/`, {content:fileContent, change_summary:'手动编辑'});
+        setFiles(files.map(ff => ff.id === selFile.id ? {...ff, size:fileContent.length} : ff));
+      } catch(e) { showAlert('保存失败: ' + e.message, '错误'); }
+    } else {
+      // 本地模式：更新内存 state，并写回磁盘（如果有 FSA 句柄）
+      if (!selLocalPath) return;
+      const entry = localFiles[selLocalPath];
+      setLocalFiles(p => ({...p, [selLocalPath]: {...p[selLocalPath], content: fileContent, modified: false}}));
+      setPendingDiskSave(false);
+      if (entry?.handle) {
+        try {
+          const writable = await entry.handle.createWritable();
+          await writable.write(fileContent);
+          await writable.close();
+        } catch(e) { showAlert('写入磁盘失败: ' + e.message, '错误'); }
+      }
+    }
+  };
+
+  // ── 下载当前文件（本地模式回退）──
+  const downloadLocalFile = () => {
+    if (!selLocalPath) return;
+    const blob = new Blob([fileContent], {type: 'text/plain'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = selLocalPath.split('/').pop();
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
+  // ── 本地模式：FSA API 递归扫描目录 ──
+  const scanDir = async (handle, basePath, depth, collected) => {
+    if (depth > 8 || Object.keys(collected).length >= 500 || scanAbortRef.current) return;
+    for await (const [name, entry] of handle.entries()) {
+      if (scanAbortRef.current) return;
+      const isHidden = name.startsWith('.');
+      if (entry.kind === 'directory') {
+        if (isHidden || SKIP_DIRS.has(name.toLowerCase())) continue;
+        const subPath = basePath ? `${basePath}/${name}` : name;
+        await scanDir(entry, subPath, depth + 1, collected);
+      } else {
+        const file = await entry.getFile();
+        const filePath = basePath ? `${basePath}/${name}` : name;
+        if (file.size > 1024 * 1024) continue; // skip >1MB
+        try {
+          const text = await file.text();
+          collected[filePath] = {content: text, handle: entry, modified: false};
+          setScanProgress({scanned: Object.keys(collected).length, currentFile: filePath});
+        } catch {}
+      }
+    }
+  };
+
+  // ── 本地模式：打开文件夹（FSA API）──
+  const openDirectory = async () => {
+    try {
+      const handle = await window.showDirectoryPicker({mode: 'readwrite'});
+      setDirHandle(handle);
+      setLocalFiles({});
+      setSelLocalPath(null);
+      setFileContent('');
+      setScanning(true);
+      setScanProgress({scanned: 0, currentFile: ''});
+      scanAbortRef.current = false;
+      const collected = {};
+      await scanDir(handle, '', 0, collected);
+      setLocalFiles(collected);
+      setScanProgress(null);
+      setScanning(false);
+    } catch(e) {
+      setScanning(false);
+      setScanProgress(null);
+      if (e.name !== 'AbortError') showAlert('打开目录失败: ' + e.message, '错误');
+    }
+  };
+
+  // ── webkitdirectory / 文件上传入口（服务端模式 + 本地回退）──
+  const uploadFiles = async (fileList) => {
+    const allFiles = Array.from(fileList);
+    if (uploadMode === 'local') {
+      // 本地模式：只加载到内存，不发到服务器
+      setScanning(true);
+      setScanProgress({scanned: 0, currentFile: ''});
+      const collected = {};
+      const maxCount = 500;
+      for (const file of allFiles.slice(0, maxCount)) {
+        if (scanAbortRef.current) break;
+        const path = file.webkitRelativePath || file.name;
+        if (file.size > 1024 * 1024) continue;
+        try {
+          const text = await file.text();
+          collected[path] = {content: text, handle: null, modified: false};
+          setScanProgress({scanned: Object.keys(collected).length, currentFile: path});
+        } catch {}
+      }
+      setLocalFiles(prev => ({...prev, ...collected}));
+      setScanProgress(null);
+      setScanning(false);
+    } else {
+      // 服务端模式：前端预检后 POST 到服务器
+      const maxCount = serverLimits.max_files;
+      const maxMB = serverLimits.max_total_mb;
+      const filtered = allFiles.slice(0, maxCount);
+      let totalSize = 0;
+      const reads = [];
+      for (const file of filtered) {
+        if (file.size > serverLimits.max_file_kb * 1024) continue;
+        totalSize += file.size;
+        if (totalSize > maxMB * 1024 * 1024) break;
+        reads.push(new Promise(res => {
+          const reader = new FileReader();
+          reader.onload = e => res({path: file.webkitRelativePath || file.name, content: e.target.result});
+          reader.onerror = () => res(null);
+          reader.readAsText(file);
+        }));
+      }
+      const resolved = (await Promise.all(reads)).filter(Boolean);
+      try {
+        const res = await P(`${API}/code/projects/${proj.id}/files/batch/`, {files: resolved});
+        if (res.rejected?.length) {
+          const rejMsg = res.rejected.slice(0, 5).map(r => `${r.path}: ${r.reason}`).join('\n');
+          showAlert(`${res.saved} 个文件已上传，${res.rejected.length} 个被拒绝：\n${rejMsg}`, '上传结果');
+        }
+        const detail = await F(`${API}/code/projects/${proj.id}/`);
+        setFiles(detail.files || []);
+        loadMemStats();
+      } catch(e) { showAlert('上传失败: ' + e.message, '错误'); }
+    }
+  };
+
+  const deleteFile = async (fileId) => {
+    const confirmed = await showConfirm('确认删除此文件？');
+    if (!confirmed) return;
+    try {
+      await F(`${API}/code/files/${fileId}/`, {method:'DELETE', headers:{'Authorization':`Token ${token}`}});
+      setFiles(files.filter(f => f.id !== fileId));
+      if (selFile?.id === fileId) { setSelFile(null); setFileContent(''); }
+    } catch {}
+  };
+
+  const loadMemStats = async () => {
+    if (!proj) return;
+    try { setMemStats(await F(`${API}/code/projects/${proj.id}/memory/`)); } catch {}
+  };
+
+  const loadVersions = async () => {
+    if (!selFile) return;
+    try {
+      const vs = await F(`${API}/code/files/${selFile.id}/versions/`);
+      setVersions(vs);
+      setRightPanel('versions');
+    } catch {}
+  };
+
+  const rollback = async (version) => {
+    if (!selFile) return;
+    const confirmed = await showConfirm(`回滚到版本 v${version}？`);
+    if (!confirmed) return;
+    try {
+      const res = await P(`${API}/code/files/${selFile.id}/rollback/`, {version});
+      const detail = await F(`${API}/code/files/${selFile.id}/`);
+      setFileContent(detail.content);
+      setSelFile(detail);
+      setFiles(files.map(f => f.id === selFile.id ? {...f, current_version: detail.current_version} : f));
+      showAlert(`已回滚到 v${version}`, '成功');
+    } catch(e) { showAlert('回滚失败: ' + e.message, '错误'); }
+  };
+
+  // --- AI 对话（流式）---
+  const sendChat = async () => {
+    if (!chatInput.trim() || generating) return;
+    if (uploadMode === 'server' && !session) return;
+    const msg = chatInput.trim();
+    setChatInput('');
+    setMessages(prev => [...prev, {id:Date.now(), role:'user', content:msg}]);
+    setGenerating(true); setStreaming(''); setRightPanel('chat');
+    let full = '';
+    try {
+      if (uploadMode === 'local') {
+        // 本地模式：调用无状态端点，内容在 body 中，不写 DB
+        const ctxFiles = Array.from(localContextPaths)
+          .filter(p => p !== selLocalPath)
+          .map(p => ({path: p, content: localFiles[p]?.content || ''}));
+        for await (const ev of streamSSE(`${API}/code/local/chat/`, {
+          message: msg,
+          current_file: selLocalPath ? {path: selLocalPath, content: fileContent} : null,
+          context_files: ctxFiles,
+          history: chatHistory.slice(-20),
+        }, token)) {
+          if (ev.type === 'chunk') { full += ev.text; setStreaming(full); }
+          if (ev.type === 'done') break;
+          if (ev.type === 'error') throw new Error(ev.message);
+        }
+        setChatHistory(prev => [...prev,
+          {role:'user', content:msg},
+          {role:'assistant', content:full}]);
+      } else {
+        // 服务端模式：原有逻辑
+        for await (const ev of streamSSE(`${API}/code/sessions/${session.id}/chat/`, {
+          message: msg, file_id: selFile?.id
+        }, token)) {
+          if (ev.type === 'chunk') { full += ev.text; setStreaming(full); }
+          if (ev.type === 'done') break;
+          if (ev.type === 'error') throw new Error(ev.message);
+        }
+      }
+      setMessages(prev => [...prev, {id:Date.now()+1, role:'assistant', content:full}]);
+    } catch(e) {
+      setMessages(prev => [...prev, {id:Date.now()+1, role:'assistant', content:`错误: ${e.message}`}]);
+    } finally { setGenerating(false); setStreaming(''); }
+  };
+
+  // --- 代码编辑建议（流式 Diff）---
+  const suggestEdits = async () => {
+    const hasFile = uploadMode === 'local' ? !!selLocalPath : !!selFile;
+    if (!hasFile || !editInstruction.trim() || generating) return;
+    setGenerating(true); setDiffs([]); setDiffStates({});
+    setRightPanel('diffs'); setStreaming('');
+    let raw = '';
+    try {
+      if (uploadMode === 'local') {
+        const ctxFiles = Array.from(localContextPaths)
+          .filter(p => p !== selLocalPath)
+          .map(p => ({path: p, content: localFiles[p]?.content || ''}));
+        for await (const ev of streamSSE(`${API}/code/local/suggest/`, {
+          file_path: selLocalPath,
+          content: fileContent,
+          instruction: editInstruction,
+          context_files: ctxFiles,
+        }, token)) {
+          if (ev.type === 'chunk') { raw += ev.text; setStreaming(raw); }
+          if (ev.type === 'diffs') { setDiffs(ev.diffs); setStreaming(''); }
+          if (ev.type === 'done') break;
+          if (ev.type === 'error') throw new Error(ev.message);
+        }
+      } else {
+        for await (const ev of streamSSE(`${API}/code/files/${selFile.id}/suggest/`, {
+          instruction: editInstruction
+        }, token)) {
+          if (ev.type === 'chunk') { raw += ev.text; setStreaming(raw); }
+          if (ev.type === 'diffs') { setDiffs(ev.diffs); setStreaming(''); }
+          if (ev.type === 'done') break;
+          if (ev.type === 'error') throw new Error(ev.message);
+        }
+      }
+    } catch(e) {
+      setMessages(prev => [...prev, {role:'assistant', content:`编辑建议失败: ${e.message}`}]);
+    } finally { setGenerating(false); setStreaming(''); }
+  };
+
+  // --- 应用选中的 Diff ---
+  const applyDiffs = async () => {
+    const accepted = diffs.filter((_, i) => diffStates[i] === 'accepted');
+    if (!accepted.length) return showAlert('请先选择要接受的修改', '提示');
+
+    if (uploadMode === 'local') {
+      // 本地模式：在浏览器内直接 apply，不调用服务器
+      const {content: newContent, applied} = applyDiffsLocally(fileContent, accepted);
+      setFileContent(newContent);
+      if (selLocalPath) {
+        setLocalFiles(p => ({...p, [selLocalPath]: {...p[selLocalPath], content: newContent, modified: true}}));
+        setPendingDiskSave(true);
+      }
+      setDiffs([]); setDiffStates({}); setEditInstruction(''); setRightPanel('chat');
+      setMessages(prev => [...prev, {id:Date.now(), role:'assistant',
+        content:`已应用 ${applied} 处修改（本地预览，点击"写入磁盘"或"下载"保存）`}]);
+    } else {
+      try {
+        const res = await P(`${API}/code/files/${selFile.id}/apply_diffs/`, {
+          diffs: accepted, change_summary: editInstruction || 'AI建议'
+        });
+        setFileContent(res.new_content);
+        setSelFile(prev => ({...prev, current_version: res.current_version}));
+        setDiffs([]); setDiffStates({}); setEditInstruction(''); setRightPanel('chat');
+        setMessages(prev => [...prev, {id:Date.now(), role:'assistant',
+          content:`已应用 ${res.applied_count} 处修改，当前版本 v${res.current_version}`}]);
+      } catch(e) { showAlert('应用失败: ' + e.message, '错误'); }
+    }
+  };
+
+  const createProject = async () => {
+    if (!newProjData.name.trim()) return;
+    try {
+      const p = await P(`${API}/code/projects/`, newProjData);
+      await loadProjects();
+      setShowNewProj(false);
+      setNewProjData({name:'',description:'',language:''});
+      openProject(p);
+    } catch(e) { showAlert('创建失败: ' + e.message, '错误'); }
+  };
+
+  const deleteProject = async (id) => {
+    const confirmed = await showConfirm('确认删除整个项目？');
+    if (!confirmed) return;
+    try {
+      await F(`${API}/code/projects/${id}/`, {method:'DELETE', headers:{'Authorization':`Token ${token}`}});
+      await loadProjects();
+      if (proj?.id === id) { setV('home'); setProj(null); }
+    } catch {}
+  };
+
+  // ─── 首页：项目列表 ───
+  if (v === 'home') {
+    return (
+      <div className="app">
+        <div className={`sb ${sbOpen?'open':''}`}>
+          <div className="sb-hd">
+            <h1>代码助手</h1>
+            <p>AI · 记忆 · Diff</p>
+          </div>
+          <div className="sb-nav">
+            <div className="ns"><div className="ns-t">项目</div>
+              {projects.map(p => (
+                <div key={p.id} className="ni" onClick={()=>openProject(p)}>
+                  <i>{'</>'}</i>{p.name}
+                </div>
+              ))}
+            </div>
+          </div>
+          <div style={{padding:'10px 8px',borderTop:'1px solid var(--border)'}}>
+            <button className="btn btn-s" style={{width:'100%',fontSize:12}} onClick={()=>window.location.hash='#/'}>← 返回平台</button>
+          </div>
+        </div>
+        <div className="main">
+          <div className="top">
+            <button className="menu-btn" onClick={()=>setSbOpen(!sbOpen)}><Icon name="menu" size={18} /></button>
+            <span className="top-t">代码助手</span>
+            <button className="btn btn-p btn-sm" onClick={()=>setShowNewProj(true)}>+ 新建项目</button>
+          </div>
+          <div className="ct">
+            {projects.length === 0
+              ? <div className="empty"><h3>代码助手</h3><p>上传代码项目，AI 帮你理解、重构、生成代码</p><br/>
+                  <button className="btn btn-p" onClick={()=>setShowNewProj(true)}>新建项目</button></div>
+              : <div className="g3">
+                  {projects.map(p => (
+                    <div key={p.id} className="card" style={{cursor:'pointer'}} onClick={()=>openProject(p)}>
+                      <div style={{display:'flex',alignItems:'center',gap:10}}>
+                        <span style={{fontFamily:'var(--mono)',fontSize:18,color:'var(--blue)'}}>{'</>'}</span>
+                        <div>
+                          <div style={{fontFamily:'var(--serif)',fontSize:16,color:'var(--fg)'}}>{p.name}</div>
+                          <div style={{fontSize:11,color:'var(--fg3)'}}>{p.language || '未设定语言'} · {p.file_count} 文件</div>
+                        </div>
+                      </div>
+                      <div style={{fontSize:12,color:'var(--fg2)',marginTop:4}}>{p.description||'暂无描述'}</div>
+                      <div style={{display:'flex',justifyContent:'flex-end',marginTop:8}}>
+                        <button className="btn btn-sm" style={{background:'var(--red)',color:'#fff',fontSize:11}}
+                          onClick={e=>{e.stopPropagation();deleteProject(p.id);}}>删除</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+            }
+          </div>
+        </div>
+        {showNewProj && (
+          <div className="modal-ov" onClick={e=>e.target===e.currentTarget&&setShowNewProj(false)}>
+            <div className="modal">
+              <h2>新建代码项目</h2>
+              <div className="fg"><label>项目名称</label><input value={newProjData.name} onChange={e=>setNewProjData(p=>({...p,name:e.target.value}))} placeholder="我的项目"/></div>
+              <div className="fg"><label>描述</label><textarea value={newProjData.description} onChange={e=>setNewProjData(p=>({...p,description:e.target.value}))} placeholder="项目简介..." style={{minHeight:60}}/></div>
+              <div className="fg"><label>主要语言</label><input value={newProjData.language} onChange={e=>setNewProjData(p=>({...p,language:e.target.value}))} placeholder="python / javascript / go..."/></div>
+              <div style={{display:'flex',gap:8,justifyContent:'flex-end',marginTop:16}}>
+                <button className="btn btn-s" onClick={()=>setShowNewProj(false)}>取消</button>
+                <button className="btn btn-p" onClick={createProject}>创建</button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ─── 项目工作区 ───
+  const acceptedCount = Object.values(diffStates).filter(s=>s==='accepted').length;
+
+  // 当前激活的文件路径（两种模式统一）
+  const activeFilePath = uploadMode === 'local' ? selLocalPath : selFile?.path;
+  const hasActiveFile = uploadMode === 'local' ? !!selLocalPath : !!selFile;
+
+  // 本地模式的文件列表（转换为 FileTree 兼容格式）
+  const localFileList = Object.entries(localFiles).map(([path, f]) => ({
+    id: path, path, language: detectLangLocal(path), size: f.content.length, modified: f.modified,
+  }));
+  function detectLangLocal(path) {
+    const extMap = {'.py':'python','.js':'javascript','.ts':'typescript','.tsx':'tsx','.jsx':'jsx',
+      '.java':'java','.go':'go','.rs':'rust','.cpp':'cpp','.c':'c','.cs':'csharp','.rb':'ruby',
+      '.php':'php','.swift':'swift','.kt':'kotlin','.sh':'bash','.yml':'yaml','.yaml':'yaml',
+      '.json':'json','.html':'html','.css':'css','.sql':'sql','.md':'markdown','.vue':'vue'};
+    const ext = path.slice(path.lastIndexOf('.')).toLowerCase();
+    return extMap[ext] || 'text';
+  }
+
+  return (
+    <div className="app">
+      {/* ─ 侧边栏：文件树 ─ */}
+      <div className={`sb ${sbOpen?'open':''}`} style={{width:230}}>
+        <div className="sb-hd">
+          <h1 style={{fontSize:15,cursor:'pointer'}} onClick={()=>{setV('home');setProj(null);setSbOpen(false);}}>← {proj?.name||'代码助手'}</h1>
+          <p style={{fontSize:10,color:'var(--blue)'}}>{proj?.language||''}</p>
+        </div>
+
+        {/* 模式切换 */}
+        <div style={{padding:'6px 10px',borderBottom:'1px solid var(--border)',display:'flex',gap:4}}>
+          <button className={`btn btn-sm${uploadMode==='local'?' btn-p':' btn-s'}`}
+            style={{flex:1,fontSize:11}}
+            onClick={()=>setUploadMode('local')}>本地模式</button>
+          <button className={`btn btn-sm${uploadMode==='server'?' btn-p':' btn-s'}`}
+            style={{flex:1,fontSize:11}}
+            onClick={()=>setUploadMode('server')}>服务端</button>
+        </div>
+
+        {/* 上传/打开文件夹 */}
+        <div style={{padding:'8px 10px',borderBottom:'1px solid var(--border)'}}>
+          {uploadMode === 'local' ? (
+            <>
+              {fsaSupported && (
+                <button className="btn btn-s" style={{width:'100%',fontSize:11,marginBottom:4,
+                  background:'var(--bg4)',border:'1px dashed var(--border2)',borderRadius:6}}
+                  onClick={openDirectory} disabled={scanning}>
+                  {scanning ? '扫描中…' : '打开本地文件夹'}
+                </button>
+              )}
+              <label style={{display:'block',background:'var(--bg4)',border:'1px dashed var(--border2)',
+                borderRadius:6,padding:'5px',textAlign:'center',cursor:'pointer',fontSize:11,color:'var(--fg2)'}}>
+                {fsaSupported ? '或 上传文件夹' : '选择文件夹'}
+                <input type="file" multiple webkitdirectory="" style={{display:'none'}}
+                  onChange={e=>uploadFiles(e.target.files)} disabled={scanning}/>
+              </label>
+              <label style={{display:'block',background:'var(--bg4)',border:'1px dashed var(--border2)',
+                borderRadius:6,padding:'5px',textAlign:'center',cursor:'pointer',fontSize:11,color:'var(--fg2)',marginTop:4}}>
+                上传文件
+                <input type="file" multiple style={{display:'none'}}
+                  onChange={e=>uploadFiles(e.target.files)} disabled={scanning}/>
+              </label>
+            </>
+          ) : (
+            <>
+              <div style={{fontSize:10,color:'var(--fg3)',marginBottom:4}}>
+                限制：≤{serverLimits.max_files} 文件 · ≤{serverLimits.max_total_mb}MB
+              </div>
+              <label style={{display:'block',background:'var(--bg4)',border:'1px dashed var(--border2)',
+                borderRadius:6,padding:'5px',textAlign:'center',cursor:'pointer',fontSize:11,color:'var(--fg2)'}}>
+                上传文件夹到服务器
+                <input type="file" multiple webkitdirectory="" style={{display:'none'}}
+                  onChange={e=>uploadFiles(e.target.files)}/>
+              </label>
+              <label style={{display:'block',background:'var(--bg4)',border:'1px dashed var(--border2)',
+                borderRadius:6,padding:'5px',textAlign:'center',cursor:'pointer',fontSize:11,color:'var(--fg2)',marginTop:4}}>
+                上传文件
+                <input type="file" multiple style={{display:'none'}}
+                  onChange={e=>uploadFiles(e.target.files)}/>
+              </label>
+            </>
+          )}
+        </div>
+
+        {/* 扫描进度 */}
+        {scanning && scanProgress && (
+          <div style={{padding:'10px',background:'var(--bg3)',borderBottom:'1px solid var(--border)'}}>
+            <div style={{fontSize:11,color:'var(--gold)',marginBottom:4}}>
+              正在扫描… 已发现 {scanProgress.scanned} 个文件
+            </div>
+            <div style={{fontSize:10,color:'var(--fg3)',overflow:'hidden',textOverflow:'ellipsis',
+              whiteSpace:'nowrap',maxWidth:180}} title={scanProgress.currentFile}>
+              {scanProgress.currentFile}
+            </div>
+            <button className="btn btn-sm btn-s" style={{marginTop:6,fontSize:10}}
+              onClick={()=>{scanAbortRef.current=true;setScanning(false);setScanProgress(null);}}>取消</button>
+          </div>
+        )}
+
+        {/* 文件树 */}
+        <div style={{flex:1,overflowY:'auto',padding:'6px 0'}}>
+          {uploadMode === 'local'
+            ? <FileTree
+                files={localFileList}
+                selectedId={selLocalPath}
+                onSelect={f => selectLocalFile(f.id)}
+                onDelete={null}
+              />
+            : <FileTree files={files} selectedId={selFile?.id} onSelect={selectFile} onDelete={deleteFile} />
+          }
+        </div>
+
+        {/* 服务端模式：记忆统计 */}
+        {uploadMode === 'server' && (
+          <div style={{padding:'8px 10px',borderTop:'1px solid var(--border)',fontSize:11}}>
+            <div style={{color:'var(--fg3)',marginBottom:4,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+              <span>记忆金字塔</span>
+              <button style={{background:'none',color:'var(--gold)',fontSize:10}} onClick={loadMemStats}>刷新</button>
+            </div>
+            {memStats
+              ? <div style={{color:'var(--gold)',fontFamily:'var(--mono)'}}>{memStats.total_nodes} 节点 · {memStats.total_content_chars?.toLocaleString()||0} 字符</div>
+              : <div style={{color:'var(--fg3)'}}>点击刷新查看</div>
+            }
+          </div>
+        )}
+
+        {/* 本地模式：文件统计 */}
+        {uploadMode === 'local' && localFileList.length > 0 && (
+          <div style={{padding:'8px 10px',borderTop:'1px solid var(--border)',fontSize:11,color:'var(--fg3)'}}>
+            {localFileList.length} 个文件
+            {dirHandle && <span style={{color:'var(--gold)',marginLeft:6}}>· {dirHandle.name}</span>}
+            <span style={{display:'block',fontSize:10,marginTop:2,color:'var(--gold)'}}>代码不上传服务器</span>
+          </div>
+        )}
+
+        <div style={{padding:'8px 10px',borderTop:'1px solid var(--border)'}}>
+          <button className="btn btn-s" style={{width:'100%',fontSize:11}}
+            onClick={()=>window.location.hash='#/'}>← 返回平台</button>
+        </div>
+      </div>
+      <div className="sb-ov" onClick={()=>setSbOpen(false)} style={{display:sbOpen?'block':'none'}}/>
+
+      {/* ─ 主内容：代码编辑器 + 右侧面板 ─ */}
+      <div className="main" style={{flexDirection:'row',overflow:'hidden'}}>
+
+        {/* 代码编辑区 */}
+        <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',borderRight:'1px solid var(--border)'}}>
+          <div className="top" style={{justifyContent:'space-between'}}>
+            <button className="menu-btn" onClick={()=>setSbOpen(!sbOpen)}><Icon name="menu" size={18} /></button>
+            <span style={{fontFamily:'var(--mono)',fontSize:12,color:hasActiveFile?'var(--fg)':'var(--fg3)',flex:1,marginLeft:8,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+              {hasActiveFile ? activeFilePath : '← 选择文件'}
+              {selFile && uploadMode==='server' && <span style={{fontSize:10,color:'var(--fg3)',marginLeft:8}}>v{selFile.current_version}</span>}
+            </span>
+            {/* 模式标识 chip */}
+            <span style={{fontSize:10,padding:'2px 7px',borderRadius:10,marginRight:6,
+              background: uploadMode==='local' ? 'rgba(212,175,55,.15)' : 'rgba(255,255,255,.06)',
+              color: uploadMode==='local' ? 'var(--gold)' : 'var(--fg3)'}}>
+              {uploadMode==='local' ? '本地 · 不上传' : '服务端'}
+            </span>
+            {hasActiveFile && <>
+              <button className="btn btn-sm btn-s" onClick={saveFile} title="保存 (Ctrl+S)">保存</button>
+              {uploadMode === 'local' && (
+                <>
+                  {dirHandle && localFiles[selLocalPath]?.handle &&
+                    <button className="btn btn-sm btn-s" onClick={saveFile} title="写入磁盘" style={{color:'var(--gold)'}}>写盘</button>
+                  }
+                  <button className="btn btn-sm btn-s" onClick={downloadLocalFile} title="下载文件">下载</button>
+                </>
+              )}
+              {uploadMode === 'server' && <button className="btn btn-sm btn-s" onClick={loadVersions}>历史</button>}
+            </>}
+          </div>
+
+          {/* 编辑指令栏 */}
+          {hasActiveFile && (
+            <div style={{padding:'6px 12px',borderBottom:'1px solid var(--border)',display:'flex',gap:6,background:'var(--bg2)'}}>
+              <input value={editInstruction} onChange={e=>setEditInstruction(e.target.value)}
+                placeholder="输入修改指令，如：提取公共函数、添加错误处理、重命名变量…"
+                style={{flex:1,fontSize:12}}
+                onKeyDown={e=>e.key==='Enter'&&!e.shiftKey&&suggestEdits()}/>
+              <button className={`btn btn-sm btn-ai${generating?' generating':''}`} onClick={suggestEdits} disabled={generating}
+                style={{display:'inline-flex',alignItems:'center',gap:6}}>
+                <Icon name="spark" size={12} />
+                {generating?'生成中…':'AI建议'}
+              </button>
+              <button className="btn btn-sm btn-s" onClick={()=>{setRightPanel('chat');setChatInput(editInstruction);}}
+                style={{display:'inline-flex',alignItems:'center',gap:6}}>
+                <Icon name="chat" size={12} /> 询问
+              </button>
+            </div>
+          )}
+
+          {/* 未写盘提示条 */}
+          {uploadMode === 'local' && pendingDiskSave && selLocalPath && (
+            <div style={{padding:'4px 12px',background:'rgba(212,175,55,.1)',borderBottom:'1px solid var(--border)',
+              display:'flex',alignItems:'center',gap:8,fontSize:11}}>
+              <span style={{color:'var(--gold)'}}>● 已修改，尚未写入磁盘</span>
+              {dirHandle && localFiles[selLocalPath]?.handle && (
+                <button className="btn btn-sm" style={{background:'var(--gold)',color:'#000',padding:'2px 8px'}}
+                  onClick={saveFile}>写入磁盘</button>
+              )}
+              <button className="btn btn-sm btn-s" style={{padding:'2px 8px'}} onClick={downloadLocalFile}>下载</button>
+            </div>
+          )}
+
+          {/* 代码文本编辑器 */}
+          {hasActiveFile
+            ? <div style={{flex:1,position:'relative',overflow:'hidden'}}>
+                {streaming && rightPanel==='diffs' && (
+                  <div style={{position:'absolute',top:0,right:0,background:'var(--bg3)',border:'1px solid var(--border)',
+                    borderRadius:6,padding:'6px 10px',zIndex:10,fontSize:11,color:'var(--fg3)',maxWidth:320,maxHeight:80,overflow:'hidden',margin:8}}>
+                    <span style={{color:'var(--gold)'}}>AI分析中…</span> {streaming.slice(-80)}
+                  </div>
+                )}
+                <textarea value={fileContent} onChange={e=>{
+                    setFileContent(e.target.value);
+                    if(uploadMode==='local'&&selLocalPath) setLocalFiles(p=>({...p,[selLocalPath]:{...p[selLocalPath],content:e.target.value,modified:true}}));
+                  }}
+                  style={{width:'100%',height:'100%',background:'var(--bg)',color:'var(--fg)',
+                    fontFamily:'var(--mono)',fontSize:13,lineHeight:1.6,padding:'12px 16px',
+                    border:'none',outline:'none',resize:'none',tabSize:4}}
+                  onKeyDown={e=>{
+                    if(e.key==='Tab'){e.preventDefault();const s=e.target.selectionStart,end=e.target.selectionEnd;
+                      const val=e.target.value;const nv=val.slice(0,s)+'    '+val.slice(end);
+                      setFileContent(nv);requestAnimationFrame(()=>{e.target.selectionStart=e.target.selectionEnd=s+4;});}
+                    if(e.key==='s'&&(e.ctrlKey||e.metaKey)){e.preventDefault();saveFile();}
+                  }}/>
+              </div>
+            : <div className="empty" style={{margin:'auto'}}>
+                <h3 style={{fontSize:20}}>{'</>'}</h3>
+                <p>
+                  {uploadMode === 'local'
+                    ? (fsaSupported ? '点击"打开本地文件夹"' : '点击"选择文件夹"') + '开始'
+                    : '从左侧文件树选择文件或上传代码文件夹'}
+                </p>
+              </div>
+          }
+        </div>
+
+        {/* ─ 右侧面板 ─ */}
+        <div style={{width:360,display:'flex',flexDirection:'column',overflow:'hidden',background:'var(--bg2)',flexShrink:0}}>
+          <div className="tabs" style={{padding:'0 8px',marginBottom:0}}>
+            <div className={`tab${rightPanel==='chat'?' on':''}`} onClick={()=>setRightPanel('chat')}>对话</div>
+            <div className={`tab${rightPanel==='diffs'?' on':''}`} onClick={()=>setRightPanel('diffs')}>
+              Diff {diffs.length>0&&<span style={{fontSize:10,background:'var(--gold)',color:'#000',borderRadius:10,padding:'0 5px',marginLeft:4}}>{diffs.length}</span>}
+            </div>
+            {uploadMode === 'server' && (
+              <div className={`tab${rightPanel==='versions'?' on':''}`} onClick={()=>{setRightPanel('versions');if(!versions.length&&selFile)loadVersions();}}>版本</div>
+            )}
+          </div>
+
+          {/* 对话面板 */}
+          {rightPanel==='chat' && (
+            <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>
+              <div style={{flex:1,overflowY:'auto',padding:'10px 12px'}}>
+                {messages.length===0 && (
+                  <div style={{textAlign:'center',padding:'30px 10px',color:'var(--fg3)',fontSize:12}}>
+                    <div style={{marginBottom:8}}><Icon name="chat" size={28} /></div>
+                    <div>询问代码逻辑、重构建议、bug 排查</div>
+                    <div style={{marginTop:4,fontSize:11}}>
+                      {uploadMode==='local' ? '本地模式：代码不会存储到服务器' : 'AI 会结合记忆中的全部代码作答'}
+                    </div>
+                  </div>
+                )}
+                {messages.map((m,i) => (
+                  <div key={m.id||i} className={`cht-m ${m.role==='user'?'u':'a'}`}>
+                    <div className="cht-lb">{m.role==='user'?'你':'AI助手'}</div>
+                    <div className="cht-bbl" style={{whiteSpace:'pre-wrap',wordBreak:'break-word'}}>
+                      {m.content}
+                    </div>
+                  </div>
+                ))}
+                {streaming && rightPanel==='chat' && (
+                  <div className="cht-m a">
+                    <div className="cht-lb">AI助手</div>
+                    <div className="cht-bbl" style={{whiteSpace:'pre-wrap',wordBreak:'break-word'}}>{streaming}<span style={{animation:'blink 1s infinite',display:'inline-block',marginLeft:2}}>▌</span></div>
+                  </div>
+                )}
+                <div ref={chatEndRef}/>
+              </div>
+              <div className="cht-in">
+                <input value={chatInput} onChange={e=>setChatInput(e.target.value)}
+                  placeholder="询问代码、请求解释或重构…"
+                  onKeyDown={e=>e.key==='Enter'&&!e.shiftKey&&sendChat()}/>
+                <button className={`btn btn-p btn-sm${generating?' generating':''}`} onClick={sendChat} disabled={generating}>发送</button>
+              </div>
+            </div>
+          )}
+
+          {/* Diff 面板 */}
+          {rightPanel==='diffs' && (
+            <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>
+              {streaming && !diffs.length && (
+                <div style={{padding:'12px',color:'var(--gold)',fontSize:12,display:'flex',alignItems:'center',gap:8}}>
+                  <div className="load" style={{padding:0}}/>
+                  AI 正在分析代码，生成修改建议…
+                </div>
+              )}
+              {diffs.length === 0 && !streaming && (
+                <div className="empty" style={{padding:'30px 10px'}}>
+                  <p>在编辑器上方输入修改指令<br/>点击"AI建议"生成 Diff</p>
+                </div>
+              )}
+              {diffs.length > 0 && (
+                <>
+                  <div style={{padding:'8px 12px',borderBottom:'1px solid var(--border)',display:'flex',alignItems:'center',gap:8}}>
+                    <span style={{fontSize:12,color:'var(--fg2)'}}>{diffs.length} 处建议</span>
+                    <button className="btn btn-sm" style={{background:'var(--green)',color:'#000'}}
+                      onClick={()=>{const s={};diffs.forEach((_,i)=>s[i]='accepted');setDiffStates(s);}}>全部接受</button>
+                    <button className="btn btn-sm btn-s"
+                      onClick={()=>{const s={};diffs.forEach((_,i)=>s[i]='rejected');setDiffStates(s);}}>全部拒绝</button>
+                    {acceptedCount > 0 &&
+                      <button className="btn btn-sm btn-p" onClick={applyDiffs} style={{marginLeft:'auto'}}>
+                        应用 {acceptedCount} 处
+                      </button>
+                    }
+                  </div>
+                  <div style={{flex:1,overflowY:'auto',padding:'10px 12px'}}>
+                    {diffs.map((d,i) => (
+                      <DiffBlock key={i} diff={d} index={i}
+                        accepted={diffStates[i]==='accepted'}
+                        rejected={diffStates[i]==='rejected'}
+                        onAccept={idx=>setDiffStates(p=>({...p,[idx]:'accepted'}))}
+                        onReject={idx=>setDiffStates(p=>({...p,[idx]:'rejected'}))}/>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* 版本历史面板（仅服务端模式）*/}
+          {rightPanel==='versions' && uploadMode==='server' && (
+            <div style={{flex:1,overflowY:'auto',padding:'10px 12px'}}>
+              {!selFile && <div className="empty"><p>请先选择文件</p></div>}
+              {selFile && versions.length === 0 && <div className="empty"><p>暂无历史版本</p></div>}
+              {versions.map(v => (
+                <div key={v.version} style={{padding:'10px 12px',border:'1px solid var(--border)',borderRadius:6,marginBottom:8}}>
+                  <div style={{display:'flex',alignItems:'center',gap:8}}>
+                    <span style={{fontFamily:'var(--mono)',fontSize:12,color:'var(--gold)'}}>v{v.version}</span>
+                    <span style={{fontSize:11,color:'var(--fg2)',flex:1}}>{v.change_summary||'无说明'}</span>
+                    <span style={{fontSize:10,color:'var(--fg3)'}}>{v.size} B</span>
+                  </div>
+                  <div style={{fontSize:10,color:'var(--fg3)',marginTop:3}}>{v.created_at?.slice(0,16)}</div>
+                  <button className="btn btn-sm btn-s" style={{marginTop:6,fontSize:11}} onClick={()=>rollback(v.version)}>
+                    回滚到此版本
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+{% endverbatim %}

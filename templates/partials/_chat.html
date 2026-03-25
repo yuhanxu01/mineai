@@ -1,0 +1,360 @@
+{% verbatim %}
+function ChatApp({user, onLogout, onUpdateUser}) {
+  const { useState, useEffect, useRef } = React;
+  const [conversations, setConversations] = useState([]);
+  const [activeConv, setActiveConv] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [loadingList, setLoadingList] = useState(true);
+  const [inputMsg, setInputMsg] = useState('');
+  const [generating, setGenerating] = useState(false);
+  const [awaitingFirstChunk, setAwaitingFirstChunk] = useState(false);
+  const [selectedModel, setSelectedModel] = useState('glm-4.7-flash');
+  const chatEndRef = useRef(null);
+
+  useEffect(() => {
+    loadConversations();
+  }, []);
+
+  useEffect(() => {
+    if (activeConv) {
+      loadMessages(activeConv.id);
+      setSelectedModel(activeConv.model_name || 'glm-4.7-flash');
+    } else {
+      setMessages([]);
+    }
+  }, [activeConv]);
+
+  useEffect(() => {
+    if (chatEndRef.current) {
+      chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+    // Render markdown math if needed
+    if (window.MathJax && window.MathJax.typesetPromise) {
+      window.MathJax.typesetPromise().catch(err => console.error(err));
+    }
+  }, [messages, generating]);
+
+  const loadConversations = async () => {
+    try {
+      const data = await F(`${API}/chat/conversations/`);
+      setConversations(data);
+      if (data.length > 0 && !activeConv) {
+        setActiveConv(data[0]);
+      }
+    } catch (e) {
+      showAlert('无法加载会话列表: ' + e.message);
+    }
+    setLoadingList(false);
+  };
+
+  const loadMessages = async (id) => {
+    try {
+      const data = await F(`${API}/chat/conversations/${id}/`);
+      setMessages(data.messages || []);
+    } catch (e) {
+      showAlert('无法加载消息: ' + e.message);
+      setActiveConv(null);
+    }
+  };
+
+  const createNewChat = async () => {
+    try {
+      const newConv = await P(`${API}/chat/conversations/`, { title: 'New Chat', model_name: selectedModel });
+      setConversations([newConv, ...conversations]);
+      setActiveConv(newConv);
+    } catch (e) {
+      showAlert('无法创建新会话: ' + e.message);
+    }
+  };
+
+  const deleteConversation = async (id, e) => {
+    e.stopPropagation();
+    const ok = await showConfirm('确定要删除此会话吗？');
+    if (!ok) return;
+    try {
+      await F(`${API}/chat/conversations/${id}/`, { method: 'DELETE' });
+      setConversations(conversations.filter(c => c.id !== id));
+      if (activeConv && activeConv.id === id) {
+        setActiveConv(null);
+      }
+    } catch (err) {
+      showAlert('删除失败: ' + err.message);
+    }
+  };
+
+  const sendMessage = async () => {
+    if (!inputMsg.trim() || generating) return;
+    const msgText = inputMsg.trim();
+    setInputMsg('');
+    
+    let conv = activeConv;
+    if (!conv) {
+      try {
+        conv = await P(`${API}/chat/conversations/`, { title: msgText.substring(0, 20), model_name: selectedModel });
+        setConversations([conv, ...conversations]);
+        setActiveConv(conv);
+      } catch (err) {
+        showAlert('无法创建会话: ' + err.message);
+        return;
+      }
+    }
+
+    const newMessage = {id: 'client-'+Date.now(), role: 'user', content: msgText};
+    setMessages(prev => [...prev, newMessage]);
+    setGenerating(true);
+    setAwaitingFirstChunk(true);
+    const assistantId = 'ast-'+Date.now();
+    let assistantMsg = { id: assistantId, role: 'assistant', content: '', thinking: true };
+    setMessages(prev => [...prev, assistantMsg]);
+
+    const token = localStorage.getItem('mf_token');
+    const headers = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Token ${token}`;
+    
+    try {
+      const response = await fetch(`${API}/chat/conversations/${conv.id}/chat/`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ content: msgText, model_name: selectedModel })
+      });
+      
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+      if (!response.body) {
+        throw new Error('未收到响应流');
+      }
+      
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder('utf-8');
+      
+      let buf = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop(); // keep the last partial line
+        
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const dataStr = line.slice(6).trim();
+          if (!dataStr) continue;
+          try {
+            const data = JSON.parse(dataStr);
+            if (data.type === 'chunk') {
+               if (awaitingFirstChunk) setAwaitingFirstChunk(false);
+               assistantMsg.content += data.text;
+               setMessages(prev => prev.map(m => m.id === assistantMsg.id ? {...assistantMsg, thinking:false} : m));
+            } else if (data.type === 'done') {
+               // Load conversations silently to get title update if it was a new chat
+               setAwaitingFirstChunk(false);
+               setMessages(prev => prev.map(m => m.id === assistantMsg.id ? {...assistantMsg, thinking:false} : m));
+               loadConversations();
+            } else if (data.type === 'error') {
+               setAwaitingFirstChunk(false);
+               showAlert('回复出错: ' + data.text);
+            }
+          } catch(err) {
+            console.error('JSON parse error:', err);
+          }
+        }
+      }
+    } catch(err) {
+      setAwaitingFirstChunk(false);
+      showAlert('发送失败: ' + err.message);
+      setMessages(prev => prev.map(m => m.id === assistantId ? {...m, thinking:false, content: m.content || '请求失败，请重试。'} : m));
+    } finally {
+      setGenerating(false);
+      setAwaitingFirstChunk(false);
+    }
+  };
+  
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  };
+
+  const renderMarkdown = (text) => {
+    if (!window.marked) return text;
+    return {__html: window.marked.parse(text)};
+  };
+
+  return (
+    <div className="dash-wrap">
+      <nav className="dash-nav">
+        <div style={{display:'flex',alignItems:'center',gap:12}}>
+          <button className="btn btn-s" onClick={() => window.location.hash='#/'} style={{padding:6}} title="返回平台首页"><Icon name="home" size={16} /></button>
+          <div className="dash-logo"><Icon name="chat" size={16} /> MineAI Chat</div>
+        </div>
+        <div className="dash-sw" style={{visibility:'hidden'}}></div>
+        <div className="dash-right">
+          <span style={{fontSize:12,color:'var(--fg3)'}}>{displayName(user)}</span>
+          <button className="btn btn-s btn-sm" onClick={onLogout}>退出</button>
+        </div>
+      </nav>
+      
+      <div style={{display:'flex', height:'calc(100vh - 56px)'}}>
+        
+        {/* Sidebar */}
+        <div style={{width:260, borderRight:'1px solid var(--border)', display:'flex', flexDirection:'column', background:'var(--bg2)'}}>
+          <div style={{padding:16}}>
+             <button className="btn btn-p" onClick={() => setActiveConv(null)} style={{width:'100%', display:'flex', alignItems:'center', justifyContent:'center', gap:8}}>
+               <Icon name="pen" size={14} /> 新对话
+             </button>
+          </div>
+          <div style={{flex:1, overflowY:'auto', padding:'0 12px 16px 12px'}}>
+            <div style={{fontSize:11, color:'var(--fg3)', marginBottom:8, marginLeft:4, fontWeight:600}}>历史记录 (最多20条)</div>
+            {loadingList ? <div style={{padding:12, fontSize:12, color:'var(--fg3)'}}>加载中...</div> :
+             conversations.length === 0 ? <div style={{padding:12, fontSize:12, color:'var(--fg3)'}}>无历史记录</div> :
+             conversations.map(c => (
+              <div key={c.id} 
+                   style={{
+                     padding:'10px 12px', 
+                     borderRadius:8, 
+                     cursor:'pointer', 
+                     marginBottom:4,
+                     display:'flex',
+                     alignItems:'center',
+                     justifyContent:'space-between',
+                     background: activeConv?.id === c.id ? 'var(--bg4)' : 'transparent',
+                     color: activeConv?.id === c.id ? 'var(--fg)' : 'var(--fg2)'
+                   }}
+                   onClick={() => setActiveConv(c)}
+                   className="conv-item">
+                <div style={{overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontSize:13, flex:1}}>
+                  {c.title}
+                </div>
+                <button className="btn btn-s" 
+                        onClick={(e) => deleteConversation(c.id, e)} 
+                        style={{padding:4, color:'var(--red)', opacity: activeConv?.id === c.id ? 1 : 0.4}} 
+                        title="删除">
+                   <Icon name="trash" size={12} />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+        
+        {/* Main Chat Area */}
+        <div style={{flex:1, display:'flex', flexDirection:'column', background:'var(--bg)'}}>
+          
+          <div style={{padding:'12px 24px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', justifyContent:'space-between'}}>
+            <div style={{fontSize:16, fontWeight:600}}>
+              {activeConv ? activeConv.title : '新对话'}
+            </div>
+            <div>
+              <select value={selectedModel} onChange={e => {
+                if (!activeConv) setSelectedModel(e.target.value);
+              }}
+              disabled={!!activeConv}
+              style={{
+                background:'var(--bg3)', color:'var(--fg)', border:'1px solid var(--border)', 
+                padding:'6px 12px', borderRadius:6, fontSize:13, outline:'none'
+              }}>
+                <option value="glm-4.7-flash">GLM-4.7 (智谱新一代模型)</option>
+                <option value="glm-4.5-flash">GLM-4.5-Air (性价比模型)</option>
+              </select>
+            </div>
+          </div>
+          
+          <div style={{flex:1, overflowY:'auto', padding:'24px 0'}}>
+            <div style={{maxWidth:768, margin:'0 auto', padding:'0 24px'}}>
+              {messages.length === 0 ? (
+                <div style={{textAlign:'center', marginTop:100, color:'var(--fg3)'}}>
+                  <Icon name="bot" size={48} style={{opacity:0.2, marginBottom:16}} />
+                  <h3 style={{fontSize:20, fontWeight:500, color:'var(--fg)'}}>今天能帮您什么？</h3>
+                  <p style={{marginTop:8}}>开始对话，体验大模型的强大能力</p>
+                </div>
+              ) : (
+                messages.map((m, idx) => (
+                  <div key={m.id || idx} style={{
+                    display:'flex', 
+                    gap:16, 
+                    marginBottom:32,
+                    justifyContent: m.role==='user'?'flex-end':'flex-start'
+                  }}>
+                    {m.role === 'assistant' && (
+                      <div style={{width:32, height:32, borderRadius:'50%', background:'var(--gold)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, color:'#000'}}>
+                        <Icon name="bot" size={18} />
+                      </div>
+                    )}
+                    <div style={{
+                      maxWidth: '85%',
+                      minWidth: '50px',
+                      background: m.role==='user' ? 'var(--bg3)' : 'transparent',
+                      padding: m.role==='user' ? '12px 16px' : '6px 0',
+                      borderRadius: 12,
+                      fontSize: 15,
+                      lineHeight: 1.6,
+                      color: 'var(--fg)'
+                    }}>
+                      {m.role === 'user' ? (
+                        <div style={{whiteSpace:'pre-wrap'}}>{m.content}</div>
+                      ) : m.thinking && !m.content ? (
+                        <div style={{display:'inline-flex', alignItems:'center', gap:10, color:'var(--fg2)', fontSize:14}}>
+                          <div className="spinner" style={{width:14,height:14,borderWidth:2}}></div>
+                          <span>AI 正在思考...</span>
+                        </div>
+                      ) : (
+                        <div className="markdown-body" dangerouslySetInnerHTML={renderMarkdown(m.content)} />
+                      )}
+                    </div>
+                    {m.role === 'user' && (
+                      <div style={{width:32, height:32, borderRadius:'50%', background:'var(--bg4)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, border:'1px solid var(--border)'}}>
+                        <Icon name="user" size={16} />
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+              <div ref={chatEndRef} />
+            </div>
+          </div>
+          
+          <div style={{padding:'0 24px 24px'}}>
+             <div style={{
+               maxWidth: 768, margin: '0 auto', background:'var(--bg2)', 
+               borderRadius: 16, border: '1px solid var(--border)', padding: '12px 16px',
+               display: 'flex', flexDirection: 'column', position: 'relative'
+             }}>
+               <textarea 
+                 value={inputMsg}
+                 onChange={e => setInputMsg(e.target.value)}
+                 onKeyDown={handleKeyDown}
+                 placeholder={generating ? "等待回复中..." : "输入消息，Shift+Enter换行..."}
+                 disabled={generating}
+                 style={{
+                   width: '100%', minHeight: 48, maxHeight: 200, background: 'transparent',
+                   border: 'none', color: 'var(--fg)', fontSize: 15, resize: 'none',
+                   outline: 'none', lineHeight: 1.5, paddingBottom: 32
+                 }}
+               />
+               <button 
+                 className={`btn ${generating ? 'btn-d' : 'btn-p'}`}
+                 onClick={sendMessage}
+                 disabled={!inputMsg.trim() || generating}
+                 style={{
+                   position: 'absolute', right: 12, bottom: 12, width: 32, height: 32,
+                   padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                   borderRadius: '50%'
+                 }}
+                 title="发送消息"
+               >
+                 {generating ? <div className="spinner" style={{width:16,height:16,borderWidth:2}}></div> : <Icon name="rocket" size={16} />}
+               </button>
+             </div>
+             <div style={{textAlign:'center', marginTop:8, fontSize:11, color:'var(--fg3)'}}>
+               {generating ? (awaitingFirstChunk ? '消息已发送，AI 正在思考中...' : 'AI 正在生成回复...') : 'AI 会产生错误信息，请注意核实。'}
+             </div>
+          </div>
+          
+        </div>
+      </div>
+    </div>
+  );
+}
+{% endverbatim %}

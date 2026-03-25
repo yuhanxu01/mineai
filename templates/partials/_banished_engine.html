@@ -1,0 +1,2369 @@
+{% verbatim %}
+// ── Banished Constants ──────────────────────────────────────────────
+const B_TILE = {
+  GRASS:0, RIVER:1, MOUNTAIN:2, FOREST:3, STONE:4, IRON:5,
+  DIRT_ROAD:6, BORDER:7, STONE_ROAD:8, WOOD_BRIDGE:9, STONE_BRIDGE:10
+};
+const B_SEASONS = ['spring','summer','autumn','winter'];
+const TICK_PER_YEAR = 1200;
+const TICK_PER_SEASON = 300;
+
+const VILLAGER_COLORS = {
+  working:'#c9a86c', moving:'#eeeeee', idle:'#7ab8e8', studying:'#5a8ac4',
+  sick:'#c45a5a', building:'#d49a5a', hungry:'#e88a1a', thirsty:'#5ad4e8',
+  upset:'#c47a5a',
+  frostbite:'#9ab4d4', dead:'#222222',
+};
+
+const RESOURCE_LABELS = {
+  logs:'木头', stone:'石料', iron:'铁矿', coal:'煤炭', firewood:'木柴',
+  iron_tools:'铁工具', steel_tools:'钢工具', wheat:'小麦', vegetables:'蔬菜',
+  fruit:'水果', fish:'鱼', venison:'鹿肉', mushrooms:'蘑菇', mutton:'羊肉',
+  chicken:'鸡肉', wool:'羊毛', leather:'皮革', herbs:'草药', ale:'麦酒',
+  hide_coat:'皮衣', wool_coat:'毛衣', warm_coat:'厚棉衣',
+  chickens:'鸡', sheep:'羊', cattle:'牛', gold:'金币', labor:'人工', water:'水',
+};
+
+const BUILDINGS_DATA = {
+  house:        {name:'木屋',    cost:{logs:16,stone:8},          workers:0, size:[2,2], cat:'housing'},
+  stone_house:  {name:'石屋',    cost:{logs:24,stone:40,iron:10}, workers:0, size:[2,2], cat:'housing'},
+  boarding_house:{name:'寄宿所', cost:{logs:100,stone:45},        workers:0, size:[4,3], cat:'housing'},
+  woodcutter:   {name:'伐木厂',  cost:{logs:24,stone:8},          workers:2, size:[3,3], cat:'resource'},
+  forester:     {name:'护林小屋',cost:{logs:32,stone:12},         workers:4, size:[3,3], cat:'resource'},
+  blacksmith:   {name:'铁匠铺',  cost:{logs:32,stone:55,iron:3},  workers:2, size:[3,2], cat:'production'},
+  tailor:       {name:'裁缝铺',  cost:{logs:32,stone:48,iron:16}, workers:2, size:[3,2], cat:'production'},
+  mine:         {name:'矿井',    cost:{logs:48,stone:68},         workers:10,size:[4,4], cat:'resource'},
+  quarry:       {name:'采石场',  cost:{logs:80,stone:40},         workers:10,size:[5,5], cat:'resource'},
+  gatherer:     {name:'采集小屋',cost:{logs:30,stone:12},         workers:4, size:[3,2], cat:'food'},
+  hunter:       {name:'狩猎小屋',cost:{logs:34,stone:12},         workers:3, size:[3,2], cat:'food'},
+  fishing_dock: {name:'渔场',    cost:{logs:30,stone:16},         workers:4, size:[2,4], cat:'food'},
+  herbalist:    {name:'草药医生',cost:{logs:30,stone:12},         workers:2, size:[2,2], cat:'food'},
+  barn:         {name:'储藏谷仓',cost:{logs:48,stone:16},         workers:0, size:[3,3], cat:'storage'},
+  stockpile:    {name:'料堆',    cost:{logs:10,stone:4},          workers:0, size:[2,2], cat:'storage'},
+  market:       {name:'集市',    cost:{logs:58,stone:62,iron:40}, workers:3, size:[5,5], cat:'storage'},
+  trading_post: {name:'贸易站',  cost:{logs:62,stone:80,iron:40}, workers:3, size:[4,5], cat:'trade'},
+  well:         {name:'水井',    cost:{logs:4,stone:4},           workers:0, size:[1,1], cat:'service', isWaterSource:true},
+  school:       {name:'学校',    cost:{logs:50,stone:16,iron:16}, workers:2, size:[3,3], cat:'service'},
+  hospital:     {name:'医院',    cost:{logs:52,stone:78,iron:32}, workers:2, size:[4,3], cat:'service'},
+  town_hall:    {name:'市政厅',  cost:{logs:62,stone:124,iron:48},workers:2, size:[4,4], cat:'service'},
+  chapel:       {name:'教堂',    cost:{logs:50,stone:130,iron:30},workers:1, size:[3,4], cat:'service'},
+  cemetery:     {name:'墓地',    cost:{logs:1,stone:1},           workers:0, size:[2,2], cat:'service'},
+  farm:         {name:'农田',    cost:{},                         workers:1, size:[5,5], cat:'food'},
+  orchard:      {name:'果园',    cost:{},                         workers:1, size:[5,5], cat:'food'},
+  pasture:      {name:'牧场',    cost:{logs:1},                   workers:1, size:[5,5], cat:'food'},
+  dirt_road:    {name:'泥土路',  cost:{labor:1},                  workers:0, size:[1,1], cat:'transport', isTile:true, place:'land', tile:B_TILE.DIRT_ROAD},
+  stone_road:   {name:'石头路',  cost:{stone:1,labor:1},          workers:0, size:[1,1], cat:'transport', isTile:true, place:'land', tile:B_TILE.STONE_ROAD},
+  wood_bridge:  {name:'木头桥',  cost:{logs:3,labor:2},           workers:0, size:[1,1], cat:'transport', isTile:true, place:'river', tile:B_TILE.WOOD_BRIDGE},
+  stone_bridge: {name:'石头桥',  cost:{stone:4,iron:1,labor:2},   workers:0, size:[1,1], cat:'transport', isTile:true, place:'river', tile:B_TILE.STONE_BRIDGE},
+};
+
+// All non-road buildings consume labor as well.
+// This keeps new buildings consistent without manually editing each cost table row.
+Object.entries(BUILDINGS_DATA).forEach(([, b]) => {
+  if (b.isTile) return; // roads/bridges already have explicit labor cost
+  const area = (b.size?.[0] || 1) * (b.size?.[1] || 1);
+  const baseLabor = Math.max(1, Math.ceil(area / 4) + (b.workers > 0 ? 1 : 0));
+  b.cost = {...(b.cost || {}), labor: (b.cost?.labor || 0) + baseLabor};
+});
+
+const B_CATS = {
+  housing:{name:'住宅'}, resource:{name:'资源'}, production:{name:'生产'},
+  food:{name:'食物'}, storage:{name:'仓储'}, trade:{name:'贸易'}, service:{name:'服务'},
+  transport:{name:'道路'},
+};
+
+const FOOD_KEYS = ['wheat','vegetables','fruit','fish','venison','mushrooms','mutton','chicken'];
+const RESOURCE_BUILDING_RADIUS = 8;
+const RESOURCE_RANGE_BUILDINGS = new Set(['woodcutter','forester','mine','quarry','gatherer','hunter','fishing_dock','herbalist']);
+const DETAIL_STOCK_KEYS = [
+  'logs','stone','iron','coal','firewood','iron_tools','steel_tools',
+  'wheat','vegetables','fruit','fish','venison','mushrooms','mutton',
+  'wool','leather','herbs','hide_coat','wool_coat','warm_coat'
+];
+
+// Natural flat colors per building type (no semi-transparent black)
+const BUILDING_COLORS = {
+  // Housing — warm timber
+  house:'#c8944e', stone_house:'#a09668', boarding_house:'#c8a04a',
+  // Resource
+  woodcutter:'#8a6038', forester:'#4a9054', mine:'#6a6878', quarry:'#90907c',
+  // Production
+  blacksmith:'#7a7888', tailor:'#a47898',
+  // Food
+  gatherer:'#5c9858', hunter:'#8a7048', fishing_dock:'#4e7898',
+  herbalist:'#5a9c74', farm:'#b4aa48', orchard:'#c8884a', pasture:'#6aaa4e',
+  // Storage
+  barn:'#b46050', stockpile:'#9a7a5c', market:'#bc9248',
+  // Trade
+  trading_post:'#c27840',
+  // Service
+  well:'#4e8cb0', school:'#7888b4', hospital:'#b45868',
+  town_hall:'#b09040', chapel:'#9878b4', cemetery:'#788878',
+};
+
+function villagerDotScale(v){
+  const age = Number(v?.age || 0);
+  if (age < 10) return 0.58;                     // child
+  if (v?.state === 'studying' || age < 18) return 0.78; // student/teen
+  return 1.0;                                    // adult
+}
+
+// ── Noise & Map ─────────────────────────────────────────────────────
+function sn(x,y,seed=42){const n=Math.sin(x*127.1+y*311.7+seed)*43758.5453;return n-Math.floor(n);}
+function _fade(t){return t*t*t*(t*(t*6-15)+10);}
+function _lerp(a,b,t){return a+(b-a)*t;}
+function _grad(h,x,y){
+  const g=h&7;
+  if(g===0)return x+y;
+  if(g===1)return -x+y;
+  if(g===2)return x-y;
+  if(g===3)return -x-y;
+  if(g===4)return x;
+  if(g===5)return -x;
+  if(g===6)return y;
+  return -y;
+}
+function noise(x,y,seed=42){
+  const ix=Math.floor(x), iy=Math.floor(y);
+  const xf=x-ix, yf=y-iy;
+  const u=_fade(xf), v=_fade(yf);
+  const xi=ix&255, yi=iy&255;
+  const h=(xv,yv,off)=>Math.floor(sn(xv,yv,seed+off)*256)&255;
+  const aa=h(xi,yi,11), ab=h(xi,yi+1,29), ba=h(xi+1,yi,47), bb=h(xi+1,yi+1,71);
+  const x1=_lerp(_grad(aa,xf,yf),_grad(ba,xf-1,yf),u);
+  const x2=_lerp(_grad(ab,xf,yf-1),_grad(bb,xf-1,yf-1),u);
+  return 0.5+0.5*_lerp(x1,x2,v);
+}
+function fractalNoise(x,y,seed=42){
+  let v=0,a=1,f=1,m=0;
+  for(let i=0;i<5;i++){v+=noise(x*f,y*f,seed+i*100)*a;m+=a;a*=0.5;f*=2;}
+  return v/m;
+}
+
+// ── BFS ─────────────────────────────────────────────────────────────
+function bfsPath(tiles,W,H,sx,sy,tx,ty){
+  if(sx===tx&&sy===ty)return[];
+  const key=(x,y)=>y*W+x;
+  const vis=new Set();
+  const q=[{x:sx,y:sy,path:[]}];
+  vis.add(key(sx,sy));
+  const dirs=[[0,1],[0,-1],[1,0],[-1,0]];
+  while(q.length){
+    const{x,y,path}=q.shift();
+    for(const[dx,dy]of dirs){
+      const nx=x+dx,ny=y+dy;
+      if(nx<0||ny<0||nx>=W||ny>=H)continue;
+      if(vis.has(key(nx,ny)))continue;
+      const t=tiles[ny]?.[nx];
+      if(!isPassableTile(t))continue;
+      vis.add(key(nx,ny));
+      const np=[...path,{x:nx,y:ny}];
+      if(nx===tx&&ny===ty)return np;
+      if(np.length<300)q.push({x:nx,y:ny,path:np});
+    }
+  }
+  return null;
+}
+
+// ── Building Icon Drawing ────────────────────────────────────────────
+function drawBuildingIcon(ctx,type,x,y,w,h){
+  ctx.save();
+  ctx.strokeStyle='#e8d9b8';
+  ctx.lineWidth=Math.max(0.5,w/32);
+  ctx.lineCap='square';
+  ctx.lineJoin='miter';
+  const cx=x+w/2,cy=y+h/2;
+  // scale down icons to avoid oversized look on small footprints
+  ctx.translate(cx, cy);
+  ctx.scale(0.72, 0.72);
+  ctx.translate(-cx, -cy);
+  switch(type){
+    case 'house': case 'stone_house':{
+      const rx=x+w*0.1,ry=y+h*0.45,rw=w*0.8,rh=h*0.5;
+      ctx.strokeRect(rx,ry,rw,rh);
+      ctx.beginPath();ctx.moveTo(x+w*0.05,y+h*0.47);ctx.lineTo(cx,y+h*0.08);ctx.lineTo(x+w*0.95,y+h*0.47);ctx.stroke();
+      ctx.strokeRect(cx-w*0.1,ry+rh*0.25,w*0.2,h*0.2);
+      if(type==='stone_house'){ctx.lineWidth*=1.8;ctx.strokeRect(rx+1,ry+1,rw-2,rh-2);}
+      break;}
+    case 'boarding_house':{
+      ctx.strokeRect(x+w*0.05,y+h*0.4,w*0.9,h*0.55);
+      ctx.beginPath();ctx.moveTo(x+w*0.05,y+h*0.42);ctx.lineTo(cx,y+h*0.08);ctx.lineTo(x+w*0.95,y+h*0.42);ctx.stroke();
+      for(let i=0;i<3;i++)ctx.strokeRect(x+w*(0.12+i*0.27),y+h*0.55,w*0.18,h*0.2);
+      break;}
+    case 'woodcutter':{
+      const r=Math.min(w,h)*0.35;
+      ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.stroke();
+      for(let i=0;i<8;i++){const a=i/8*Math.PI*2;ctx.beginPath();ctx.moveTo(cx+Math.cos(a)*r*0.7,cy+Math.sin(a)*r*0.7);ctx.lineTo(cx+Math.cos(a+0.3)*r*1.15,cy+Math.sin(a+0.3)*r*1.15);ctx.lineTo(cx+Math.cos(a+0.6)*r*0.7,cy+Math.sin(a+0.6)*r*0.7);ctx.stroke();}
+      break;}
+    case 'forester':{
+      ctx.beginPath();ctx.moveTo(cx,y+h*0.05);ctx.lineTo(x+w*0.15,y+h*0.55);ctx.lineTo(x+w*0.85,y+h*0.55);ctx.closePath();ctx.stroke();
+      ctx.strokeRect(cx-w*0.07,y+h*0.55,w*0.14,h*0.3);
+      break;}
+    case 'blacksmith':{
+      ctx.strokeRect(cx-w*0.3,cy+h*0.05,w*0.6,h*0.22);
+      ctx.strokeRect(cx-w*0.2,cy-h*0.08,w*0.4,h*0.13);
+      ctx.strokeRect(cx-w*0.08,y+h*0.1,w*0.16,h*0.32);
+      ctx.strokeRect(cx-w*0.18,y+h*0.05,w*0.36,h*0.16);
+      break;}
+    case 'tailor':{
+      ctx.beginPath();ctx.ellipse(cx-w*0.2,cy,w*0.12,h*0.28,0,0,Math.PI*2);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(cx+w*0.05,y+h*0.15);ctx.lineTo(cx+w*0.4,y+h*0.5);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(cx+w*0.4,y+h*0.15);ctx.lineTo(cx+w*0.05,y+h*0.5);ctx.stroke();
+      ctx.beginPath();ctx.arc(cx+w*0.05,y+h*0.15,w*0.07,0,Math.PI*2);ctx.stroke();
+      ctx.beginPath();ctx.arc(cx+w*0.4,y+h*0.15,w*0.07,0,Math.PI*2);ctx.stroke();
+      break;}
+    case 'mine':{
+      ctx.beginPath();ctx.moveTo(cx-w*0.3,y+h*0.75);ctx.lineTo(cx,y+h*0.2);ctx.lineTo(cx+w*0.3,y+h*0.75);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(cx-w*0.4,y+h*0.75);ctx.lineTo(cx+w*0.4,y+h*0.75);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(cx-w*0.15,y+h*0.48);ctx.lineTo(cx+w*0.15,y+h*0.48);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(cx,y+h*0.2);ctx.lineTo(cx,y+h*0.85);ctx.stroke();
+      break;}
+    case 'quarry':{
+      for(let i=0;i<3;i++)ctx.strokeRect(x+w*(0.08+i*0.1),y+h*(0.15+i*0.18),w*(0.84-i*0.2),h*(0.65-i*0.18));
+      break;}
+    case 'gatherer':{
+      ctx.beginPath();ctx.ellipse(cx,cy+h*0.12,w*0.35,h*0.22,0,0,Math.PI);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(cx-w*0.35,cy+h*0.12);ctx.lineTo(cx-w*0.25,cy-h*0.22);ctx.lineTo(cx+w*0.25,cy-h*0.22);ctx.lineTo(cx+w*0.35,cy+h*0.12);ctx.stroke();
+      break;}
+    case 'hunter':{
+      ctx.beginPath();ctx.moveTo(x+w*0.12,cy);ctx.lineTo(x+w*0.78,cy);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(x+w*0.78,cy);ctx.lineTo(x+w*0.58,cy-h*0.15);ctx.moveTo(x+w*0.78,cy);ctx.lineTo(x+w*0.58,cy+h*0.15);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(x+w*0.12,cy);ctx.lineTo(x+w*0.28,cy-h*0.12);ctx.moveTo(x+w*0.12,cy);ctx.lineTo(x+w*0.28,cy+h*0.12);ctx.stroke();
+      break;}
+    case 'fishing_dock':{
+      for(let i=0;i<3;i++){ctx.beginPath();ctx.moveTo(x+w*0.08,cy+h*(-0.12+i*0.13));ctx.bezierCurveTo(x+w*0.3,cy+h*(-0.22+i*0.13),x+w*0.5,cy+h*(i*0.13),x+w*0.72,cy+h*(-0.12+i*0.13));ctx.stroke();}
+      ctx.beginPath();ctx.moveTo(x+w*0.78,y+h*0.15);ctx.lineTo(x+w*0.78,cy+h*0.12);ctx.arc(x+w*0.73,cy+h*0.12,w*0.05,0,Math.PI*1.5,true);ctx.stroke();
+      break;}
+    case 'herbalist':{
+      ctx.beginPath();ctx.ellipse(cx,cy-h*0.08,w*0.22,h*0.28,Math.PI/4,0,Math.PI*2);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(cx,cy-h*0.3);ctx.lineTo(cx,cy+h*0.12);ctx.stroke();
+      ctx.strokeStyle='#5ac4b4';
+      ctx.beginPath();ctx.moveTo(cx-w*0.1,cy+h*0.25);ctx.lineTo(cx+w*0.1,cy+h*0.25);ctx.moveTo(cx,cy+h*0.15);ctx.lineTo(cx,cy+h*0.35);ctx.stroke();
+      break;}
+    case 'barn':{
+      ctx.beginPath();ctx.arc(cx,cy,w*0.35,Math.PI,0);ctx.stroke();
+      ctx.strokeRect(cx-w*0.35,cy,w*0.7,h*0.32);
+      ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(cx,cy+h*0.32);ctx.stroke();
+      break;}
+    case 'market':{
+      ctx.beginPath();
+      for(let i=0;i<=4;i++){const mx=x+w*(0.08+i*0.2);ctx.moveTo(mx,cy-h*0.18);ctx.bezierCurveTo(mx+w*0.05,cy-h*0.3,mx+w*0.15,cy-h*0.08,mx+w*0.2,cy-h*0.18);}
+      ctx.stroke();
+      for(let i=0;i<3;i++)for(let j=0;j<2;j++)ctx.strokeRect(x+w*(0.1+i*0.29),cy+h*(-0.05+j*0.25),w*0.2,h*0.2);
+      break;}
+    case 'trading_post':{
+      ctx.beginPath();ctx.moveTo(cx,y+h*0.08);ctx.lineTo(cx,cy+h*0.2);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(cx,y+h*0.1);ctx.bezierCurveTo(cx+w*0.42,y+h*0.18,cx+w*0.42,cy,cx,cy);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(cx-w*0.45,cy+h*0.08);ctx.bezierCurveTo(cx-w*0.28,cy+h*0.35,cx+w*0.28,cy+h*0.35,cx+w*0.45,cy+h*0.08);ctx.stroke();
+      break;}
+    case 'well':{
+      ctx.beginPath();ctx.arc(cx,cy-h*0.05,Math.min(w,h)*0.25,0,Math.PI*2);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(cx-w*0.35,cy-h*0.18);ctx.lineTo(cx+w*0.35,cy-h*0.18);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(cx,cy-h*0.18);ctx.lineTo(cx,cy-h*0.05);ctx.stroke();
+      ctx.strokeRect(cx-w*0.07,cy+h*0.05,w*0.14,h*0.15);
+      ctx.strokeStyle='#5ad4e8';
+      ctx.beginPath();ctx.moveTo(cx-w*0.2,cy+h*0.3);ctx.bezierCurveTo(cx-w*0.08,cy+h*0.18,cx+w*0.08,cy+h*0.42,cx+w*0.2,cy+h*0.3);ctx.stroke();
+      break;}
+    case 'school':{
+      ctx.beginPath();ctx.moveTo(cx,y+h*0.18);ctx.lineTo(cx,cy+h*0.3);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(cx,y+h*0.18);ctx.bezierCurveTo(cx-w*0.4,y+h*0.12,cx-w*0.4,cy+h*0.22,cx,cy+h*0.3);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(cx,y+h*0.18);ctx.bezierCurveTo(cx+w*0.4,y+h*0.12,cx+w*0.4,cy+h*0.22,cx,cy+h*0.3);ctx.stroke();
+      for(let i=0;i<3;i++){const ly=y+h*(0.28+i*0.13);ctx.beginPath();ctx.moveTo(cx-w*0.3,ly);ctx.lineTo(cx-w*0.06,ly+h*0.02);ctx.stroke();ctx.beginPath();ctx.moveTo(cx+w*0.06,ly);ctx.lineTo(cx+w*0.3,ly+h*0.02);ctx.stroke();}
+      break;}
+    case 'hospital':{
+      ctx.strokeStyle='#c45a5a';ctx.lineWidth*=2;
+      const cr=Math.min(w,h)*0.36;
+      ctx.beginPath();ctx.arc(cx,cy,cr,0,Math.PI*2);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(cx-cr*0.55,cy);ctx.lineTo(cx+cr*0.55,cy);ctx.moveTo(cx,cy-cr*0.55);ctx.lineTo(cx,cy+cr*0.55);ctx.stroke();
+      break;}
+    case 'town_hall':{
+      ctx.beginPath();ctx.arc(cx,cy,w*0.35,Math.PI,0);ctx.stroke();
+      for(let i=0;i<4;i++)ctx.strokeRect(x+w*(0.1+i*0.22),cy,w*0.06,h*0.3);
+      ctx.strokeRect(x+w*0.07,cy+h*0.3,w*0.86,h*0.05);
+      ctx.beginPath();ctx.moveTo(cx-w*0.04,y+h*0.04);ctx.lineTo(cx+w*0.04,y+h*0.04);ctx.lineTo(cx,y);ctx.closePath();ctx.stroke();
+      break;}
+    case 'chapel':{
+      ctx.beginPath();ctx.arc(cx,cy+h*0.12,w*0.3,Math.PI,0);ctx.stroke();
+      ctx.strokeRect(cx-w*0.2,cy+h*0.12,w*0.4,h*0.28);
+      ctx.beginPath();ctx.moveTo(cx,y+h*0.08);ctx.lineTo(cx,cy+h*0.05);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(cx-w*0.15,y+h*0.28);ctx.lineTo(cx+w*0.15,y+h*0.28);ctx.stroke();
+      break;}
+    case 'cemetery':{
+      for(let i=0;i<3;i++){const gx=x+w*(0.15+i*0.28);ctx.beginPath();ctx.moveTo(gx,cy-h*0.3);ctx.lineTo(gx,cy+h*0.1);ctx.stroke();ctx.beginPath();ctx.moveTo(gx-w*0.06,cy-h*0.18);ctx.lineTo(gx+w*0.06,cy-h*0.18);ctx.stroke();}
+      break;}
+    case 'farm':{
+      ctx.strokeRect(x+w*0.04,y+h*0.08,w*0.92,h*0.82);
+      for(let i=1;i<3;i++){ctx.beginPath();ctx.moveTo(x+w*0.04,y+h*(0.08+i*0.28));ctx.lineTo(x+w*0.96,y+h*(0.08+i*0.28));ctx.stroke();}
+      ctx.setLineDash([2,3]);
+      for(let i=1;i<4;i++){ctx.beginPath();ctx.moveTo(x+w*(0.04+i*0.23),y+h*0.08);ctx.lineTo(x+w*(0.04+i*0.23),y+h*0.9);ctx.stroke();}
+      ctx.setLineDash([]);
+      break;}
+    case 'orchard':{
+      for(let i=0;i<3;i++){const tx=x+w*(0.14+i*0.3),ty2=cy-h*0.08;ctx.beginPath();ctx.arc(tx,ty2,w*0.1,0,Math.PI*2);ctx.stroke();ctx.beginPath();ctx.moveTo(tx,ty2+w*0.1);ctx.lineTo(tx,cy+h*0.3);ctx.stroke();}
+      break;}
+    case 'pasture':{
+      ctx.setLineDash([3,2]);ctx.strokeRect(x+w*0.04,y+h*0.08,w*0.92,h*0.82);ctx.setLineDash([]);
+      ctx.beginPath();ctx.arc(cx,cy,w*0.12,0,Math.PI*2);ctx.stroke();
+      ctx.beginPath();ctx.arc(cx+w*0.18,cy-h*0.05,w*0.07,0,Math.PI*2);ctx.stroke();
+      break;}
+    default:
+      ctx.strokeRect(x+w*0.1,y+h*0.1,w*0.8,h*0.8);
+      ctx.beginPath();ctx.moveTo(x+w*0.1,y+h*0.35);ctx.lineTo(cx,y+h*0.08);ctx.lineTo(x+w*0.9,y+h*0.35);ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function getTileColor(t){
+  switch(t){
+    case B_TILE.GRASS: return '#3a6b28';
+    case B_TILE.RIVER: return '#1a4e80';
+    case B_TILE.MOUNTAIN: return '#5a5a6a';
+    case B_TILE.FOREST: return '#1e4410';
+    case B_TILE.STONE: return '#7a6a5a';
+    case B_TILE.IRON: return '#7a4530';
+    case B_TILE.DIRT_ROAD: return '#6f5a3f';
+    case B_TILE.STONE_ROAD: return '#8d8d8d';
+    case B_TILE.WOOD_BRIDGE: return '#6e4c2e';
+    case B_TILE.STONE_BRIDGE: return '#7b7b7b';
+    case B_TILE.BORDER: return '#14161a';
+    default: return '#3a6b28';
+  }
+}
+
+function isBridgeTile(t){
+  return t===B_TILE.WOOD_BRIDGE || t===B_TILE.STONE_BRIDGE;
+}
+
+function isPassableTile(t){
+  if(t===B_TILE.MOUNTAIN || t===B_TILE.BORDER || t===B_TILE.RIVER)return false;
+  return true;
+}
+
+function carryCapacity(v){
+  return v?.has_cart ? 50 : 10;
+}
+
+// ── BanishedEngine ───────────────────────────────────────────────────
+class BanishedEngine {
+  constructor(canvas, state, onUpdate) {
+    this.canvas = canvas;
+    this.ctx = canvas.getContext('2d');
+    this.state = JSON.parse(JSON.stringify(state));
+    this.onUpdate = onUpdate;
+    this.zoom = 16;
+    this.minZoom = 6; this.maxZoom = 40;
+    // Initialize camera to center the map
+    const m = this.state.map;
+    const mapW = m.width * this.zoom;
+    const mapH = m.height * this.zoom;
+    // camX = offset added to tile position: sx2 = tx*z - camX
+    // To center: camX should be (mapW - canvasW) / 2 when map < canvas
+    this.camX = (mapW - canvas.width) / 2;
+    this.camY = (mapH - canvas.height) / 2;
+    console.log('[BanishedEngine] Init:', {canvasW: canvas.width, canvasH: canvas.height, mapW, mapH, camX: this.camX, camY: this.camY});
+    this.dragging = false; this.lastMouse = null;
+    this.buildMode = null; this.buildGhost = null;
+    this.selectedBuilding = null; this.selectedVillager = null;
+    this.speed = state.time?.speed || 1;
+    this.running = false;
+    this.lastFrameTime = 0; this.tickAccum = 0;
+    this.lastSyncTime = Date.now(); this.syncCallback = null;
+    this.prevSyncState = JSON.parse(JSON.stringify(state));
+    this._bind();
+    this.mouseX = -1; this.mouseY = -1;
+    this.hoverTile = null;
+    this.hoverBuilding = null;
+    this.hoverVillager = null;
+    this._productionEffects = [];
+    this._buildCompleteEffects = [];
+    // Gathering zones by resource type
+    this.gatheringZones = this.state.gatheringZones || {stone:[], iron:[], wood:[]};
+    this.gatheringMode = false;
+    this.gatheringStart = null;
+    this.gatheringResourceType = 'wood';
+    this.workerPolicy = this.state.workerPolicy || 'balanced';
+    // Initialize tile resources (trees and food on each tile)
+    if (!this.state.map.tile_resources) {
+      this.state.map.tile_resources = this._generateTileResources(m.width, m.height, m.tiles);
+    }
+    if(!this.state.map.wildlife)this.state.map.wildlife=[];
+    this._refreshBuildingDetailStats(this.state);
+  }
+
+  _generateTileResources(width, height, tiles) {
+    const resources = [];
+    for (let y = 0; y < height; y++) {
+      resources[y] = [];
+      for (let x = 0; x < width; x++) {
+        const tile = tiles[y][x];
+        const trees = [];
+        const food = [];
+
+        // Generate trees on GRASS and FOREST tiles
+        if (tile === B_TILE.GRASS || tile === B_TILE.FOREST) {
+          const maxTrees = tile === B_TILE.FOREST ? 4 : 1;
+          const treeCount = 1 + Math.floor(sn(x * 7.3, y * 5.7, 13) * (maxTrees - 1));
+          for (let i = 0; i < treeCount; i++) {
+            const treeSize = Math.floor(sn(x * 2.9 + i * 3, y * 4.1 + i * 5, 31 + i * 7) * 4);
+            trees.push({
+              size: treeSize, // 0-3, affects visual size and resource yield
+              growth: Math.min(1.0, treeSize * 0.3 + sn(x * 9.7 + i, y * 8.3 + i, 73) * 0.4), // 0-1 growth stage
+              maxGrowth: 1.0
+            });
+          }
+        }
+
+        // Generate food on GRASS and FOREST tiles (more sparse)
+        if ((tile === B_TILE.GRASS || tile === B_TILE.FOREST) && sn(x * 11.3, y * 13.7, 57) > 0.65) {
+          const foodTypes = ['berries', 'mushroom', 'root'];
+          const foodType = foodTypes[Math.floor(sn(x * 5.1, y * 7.3, 91) * 3)];
+          const foodCount = 1 + Math.floor(sn(x * 15.7, y * 17.3, 23) * 2); // 1-3 food items
+          for (let i = 0; i < foodCount; i++) {
+            food.push({
+              type: foodType,
+              growth: sn(x * 3.1 + i * 5, y * 4.7 + i * 7, 41 + i) * 0.5, // start small (0-0.5)
+              maxGrowth: 1.0
+            });
+          }
+        }
+
+        resources[y][x] = { trees, food };
+      }
+    }
+    return resources;
+  }
+
+  _bind() {
+    const c = this.canvas;
+    this._md = this._onMouseDown.bind(this);
+    this._mm = this._onMouseMove.bind(this);
+    this._mu = this._onMouseUp.bind(this);
+    this._mw = this._onWheel.bind(this);
+    this._ts = this._onTouchStart.bind(this);
+    this._tm = this._onTouchMove.bind(this);
+    this._te = this._onTouchEnd.bind(this);
+    this._kd = this._onKeyDown.bind(this);
+    c.addEventListener('mousedown', this._md);
+    c.addEventListener('mousemove', this._mm);
+    c.addEventListener('mouseup', this._mu);
+    c.addEventListener('wheel', this._mw, {passive:false});
+    c.addEventListener('touchstart', this._ts, {passive:false});
+    c.addEventListener('touchmove', this._tm, {passive:false});
+    c.addEventListener('touchend', this._te, {passive:false});
+    window.addEventListener('keydown', this._kd);
+  }
+
+  destroy() {
+    this.running = false;
+    if (this.rafId) cancelAnimationFrame(this.rafId);
+    const c = this.canvas;
+    c.removeEventListener('mousedown', this._md);
+    c.removeEventListener('mousemove', this._mm);
+    c.removeEventListener('mouseup', this._mu);
+    c.removeEventListener('wheel', this._mw);
+    c.removeEventListener('touchstart', this._ts);
+    c.removeEventListener('touchmove', this._tm);
+    c.removeEventListener('touchend', this._te);
+    window.removeEventListener('keydown', this._kd);
+  }
+
+  _onKeyDown(e) {
+    // Only handle when game canvas is active (not when typing in inputs)
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+    const spd = Math.max(this.zoom * 1.5, 20);
+    switch(e.key) {
+      case 'ArrowLeft': case 'a': case 'A': e.preventDefault(); this.camX -= spd; this._clampCam(); break;
+      case 'ArrowRight': case 'd': case 'D': e.preventDefault(); this.camX += spd; this._clampCam(); break;
+      case 'ArrowUp': case 'w': case 'W': e.preventDefault(); this.camY -= spd; this._clampCam(); break;
+      case 'ArrowDown': case 's': case 'S': e.preventDefault(); this.camY += spd; this._clampCam(); break;
+      case '=': case '+': { const nz=Math.min(this.maxZoom,this.zoom*1.25);const cx=this.canvas.width/2,cy=this.canvas.height/2;const wx=(cx+this.camX)/this.zoom,wy=(cy+this.camY)/this.zoom;this.zoom=nz;this.camX=wx*nz-cx;this.camY=wy*nz-cy;this._clampCam();break;}
+      case '-': case '_': { const nz=Math.max(this.minZoom,this.zoom*0.8);const cx=this.canvas.width/2,cy=this.canvas.height/2;const wx=(cx+this.camX)/this.zoom,wy=(cy+this.camY)/this.zoom;this.zoom=nz;this.camX=wx*nz-cx;this.camY=wy*nz-cy;this._clampCam();break;}
+      case 'Escape': this.cancelBuildMode(); this.cancelGatheringMode(); break;
+      case 'g': case 'G': if(!this.buildMode){this.setGatheringMode('wood');} break;
+    }
+  }
+
+  _screenToTile(sx, sy) {
+    return { x: Math.floor((sx + this.camX) / this.zoom), y: Math.floor((sy + this.camY) / this.zoom) };
+  }
+
+  _onMouseDown(e) {
+    const r = this.canvas.getBoundingClientRect();
+    const sx = e.clientX - r.left, sy = e.clientY - r.top;
+    if (this.buildMode) { this._placeBuild(sx, sy); return; }
+    if (this.gatheringMode) {
+      this.gatheringStart = this._screenToTile(sx, sy);
+      this.dragging = true;
+      this.lastMouse = {x:sx,y:sy};
+      return;
+    }
+    this.dragging = true; this.lastMouse = {x:sx,y:sy};
+    const t = this._screenToTile(sx, sy); this._trySelect(t.x, t.y);
+  }
+
+  _onMouseMove(e) {
+    const r = this.canvas.getBoundingClientRect();
+    const sx = e.clientX - r.left, sy = e.clientY - r.top;
+    this.mouseX = sx; this.mouseY = sy;
+
+    if (this.buildMode) {
+      const t = this._screenToTile(sx, sy);
+      const bd = BUILDINGS_DATA[this.buildMode];
+      if (bd) this.buildGhost = {x:t.x,y:t.y,w:bd.size[0],h:bd.size[1]};
+      return;
+    }
+    if (this.gatheringMode && this.gatheringStart && this.dragging) {
+      // Updating gathering zone preview
+      return;
+    }
+    if (!this.dragging) {
+      this._updateHover(sx, sy);
+      return;
+    }
+    this.camX -= sx - this.lastMouse.x;
+    this.camY -= sy - this.lastMouse.y;
+    this.lastMouse = {x:sx,y:sy};
+    this._clampCam();
+  }
+
+  _updateHover(sx, sy) {
+    const t = this._screenToTile(sx, sy);
+    this.hoverTile = t;
+
+    // 检测悬停的建筑
+    this.hoverBuilding = null;
+    for (const b of this.state.buildings) {
+      if (t.x >= b.x && t.x < b.x+b.w && t.y >= b.y && t.y < b.y+b.h) {
+        this.hoverBuilding = b;
+        break;
+      }
+    }
+
+    // 检测悬停的村民
+    this.hoverVillager = null;
+    for (const v of this.state.villagers) {
+      if (v.state === 'dead') continue;
+      const vx = Math.floor(v.x), vy = Math.floor(v.y);
+      if (vx === t.x && vy === t.y) {
+        this.hoverVillager = v;
+        break;
+      }
+    }
+  }
+
+  _onMouseUp() {
+    if (this.gatheringMode && this.gatheringStart && this.dragging) {
+      const endTile = this._screenToTile(this.mouseX, this.mouseY);
+      const start = this.gatheringStart;
+      // Normalize rectangle
+      const x = Math.min(start.x, endTile.x);
+      const y = Math.min(start.y, endTile.y);
+      const w = Math.abs(endTile.x - start.x) + 1;
+      const h = Math.abs(endTile.y - start.y) + 1;
+      const typ=this.gatheringResourceType||'wood';
+      if(!this.gatheringZones[typ])this.gatheringZones[typ]=[];
+      this.gatheringZones[typ].push({x, y, w, h});
+      this.state.gatheringZones = this.gatheringZones;
+      this.onUpdate({state:this.state});
+      this.gatheringStart = null;
+      this.gatheringMode = false;
+      this.dragging = false;
+      return;
+    }
+    this.dragging = false;
+  }
+
+  _onWheel(e) {
+    e.preventDefault();
+    const r = this.canvas.getBoundingClientRect();
+    const sx = e.clientX - r.left, sy = e.clientY - r.top;
+    const f = e.deltaY > 0 ? 0.85 : 1.18;
+    const newZoom = Math.max(this.minZoom, Math.min(this.maxZoom, this.zoom * f));
+    // anchor zoom at cursor: keep world point under cursor fixed
+    const worldX = (sx + this.camX) / this.zoom;
+    const worldY = (sy + this.camY) / this.zoom;
+    this.zoom = newZoom;
+    this.camX = worldX * this.zoom - sx;
+    this.camY = worldY * this.zoom - sy;
+    this._clampCam();
+  }
+
+  _onTouchStart(e) {
+    e.preventDefault();
+    if (e.touches.length === 1) {
+      this.dragging = true;
+      this.lastMouse = {x:e.touches[0].clientX, y:e.touches[0].clientY};
+      this.pinchDist = null; this.lastPinchMid = null;
+    } else if (e.touches.length === 2) {
+      this.dragging = false;
+      this.pinchDist = Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY);
+      this.lastPinchMid = {x:(e.touches[0].clientX+e.touches[1].clientX)/2, y:(e.touches[0].clientY+e.touches[1].clientY)/2};
+    }
+  }
+
+  _onTouchMove(e) {
+    e.preventDefault();
+    if (e.touches.length === 2) {
+      const d = Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY);
+      const mx = (e.touches[0].clientX+e.touches[1].clientX)/2;
+      const my = (e.touches[0].clientY+e.touches[1].clientY)/2;
+      const r = this.canvas.getBoundingClientRect();
+      const sx = mx - r.left, sy = my - r.top;
+      if (this.pinchDist) {
+        // anchor zoom at pinch midpoint
+        const newZoom = Math.max(this.minZoom, Math.min(this.maxZoom, this.zoom * d / this.pinchDist));
+        const worldX = (sx + this.camX) / this.zoom;
+        const worldY = (sy + this.camY) / this.zoom;
+        this.zoom = newZoom;
+        this.camX = worldX * this.zoom - sx;
+        this.camY = worldY * this.zoom - sy;
+      }
+      // also pan with 2-finger drag
+      if (this.lastPinchMid) {
+        this.camX -= mx - this.lastPinchMid.x;
+        this.camY -= my - this.lastPinchMid.y;
+      }
+      this.pinchDist = d;
+      this.lastPinchMid = {x:mx, y:my};
+      this._clampCam();
+    } else if (e.touches.length === 1 && this.dragging) {
+      const dx = e.touches[0].clientX - this.lastMouse.x, dy = e.touches[0].clientY - this.lastMouse.y;
+      this.camX -= dx; this.camY -= dy;
+      this.lastMouse = {x:e.touches[0].clientX, y:e.touches[0].clientY};
+      this._clampCam();
+    }
+  }
+
+  _onTouchEnd(e) {
+    if (e.touches.length === 0) { this.dragging = false; this.pinchDist = null; this.lastPinchMid = null; }
+    else if (e.touches.length === 1) { this.dragging = true; this.pinchDist = null; this.lastPinchMid = null; this.lastMouse = {x:e.touches[0].clientX, y:e.touches[0].clientY}; }
+  }
+
+  _clampCam() {
+    const m = this.state.map;
+    const mapW = m.width * this.zoom;
+    const mapH = m.height * this.zoom;
+    const canvasW = this.canvas.width;
+    const canvasH = this.canvas.height;
+
+    // If map is larger than canvas: normal scroll (camX in [0, mapW - canvasW])
+    // If map is smaller or equal: allow showing empty space around it (camX in [-(canvasW-mapW)/2, (canvasW-mapW)/2])
+    if (mapW > canvasW) {
+      this.camX = Math.max(0, Math.min(mapW - canvasW, this.camX));
+    } else {
+      const margin = (canvasW - mapW) / 2;
+      this.camX = Math.max(-margin, Math.min(margin, this.camX));
+    }
+
+    if (mapH > canvasH) {
+      this.camY = Math.max(0, Math.min(mapH - canvasH, this.camY));
+    } else {
+      const margin = (canvasH - mapH) / 2;
+      this.camY = Math.max(-margin, Math.min(margin, this.camY));
+    }
+  }
+
+  _trySelect(tx, ty) {
+    for (const v of this.state.villagers) {
+      if (Math.floor(v.x) === tx && Math.floor(v.y) === ty) {
+        this.selectedVillager = v; this.selectedBuilding = null;
+        this.onUpdate({selectedVillager:v,selectedBuilding:null}); return;
+      }
+    }
+    for (const b of this.state.buildings) {
+      if (tx >= b.x && tx < b.x+b.w && ty >= b.y && ty < b.y+b.h) {
+        this.selectedBuilding = b; this.selectedVillager = null;
+        this.onUpdate({selectedBuilding:b,selectedVillager:null}); return;
+      }
+    }
+    this.selectedBuilding = null; this.selectedVillager = null;
+    this.onUpdate({selectedBuilding:null,selectedVillager:null});
+  }
+
+  _placeBuild(sx, sy) {
+    const t = this._screenToTile(sx, sy);
+    const type = this.buildMode;
+    const bd = BUILDINGS_DATA[type];
+    if (!bd) return;
+    const res = this.state.resources;
+    for (const [r,a] of Object.entries(bd.cost)) {
+      if ((res[r]||0) < a) { this.onUpdate({buildError:`资源不足：需要 ${a} ${RESOURCE_LABELS[r]||r}`}); return; }
+    }
+    const m = this.state.map;
+    if (t.x < 0 || t.y < 0 || t.x+bd.size[0] > m.width || t.y+bd.size[1] > m.height) return;
+    const tt = m.tiles[t.y]?.[t.x];
+    if(bd.isTile){
+      const overlapBuilding=this.state.buildings.some(ob=>t.x>=ob.x&&t.x<ob.x+ob.w&&t.y>=ob.y&&t.y<ob.y+ob.h);
+      if(overlapBuilding){ this.onUpdate({buildError:'道路/桥梁不能与建筑重叠'}); return; }
+      if(bd.place==='land'){
+        if(tt===B_TILE.MOUNTAIN||tt===B_TILE.BORDER||tt===B_TILE.RIVER)return;
+      }else if(bd.place==='river'){
+        if(tt!==B_TILE.RIVER)return;
+      }
+      for (const [r,a] of Object.entries(bd.cost)) res[r] -= a;
+      m.tiles[t.y][t.x]=bd.tile;
+      this.buildMode = null; this.buildGhost = null;
+      this.onUpdate({state:this.state,buildError:null});
+      return;
+    }
+    for (let dy=0;dy<bd.size[1];dy++) for (let dx=0;dx<bd.size[0];dx++) {
+      const ct = m.tiles[t.y+dy]?.[t.x+dx];
+      if (ct === B_TILE.MOUNTAIN || ct === B_TILE.BORDER || ct === B_TILE.RIVER) return;
+    }
+    for (const ob of this.state.buildings) {
+      const overlap = !(t.x + bd.size[0] <= ob.x || ob.x + ob.w <= t.x || t.y + bd.size[1] <= ob.y || ob.y + ob.h <= t.y);
+      if (overlap) { this.onUpdate({buildError:'该位置与现有建筑重叠'}); return; }
+    }
+    for (const [r,a] of Object.entries(bd.cost)) res[r] -= a;
+    // Scan footprint for trees/food — workers must clear them before building
+    const clearingJobs=[];
+    if(m.tile_resources){
+      for(let dy=0;dy<bd.size[1];dy++){
+        for(let dx=0;dx<bd.size[0];dx++){
+          const tx=t.x+dx,ty=t.y+dy;
+          const tileRes=m.tile_resources[ty]?.[tx];
+          if(tileRes&&((tileRes.trees&&tileRes.trees.length>0)||(tileRes.food&&tileRes.food.length>0))){
+            clearingJobs.push({x:tx,y:ty});
+          }
+        }
+      }
+    }
+    const b = {
+      id:`b_${Date.now()}_${Math.random().toString(36).slice(2,8)}`,
+      type, x:t.x, y:t.y, w:bd.size[0], h:bd.size[1],
+      workers_assigned:0, workers_max:bd.workers,
+      residents:[], built:Object.keys(bd.cost).length===0,
+      progress:Object.keys(bd.cost).length===0?1.0:0.0,
+      storage:{}, storage_cap:this._defaultStorageCap(type), storage_used:0, water_storage:type==='well'?200:0,
+      carts_unlocked:type==='blacksmith'?false:undefined,
+      forester_mode:type==='forester'?'auto':undefined,
+      yield_current:{}, yield_current_total:0,
+      yield_last:{}, yield_last_total:0, yield_last_season:null,
+      _clearing_jobs:clearingJobs.length>0?clearingJobs:undefined,
+    };
+    this.state.buildings.push(b);
+    this.buildMode = null; this.buildGhost = null;
+    this.onUpdate({state:this.state,buildError:null});
+  }
+
+  setBuildMode(type) { this.cancelGatheringMode(); this.buildMode = type; this.buildGhost = null; }
+  cancelBuildMode() { this.buildMode = null; this.buildGhost = null; }
+  setGatheringMode(resourceType='wood') {
+    this.cancelBuildMode();
+    this.gatheringMode = true;
+    this.gatheringStart = null;
+    this.gatheringResourceType = resourceType;
+  }
+  cancelGatheringMode() { this.gatheringMode = false; this.gatheringStart = null; }
+  clearGatheringZones(resourceType=null){
+    if(resourceType){
+      this.gatheringZones[resourceType]=[];
+    }else{
+      this.gatheringZones={stone:[],iron:[],wood:[]};
+    }
+    this.state.gatheringZones=this.gatheringZones;
+    this.onUpdate({state:this.state});
+  }
+  setWorkerPolicy(policy) {
+    this.workerPolicy = (policy === 'natural_only') ? 'natural_only' : 'balanced';
+    this.state.workerPolicy = this.workerPolicy;
+    this.onUpdate({state:this.state});
+  }
+  setSpeed(s) { this.speed = s; if (this.state.time) this.state.time.speed = s; }
+  setForesterMode(buildingId, mode){
+    const b=this.state.buildings.find(x=>x.id===buildingId && x.type==='forester');
+    if(!b)return {ok:false,msg:'护林小屋不存在'};
+    if(!['auto','cut','plant'].includes(mode))return {ok:false,msg:'无效模式'};
+    b.forester_mode=mode;
+    this.onUpdate({state:this.state});
+    return {ok:true,msg:'护林模式已更新'};
+  }
+  upgradeBlacksmith(buildingId){
+    const b=this.state.buildings.find(x=>x.id===buildingId&&x.type==='blacksmith'&&x.built);
+    if(!b)return {ok:false,msg:'铁匠铺未就绪'};
+    if(b.carts_unlocked)return {ok:false,msg:'已升级'};
+    const r=this.state.resources||{};
+    const cost={iron:8, logs:20, iron_tools:5, labor:10};
+    for(const [k,n] of Object.entries(cost)){
+      if((r[k]||0)<n)return {ok:false,msg:`资源不足：${RESOURCE_LABELS[k]||k} ${n}`};
+    }
+    for(const [k,n] of Object.entries(cost))r[k]-=n;
+    b.carts_unlocked=true;
+    if(!this.state.tech)this.state.tech={carts_unlocked:false,carts_built:0};
+    this.state.tech.carts_unlocked=true;
+    this.onUpdate({state:this.state});
+    return {ok:true,msg:'铁匠铺已升级，可制造推车'};
+  }
+
+  start(syncCb) {
+    this.running = true;
+    this.syncCallback = syncCb;
+    this.lastFrameTime = performance.now();
+    this._loop(this.lastFrameTime);
+  }
+
+  pause() { this.running = false; if (this.rafId) cancelAnimationFrame(this.rafId); }
+
+  _loop(now) {
+    if (!this.running) return;
+    this.rafId = requestAnimationFrame(this._loop.bind(this));
+    const dt = now - this.lastFrameTime;
+    this.lastFrameTime = now;
+    const TICK_MS = this.speed === 10 ? 100 : this.speed === 5 ? 200 : 1000;
+    this.tickAccum += dt;
+    while (this.tickAccum >= TICK_MS) { this.tickAccum -= TICK_MS; this._tick(); }
+    if (Date.now() - this.lastSyncTime >= 30000 && this.syncCallback) {
+      const elapsed = (Date.now() - this.lastSyncTime) / 1000;
+      this.syncCallback(this.state, this.prevSyncState, elapsed);
+      this.prevSyncState = JSON.parse(JSON.stringify(this.state));
+      this.lastSyncTime = Date.now();
+    }
+    this._render();
+  }
+
+  _tick() {
+    const s = this.state;
+    if (!s.time) return;
+    if(!s.tech)s.tech={carts_unlocked:false,carts_built:0};
+    s.time.tick = (s.time.tick||0) + 1;
+    const season_idx = Math.floor((s.time.tick % TICK_PER_YEAR) / TICK_PER_SEASON);
+    const prev_season = s.time.season;
+    s.time.season = B_SEASONS[season_idx];
+    s.time.year = 1 + Math.floor(s.time.tick / TICK_PER_YEAR);
+    if (prev_season && prev_season !== s.time.season) this._rolloverQuarterYields(s, prev_season);
+    const isWinter = s.time.season === 'winter';
+    const isAutumn = s.time.season === 'autumn';
+    this._ensureHousingAssignments(s);
+    for (const v of s.villagers) {
+      if (v.state === 'dead') continue;
+      v.hunger = Math.max(0, (v.hunger||100) - 0.5);
+      v.thirst = Math.max(0, (v.thirst||100) - 0.16);
+      v.warmth = isWinter ? Math.max(0,(v.warmth||100)-1) : Math.min(100,(v.warmth||100)+0.3);
+      if (v.hunger < 10) v.health = Math.max(0,(v.health||100)-1);
+      if (v.thirst < 10) v.health = Math.max(0,(v.health||100)-2);
+      if (v.warmth < 5) { v.health = 0; }
+      if ((v.health||100) <= 0) { v.state='dead'; this._onDeath(v); continue; }
+      if (v.thirst < 30 && v.state !== 'thirsty') { v.state='thirsty'; v.path=null; v.action=null; v.action_ticks_left=0; }
+      else if (v.hunger < 30 && !['thirsty'].includes(v.state)) { v.state='hungry'; v.path=null; v.action=null; v.action_ticks_left=0; }
+      this._updateVillagerMood(v,s,isWinter);
+      this._applyMoodConsequences(v,s);
+      if (v.state === 'dead') continue;
+      this._stepVillager(v, s, isWinter, isAutumn);
+    }
+    this._tickBuildings(s, isWinter);
+    this._tickWildlife(s);
+    this._tickPop(s);
+    this._refreshBuildingDetailStats(s);
+    const idleCount=s.villagers.filter(v=>v.state==='idle').length;
+    s.resources.labor=Math.min(200,(s.resources.labor||0)+idleCount*0.03);
+    s.population.total = s.villagers.filter(v=>v.state!=='dead').length;
+    s.population.idle = s.villagers.filter(v=>v.state==='idle').length;
+    const alive=s.villagers.filter(v=>v.state!=='dead');
+    s.population.avg_happiness=alive.length?alive.reduce((a,v)=>a+(v.happiness||0),0)/alive.length:0;
+    if (s.time.tick % 15 === 0) this.onUpdate({state:s});
+  }
+
+  _rolloverQuarterYields(s, prevSeason){
+    for(const b of (s.buildings||[])){
+      b.yield_last = {...(b.yield_current||{})};
+      b.yield_last_total = b.yield_current_total || 0;
+      b.yield_last_season = prevSeason;
+      b.yield_current = {};
+      b.yield_current_total = 0;
+    }
+  }
+
+  _recordBuildingYield(b, key, amount){
+    if(!b || amount<=0)return;
+    if(!b.yield_current)b.yield_current={};
+    b.yield_current[key]=(b.yield_current[key]||0)+amount;
+    b.yield_current_total=(b.yield_current_total||0)+amount;
+  }
+
+  _defaultStorageCap(type){
+    if(type==='house')return 80;
+    if(type==='stone_house')return 120;
+    if(type==='boarding_house')return 260;
+    if(type==='barn')return 1800;
+    if(type==='stockpile')return 1200;
+    if(type==='market')return 2400;
+    if(type==='trading_post')return 2000;
+    if(['farm','orchard','pasture','gatherer','hunter','fishing_dock','herbalist'].includes(type))return 260;
+    if(['woodcutter','forester','mine','quarry','blacksmith','tailor'].includes(type))return 220;
+    return 120;
+  }
+
+  _houseCapacity(type){
+    return type==='boarding_house' ? 8 : 2;
+  }
+
+  _ensureHousingAssignments(s){
+    const houses=(s.buildings||[]).filter(b=>b.built&&['house','stone_house','boarding_house'].includes(b.type));
+    const byId=new Map(houses.map(h=>[h.id,h]));
+    const occupancy=new Map();
+    for(const h of houses)occupancy.set(h.id,0);
+
+    for(const v of (s.villagers||[])){
+      if(v.state==='dead'){ v.home_id=null; continue; }
+      const home=v.home_id?byId.get(v.home_id):null;
+      if(!home){ v.home_id=null; continue; }
+      occupancy.set(home.id,(occupancy.get(home.id)||0)+1);
+    }
+
+    for(const v of (s.villagers||[])){
+      if(v.state==='dead' || v.home_id)continue;
+      let best=null, bd=Infinity;
+      for(const h of houses){
+        const used=occupancy.get(h.id)||0;
+        const cap=this._houseCapacity(h.type);
+        if(used>=cap)continue;
+        const cx=h.x+Math.floor(h.w/2), cy=h.y+Math.floor(h.h/2);
+        const d=Math.hypot((v.x||0)-cx,(v.y||0)-cy);
+        if(d<bd){bd=d;best=h;}
+      }
+      if(best){
+        v.home_id=best.id;
+        occupancy.set(best.id,(occupancy.get(best.id)||0)+1);
+      }
+    }
+
+    s.population.homeless=(s.villagers||[]).filter(v=>v.state!=='dead'&&!v.home_id).length;
+    for(const h of houses){
+      h.residents=(s.villagers||[]).filter(v=>v.state!=='dead'&&v.home_id===h.id).map(v=>v.id);
+    }
+  }
+
+  _refreshBuildingDetailStats(s){
+    const alive=(s.villagers||[]).filter(v=>v.state!=='dead');
+    const aliveCount=Math.max(1,alive.length);
+    const byId=new Map((s.villagers||[]).map(v=>[v.id,v]));
+    const storageTypes=['barn','stockpile','market','trading_post'];
+    const storageBuildings=(s.buildings||[]).filter(b=>b.built&&storageTypes.includes(b.type));
+    const totalStorageCap=Math.max(1,storageBuildings.reduce((a,b)=>a+(b.storage_cap||this._defaultStorageCap(b.type)),0));
+
+    for(const b of (s.buildings||[])){
+      const cap=b.storage_cap||this._defaultStorageCap(b.type);
+      b.storage_cap=cap;
+      b.storage=b.storage||{};
+      let used=0;
+
+      if(storageTypes.includes(b.type) && b.built){
+        const share=cap/totalStorageCap;
+        const stock={};
+        for(const k of DETAIL_STOCK_KEYS){
+          const n=Math.floor((s.resources[k]||0)*share);
+          if(n<=0)continue;
+          stock[k]=n;
+          used+=n;
+        }
+        b.storage=stock;
+        b.storage_used=Math.min(cap,used);
+        continue;
+      }
+
+      if(['house','stone_house','boarding_house'].includes(b.type) && b.built){
+        const residentIds=b.residents||[];
+        const ratio=residentIds.length/aliveCount;
+        const stock={};
+        for(const k of [...FOOD_KEYS,'firewood']){
+          const n=Math.floor((s.resources[k]||0)*ratio);
+          if(n<=0)continue;
+          if(used+n>cap){
+            const left=Math.max(0,cap-used);
+            if(left>0){stock[k]=left;used+=left;}
+            break;
+          }
+          stock[k]=n;
+          used+=n;
+        }
+        b.storage=stock;
+        b.storage_used=Math.min(cap,used);
+        b.resident_names=residentIds.map(id=>byId.get(id)?.name).filter(Boolean);
+        continue;
+      }
+
+      if(b.built && b.workers_max>0){
+        const stock={};
+        const yc=b.yield_current||{};
+        for(const [k,n0] of Object.entries(yc)){
+          const n=Math.floor(Number(n0)||0);
+          if(n<=0)continue;
+          if(used+n>cap){
+            const left=Math.max(0,cap-used);
+            if(left>0){stock[k]=left;used+=left;}
+            break;
+          }
+          stock[k]=n;
+          used+=n;
+        }
+        b.storage=stock;
+        b.storage_used=Math.min(cap,used);
+      }else{
+        b.storage_used=0;
+      }
+    }
+  }
+
+  _moodTag(value){
+    if(value>=85)return '喜悦';
+    if(value>=70)return '开心';
+    if(value>=55)return '平稳';
+    if(value>=40)return '低落';
+    return '痛苦';
+  }
+
+  _updateVillagerMood(v,s,isWinter){
+    const clamp=(n,min,max)=>Math.max(min,Math.min(max,n));
+    const hunger=clamp(Number(v.hunger||0),0,100);
+    const thirst=clamp(Number(v.thirst||0),0,100);
+    const health=clamp(Number(v.health||0),0,100);
+    const warmth=clamp(Number(v.warmth||0),0,100);
+    const hasHome=!!v.home_id;
+    const familyCount=hasHome?(s.villagers||[]).filter(x=>x.state!=='dead'&&x.home_id===v.home_id).length:0;
+
+    let moodTarget=
+      15 +
+      hunger*0.20 +
+      thirst*0.20 +
+      health*0.18 +
+      warmth*0.15 +
+      (hasHome?8:-12) +
+      Math.min(8, Math.max(0,(familyCount-1)*3));
+
+    if(v.state==='hungry')moodTarget-=10;
+    if(v.state==='thirsty')moodTarget-=12;
+    if(v.state==='sick')moodTarget-=14;
+    if(isWinter && warmth<35)moodTarget-=8;
+    if((s.population?.homeless||0)>0 && !hasHome)moodTarget-=6;
+    moodTarget=clamp(moodTarget,0,100);
+
+    const prev=Number(v.happiness??70);
+    const next=prev+(moodTarget-prev)*0.12;
+    v.happiness=clamp(next,0,100);
+    v.mood_tag=this._moodTag(v.happiness);
+  }
+
+  _moodWorkFactor(v){
+    const h=Number(v?.happiness||0);
+    if(h>=70)return 1.0;
+    if(h>=50)return 0.9;
+    if(h>=35)return 0.75;
+    if(h>=20)return 0.55;
+    return 0.35;
+  }
+
+  _applyMoodConsequences(v,s){
+    if(v.state==='dead')return;
+    const h=Number(v.happiness||0);
+    const homeless=!v.home_id;
+
+    if(h<30 && Math.random()<0.005){
+      v.health=Math.max(0,(v.health||100)-1.2);
+    }
+
+    const busy=['thirsty','hungry','sick','building','dead'];
+    if(h<28 && !busy.includes(v.state) && !v._delivery && Math.random()<0.02){
+      v.state='upset';
+      v.path=null;
+      v.action=null;
+      v.action_ticks_left=0;
+      v._upset_ticks=40+Math.floor(Math.random()*50);
+    }
+
+    if(h<12 && homeless && (v.hunger||0)<35 && (v.thirst||0)<35 && Math.random()<0.0008){
+      v.left_town=true;
+      v.state='dead';
+      this._onDeath(v);
+    }
+  }
+
+  _findWater(v) {
+    let best=null, bd=Infinity;
+    const m=this.state.map;
+    for (const b of this.state.buildings) {
+      if (b.built && ((b.type==='well' && (b.water_storage||0)>0) || ((this.state.resources||{}).water>0))) {
+        const d=Math.hypot(v.x-(b.x+b.w/2),v.y-(b.y+b.h/2));
+        if (d<bd){bd=d;best={tx:Math.floor(b.x+b.w/2),ty:Math.floor(b.y+b.h/2),building:b};}
+      }
+    }
+    const sx=Math.floor(v.x),sy=Math.floor(v.y),R=25;
+    for (let dy=-R;dy<=R;dy++) for (let dx=-R;dx<=R;dx++) {
+      const tx=sx+dx,ty=sy+dy;
+      if (tx<0||ty<0||tx>=m.width||ty>=m.height) continue;
+      if (m.tiles[ty][tx]===B_TILE.RIVER) {
+        const banks=[[1,0],[-1,0],[0,1],[0,-1]];
+        for(const [bx,by] of banks){
+          const nx=tx+bx, ny=ty+by;
+          if(nx<0||ny<0||nx>=m.width||ny>=m.height)continue;
+          if(!isPassableTile(m.tiles[ny][nx]))continue;
+          const d=Math.hypot(v.x-(nx+0.5),v.y-(ny+0.5));
+          if(d<bd){bd=d;best={tx:nx,ty:ny,building:null};}
+        }
+      }
+    }
+    return best;
+  }
+
+  _findFood(v) {
+    let best = null, bd = Infinity;
+    for (const b of this.state.buildings) {
+      if (!b.built) continue;
+      if (b.id === v.home_id || b.id === v.building_id || ['barn','market'].includes(b.type)) {
+        let d = Math.hypot(v.x-(b.x+Math.floor(b.w/2)),v.y-(b.y+Math.floor(b.h/2)));
+        if (b.id === v.home_id || b.id === v.building_id) d -= 10000; // Prefer home or workplace
+        if (d<bd){bd=d;best={tx:b.x+Math.floor(b.w/2),ty:b.y+Math.floor(b.h/2)};}
+      }
+    }
+    if (!best) best={tx:Math.floor(this.state.map.width/2),ty:Math.floor(this.state.map.height/2)};
+    return best;
+  }
+
+  _nearestWildlife(s,cx,cy,types=['rabbit','deer'],radius=RESOURCE_BUILDING_RADIUS){
+    let best=null, bd=Infinity;
+    for(const w of (s.map?.wildlife||[])){
+      if(!w?.alive)continue;
+      if(!types.includes(w.type))continue;
+      const d=Math.hypot((w.x+0.5)-cx,(w.y+0.5)-cy);
+      if(d<=radius&&d<bd){bd=d;best=w;}
+    }
+    return best;
+  }
+
+  _huntWildlife(s,cx,cy,radius=RESOURCE_BUILDING_RADIUS){
+    const w=this._nearestWildlife(s,cx,cy,['rabbit','deer'],radius);
+    if(!w)return null;
+    w.alive=false;
+    return w;
+  }
+
+  _findStorage(v,s){
+    let best=null, bd=Infinity;
+    for(const b of s.buildings){
+      if(!['barn','market','trading_post','stockpile'].includes(b.type) || !b.built)continue;
+      const tx=b.x+Math.floor(b.w/2), ty=b.y+Math.floor(b.h/2);
+      const d=Math.hypot(v.x-tx,v.y-ty);
+      if(d<bd){bd=d;best={tx,ty,building:b};}
+    }
+    return best;
+  }
+
+  _carryLoad(v){
+    if(!v.carrying)return 0;
+    return Object.entries(v.carrying).reduce((a,[k,n])=>a+(k==='water'?Math.ceil((Number(n)||0)/5):(Number(n)||0)),0);
+  }
+
+  _addCarry(v,key,amount){
+    if(!v.carrying)v.carrying={};
+    v.carrying[key]=(v.carrying[key]||0)+amount;
+  }
+
+  _depositCarry(v,s){
+    if(!v.carrying)return;
+    for(const [k,n] of Object.entries(v.carrying)){
+      s.resources[k]=(s.resources[k]||0)+(n||0);
+    }
+    v.carrying={};
+  }
+
+  _startDelivery(v,s){
+    const load=this._carryLoad(v);
+    if(load<=0)return false;
+    const st=this._findStorage(v,s);
+    if(!st){
+      this._depositCarry(v,s);
+      return false;
+    }
+    const p=bfsPath(s.map.tiles,s.map.width,s.map.height,Math.floor(v.x),Math.floor(v.y),st.tx,st.ty);
+    if(!p){
+      this._depositCarry(v,s);
+      return false;
+    }
+    v._delivery=true;
+    v.path=p;
+    v.state='moving';
+    return true;
+  }
+
+  _inZone(x,y,z){
+    return x>=z.x&&x<z.x+z.w&&y>=z.y&&y<z.y+z.h;
+  }
+
+  _pickZoneGatherTarget(v,s){
+    const zones=this.gatheringZones||{};
+    const sx=Math.floor(v.x), sy=Math.floor(v.y);
+    const m=s.map;
+    let best=null, bd=Infinity;
+
+    const check=(tx,ty,type,node=null)=>{
+      const d=Math.hypot(tx-sx,ty-sy);
+      if(d<bd){bd=d;best={tx,ty,type,nodeId:node?.id||null};}
+    };
+
+    // stone/iron from resource nodes
+    for(const n of (m.resource_nodes||[])){
+      if((n.amount||0)<=0)continue;
+      if(n.type==='stone' && (zones.stone||[]).some(z=>this._inZone(n.x,n.y,z))) check(n.x,n.y,'stone',n);
+      if(n.type==='iron'  && (zones.iron||[]).some(z=>this._inZone(n.x,n.y,z)))  check(n.x,n.y,'iron',n);
+    }
+
+    // wood/food from tile_resources inside zones
+    const tr=m.tile_resources;
+    if(tr){
+      // Check wood zones for trees
+      for(const z of (zones.wood||[])){
+        for(let y=z.y;y<z.y+z.h;y++){
+          if(y<0||y>=m.height)continue;
+          for(let x=z.x;x<z.x+z.w;x++){
+            if(x<0||x>=m.width)continue;
+            const tileRes=tr[y][x];
+            if(tileRes && tileRes.trees && tileRes.trees.length>0){
+              // Find fully grown trees
+              const grownTree=tileRes.trees.find(t=>(t.growth||0)>=0.8);
+              if(grownTree)check(x,y,'wood',null);
+            }
+            // Also collect food in wood zones
+            if(tileRes && tileRes.food && tileRes.food.length>0){
+              const grownFood=tileRes.food.find(f=>(f.growth||0)>=0.7);
+              if(grownFood)check(x,y,'food',null);
+            }
+          }
+        }
+      }
+    }
+    return best;
+  }
+
+  _consumeNodeAt(s, id, type){
+    if(!id)return 0;
+    const n=(s.map?.resource_nodes||[]).find(n=>n.id===id&&n.type===type&&((n.amount||0)>0));
+    if(!n)return 0;
+    n.amount=Math.max(0,(n.amount||0)-1);
+    return 1;
+  }
+
+  _assignZoneGather(v,s){
+    const t=this._pickZoneGatherTarget(v,s);
+    if(!t)return false;
+    const p=bfsPath(s.map.tiles,s.map.width,s.map.height,Math.floor(v.x),Math.floor(v.y),t.tx,t.ty);
+    if(!p)return false;
+    v.path=p;
+    v._zoneGather=t;
+    v.state='moving';
+    return true;
+  }
+
+  _stepVillager(v, s, isWinter, isAutumn) {
+    if(v.state==='upset'){
+      if((v.hunger||0)<30){v.state='hungry'; return;}
+      if((v.thirst||0)<30){v.state='thirsty'; return;}
+      v._upset_ticks=Math.max(0,(v._upset_ticks||0)-1);
+      if(!v.path && Math.random()<0.08){
+        const dirs=[[1,0],[-1,0],[0,1],[0,-1]];
+        const [dx,dy]=dirs[Math.floor(Math.random()*dirs.length)];
+        const tx=Math.floor(v.x)+dx, ty=Math.floor(v.y)+dy;
+        if(tx>=0&&ty>=0&&tx<s.map.width&&ty<s.map.height&&isPassableTile(s.map.tiles[ty][tx])){
+          v.path=[{x:tx,y:ty}];
+        }
+      }
+      if((v._upset_ticks||0)<=0 || (v.happiness||0)>=45){v.state='idle';}
+      return;
+    }
+    if (v.path && v.path.length > 0) {
+      const target = v.path[0];
+      const dx=target.x-v.x, dy=target.y-v.y, dist=Math.hypot(dx,dy);
+      const spd = 1.0;
+      if (dist <= spd) {
+        v.x=target.x; v.y=target.y; v.path.shift();
+        if (v.path.length===0) this._onArrived(v,s);
+      } else {
+        v.x += dx/dist*spd; v.y += dy/dist*spd;
+        if (!['thirsty','hungry','sick'].includes(v.state)) v.state='moving';
+      }
+      return;
+    }
+    if ((v.action_ticks_left||0) > 0) {
+      v.action_ticks_left--;
+      if (v.action_ticks_left===0) this._completeAction(v,s);
+      return;
+    }
+    if (v.state==='thirsty') {
+      const w=this._findWater(v);
+      if (w) {
+        const path=bfsPath(s.map.tiles,s.map.width,s.map.height,Math.floor(v.x),Math.floor(v.y),w.tx,w.ty);
+        if (path){v.path=path;v._wt=w;}else{v.thirst=60;v.state='idle';}
+      } else { v.thirst=60;v.state='idle'; }
+      return;
+    }
+    if (v.state==='hungry') {
+      const f=this._findFood(v);
+      if (f){
+        const path=bfsPath(s.map.tiles,s.map.width,s.map.height,Math.floor(v.x),Math.floor(v.y),f.tx,f.ty);
+        if (path){v.path=path;v._ft=f;}else{v.hunger=60;v.state='idle';}
+      }else{v.hunger=60;v.state='idle';}
+      return;
+    }
+    if (v.state==='sick'){v.health=Math.min(100,(v.health||0)+0.5);if(v.health>70)v.state='idle';return;}
+    if ((v.health||100)<30){v.state='sick';return;}
+    if (!['working','building','studying'].includes(v.state)) {
+      if(this._assignZoneGather(v,s))return;
+      this._assignWork(v,s);
+    }
+  }
+
+  _onArrived(v,s) {
+    if(v._delivery){
+      v._delivery=false;
+      this._depositCarry(v,s);
+      // If worker came from a building, walk back and resume work
+      if(v._return_building_id){
+        const rb=s.buildings.find(b=>b.id===v._return_building_id);
+        if(rb){
+          const p=bfsPath(s.map.tiles,s.map.width,s.map.height,Math.floor(v.x),Math.floor(v.y),rb.x+Math.floor(rb.w/2),rb.y+Math.floor(rb.h/2));
+          if(p){
+            v.building_id=v._return_building_id;
+            v._return_building_id=null;
+            v.path=p;
+            v.state='moving';
+            return;
+          }
+        }
+        v._return_building_id=null;
+      }
+      v.state='idle';
+      return;
+    }
+    if(v._zoneGather){
+      v.action='zone_gather';
+      v.action_ticks_left=2;
+      v.state='working';
+      return;
+    }
+    if (v._wt) {
+      const wt=v._wt; v._wt=null;
+      if (wt.building) {
+        if (wt.building.type==='well' && (wt.building.water_storage||0)>0){
+          wt.building.water_storage--;v.action='drinking';v.action_ticks_left=1;
+        } else if ((s.resources.water||0)>0) {
+          s.resources.water--;v.action='drinking';v.action_ticks_left=1;
+        } else {v.state='idle';}
+      } else {v.action='drinking';v.action_ticks_left=1;}
+      return;
+    }
+    if (v._gather_water) {
+      v._gather_water = null;
+      if((s.resources.labor||0)>=1){
+        s.resources.labor-=1;
+        this._addCarry(v,'water',10);
+        v.action='zone_gather';
+        v.action_ticks_left=4;
+      } else { v.state='idle'; }
+      return;
+    }
+    if (v._ft) {
+      v._ft=null;
+      const foodKey = FOOD_KEYS.find(k=>(s.resources[k]||0)>0);
+      if (foodKey) s.resources[foodKey]=Math.max(0,(s.resources[foodKey]||0)-1);
+      v.action='eating';v.action_ticks_left=1;
+      return;
+    }
+    if (v.building_id) {
+      const b=s.buildings.find(b=>b.id===v.building_id);
+      if (b&&!b.built){
+        // Clear trees/resources on site before constructing
+        if(b._clearing_jobs&&b._clearing_jobs.length>0){
+          v.action='site_clearing';v.action_ticks_left=3;v.state='building';
+        }else{
+          v.action='constructing';v.action_ticks_left=5;v.state='building';
+        }
+      }
+      else if(b){v.action='working';v.action_ticks_left=this._workTicks(b.type);v.state='working';}
+    }
+  }
+
+  _workTicks(type){
+    return {woodcutter:2,forester:3,mine:6,quarry:4,gatherer:3,hunter:15,fishing_dock:8,herbalist:4,blacksmith:5,tailor:4,school:20,hospital:10,trading_post:10,farm:5,orchard:6,pasture:6,barn:2,market:3}[type]||5;
+  }
+
+  _completeAction(v,s){
+    if (v.action==='drinking'){v.thirst=100;v.state=v.hunger<30?'hungry':'idle';}
+    else if(v.action==='eating'){v.hunger=Math.min(100,(v.hunger||0)+70);v.state='idle';}
+    else if(v.action==='site_clearing'){
+      // Chop one tree / harvest one food from building footprint before constructing
+      const b=s.buildings.find(b=>b.id===v.building_id);
+      if(b&&b._clearing_jobs&&b._clearing_jobs.length>0){
+        const job=b._clearing_jobs[0];
+        const tr=s.map.tile_resources;
+        const tileRes=tr?.[job.y]?.[job.x];
+        if(tileRes){
+          if(tileRes.trees&&tileRes.trees.length>0){
+            const tree=tileRes.trees.shift();
+            this._addCarry(v,'logs',(tree.size||0)+1);
+          }else if(tileRes.food&&tileRes.food.length>0){
+            tileRes.food.shift();
+          }
+          if((!tileRes.trees||tileRes.trees.length===0)&&(!tileRes.food||tileRes.food.length===0)){
+            b._clearing_jobs.shift();
+          }
+        }else{
+          b._clearing_jobs.shift();
+        }
+        const load=this._carryLoad(v);
+        const cap=carryCapacity(v);
+        if(load>=cap){
+          v._return_building_id=v.building_id;v.building_id=null;
+          if(!this._startDelivery(v,s)){v.building_id=v._return_building_id;v._return_building_id=null;}
+        }else if(b._clearing_jobs&&b._clearing_jobs.length>0){
+          v.action_ticks_left=3;
+        }else{
+          if(load>0){
+            v._return_building_id=v.building_id;v.building_id=null;
+            if(!this._startDelivery(v,s)){this._depositCarry(v,s);v._return_building_id=null;v.building_id=b.id;}
+          }else{v.action='constructing';v.action_ticks_left=5;}
+        }
+        return;
+      }
+      v.action='constructing';v.action_ticks_left=5;
+    }else if(v.action==='constructing'){
+      const b=s.buildings.find(b=>b.id===v.building_id);
+      if(b){b.progress=Math.min(1,(b.progress||0)+0.12);if(b.progress>=1){b.built=true;v.state='idle';v.building_id=null;}else{v.action_ticks_left=5;return;}}
+    }else if(v.action==='zone_gather'){
+      const zg=v._zoneGather;
+      if(zg){
+        const tx=zg.tx,ty=zg.ty;
+        const tr=s.map?.tile_resources;
+        if(tr && tr[ty] && tr[ty][tx]){
+          const tileRes=tr[ty][tx];
+
+          if(zg.type==='wood'){
+            // Find and harvest a fully grown tree
+            if(tileRes.trees && tileRes.trees.length>0){
+              const treeIdx=tileRes.trees.findIndex(t=>(t.growth||0)>=0.8);
+              if(treeIdx>=0){
+                const tree=tileRes.trees[treeIdx];
+                const logsYield=(tree.size||0)+1; // size 0-3 -> 1-4 logs
+                this._addCarry(v,'logs',logsYield);
+                // Remove the tree
+                tileRes.trees.splice(treeIdx,1);
+              }
+            }
+          }else if(zg.type==='food'){
+            // Find and harvest a fully grown food item
+            if(tileRes.food && tileRes.food.length>0){
+              const foodIdx=tileRes.food.findIndex(f=>(f.growth||0)>=0.7);
+              if(foodIdx>=0){
+                const food=tileRes.food[foodIdx];
+                // Map food type to resource key
+                const foodMap={berries:'fruit',mushroom:'mushrooms',root:'vegetables'};
+                const resourceKey=foodMap[food.type]||'vegetables';
+                this._addCarry(v,resourceKey,1);
+                // Remove the food
+                tileRes.food.splice(foodIdx,1);
+              }
+            }
+          }else if(zg.type==='stone'){
+            const got=this._consumeNodeAt(s,zg.nodeId,'stone');
+            if(got>0)this._addCarry(v,'stone',got);
+          }else if(zg.type==='iron'){
+            const got=this._consumeNodeAt(s,zg.nodeId,'iron');
+            if(got>0)this._addCarry(v,'iron',got);
+          }
+        }
+      }
+      v._zoneGather=null;
+      const cap=carryCapacity(v);
+      const load=this._carryLoad(v);
+      if(load>=cap){
+        this._startDelivery(v,s);
+      }else if(this._assignZoneGather(v,s)){
+        // continue gathering in selected zones until full
+      }else if(load>0){
+        this._startDelivery(v,s);
+      }else{
+        v.state='idle';
+      }
+    }else if(v.action==='working'){
+      this._produce(v,s);
+      const b=s.buildings.find(b=>b.id===v.building_id);
+      if(b&&b.built&&v.thirst>=30&&v.hunger>=30){
+        const load=this._carryLoad(v);
+        const cap=carryCapacity(v);
+        if(load>=cap){
+          // Backpack full — deliver to storage then return to this building
+          v._return_building_id=v.building_id;
+          v.building_id=null;
+          if(!this._startDelivery(v,s)){
+            // No storage found; _startDelivery already deposited; restore assignment and keep working
+            v.building_id=v._return_building_id;
+            v._return_building_id=null;
+            v.action_ticks_left=this._workTicks(b.type);
+            return;
+          }
+        }else{
+          v.action_ticks_left=this._workTicks(b.type);
+          return;
+        }
+      }else{v.action=null;}
+    }
+    if(v.action!=='working')v.action=null;
+  }
+
+  _nearestResourceNode(s, cx, cy, types, radius=12){
+    const nodes=s.map?.resource_nodes||[];
+    let best=null,bd=Infinity;
+    for(const n of nodes){
+      if(!types.includes(n.type))continue;
+      if((n.amount||0)<=0)continue;
+      const d=Math.hypot((n.x+0.5)-cx,(n.y+0.5)-cy);
+      if(d<=radius&&d<bd){bd=d;best=n;}
+    }
+    return best;
+  }
+
+  _harvestNode(s,cx,cy,types,amount=1,radius=12){
+    const n=this._nearestResourceNode(s,cx,cy,types,radius);
+    if(!n)return 0;
+    const take=Math.max(0,Math.min(n.amount||0,amount));
+    n.amount=(n.amount||0)-take;
+    return take;
+  }
+
+  _produce(v,s){
+    const b=s.buildings.find(b=>b.id===v.building_id);
+    if(!b||!b.built)return;
+    const em=v.educated?2:1;
+    const moodFactor=this._moodWorkFactor(v);
+    // Resources go into carry; worker must walk to storage to deposit
+    const add=(k,n)=>{
+      const delta=Math.floor(n*em*moodFactor);
+      if(delta<=0)return;
+      this._addCarry(v,k,delta);
+      this._recordBuildingYield(b,k,delta);
+    };
+    const R=Math.random;
+    const m=s.map;
+    switch(b.type){
+      case 'woodcutter':{
+        // Search for forest tiles nearby, cut them down
+        const searchRadius=RESOURCE_BUILDING_RADIUS;
+        let foundForest=false;
+        for(let dy=-searchRadius;dy<=searchRadius&&!foundForest;dy++){
+          for(let dx=-searchRadius;dx<=searchRadius&&!foundForest;dx++){
+            const tx=b.x+dx,ty=b.y+dy;
+            if(tx>=0&&tx<m.width&&ty>=0&&ty<m.height){
+              if(m.tiles[ty][tx]===B_TILE.FOREST){
+                // Calculate tree size using same seed as rendering
+                const treeSize = Math.floor(sn(tx*2.9, ty*4.1, 31) * 4);
+                // Harvest logs based on tree size (0-3 -> 1-4 logs)
+                add('logs',treeSize+1);
+                // Clear forest to grass
+                m.tiles[ty][tx]=B_TILE.GRASS;
+                foundForest=true;
+              }
+            }
+          }
+        }
+        break;
+      }
+      case 'forester':{
+        // Forester radius: shared resource radius (8 tiles), circular area.
+        // Mode: auto / cut / plant
+        const radius=RESOURCE_BUILDING_RADIUS, r2=radius*radius;
+        const cx=b.x+Math.floor(b.w/2), cy=b.y+Math.floor(b.h/2);
+        const forestTiles=[], grassTiles=[];
+        for(let dy=-radius;dy<=radius;dy++){
+          for(let dx=-radius;dx<=radius;dx++){
+            if(dx*dx+dy*dy>r2)continue;
+            const tx=cx+dx,ty=cy+dy;
+            if(tx<0||tx>=m.width||ty<0||ty>=m.height)continue;
+            const t=m.tiles[ty][tx];
+            if(t===B_TILE.FOREST)forestTiles.push({x:tx,y:ty});
+            else if(t===B_TILE.GRASS)grassTiles.push({x:tx,y:ty});
+          }
+        }
+        let mode=b.forester_mode||'auto';
+        if(mode==='auto'){
+          const total=forestTiles.length+grassTiles.length;
+          const fr=total>0?forestTiles.length/total:0;
+          mode=(fr>0.45&&forestTiles.length>0)?'cut':'plant';
+        }
+        if(mode==='cut'&&forestTiles.length>0){
+          const t=forestTiles[Math.floor(R()*forestTiles.length)];
+          const treeSize=Math.floor(sn(t.x*2.9, t.y*4.1, 31) * 4);
+          add('logs',treeSize+1);
+          m.tiles[t.y][t.x]=B_TILE.GRASS;
+        }else if(mode==='plant'&&grassTiles.length>0){
+          const t=grassTiles[Math.floor(R()*grassTiles.length)];
+          m.tiles[t.y][t.x]=B_TILE.FOREST;
+        }
+        break;
+      }
+      case 'mine':{
+        const got=this._harvestNode(s,b.x+b.w/2,b.y+b.h/2,['iron'],1,RESOURCE_BUILDING_RADIUS);
+        if(got>0)add('iron',got);
+        if(got>0&&R()<0.35)add('coal',1);
+        break;
+      }
+      case 'quarry':{
+        const got=this._harvestNode(s,b.x+b.w/2,b.y+b.h/2,['stone'],1,RESOURCE_BUILDING_RADIUS);
+        if(got>0)add('stone',got);
+        break;
+      }
+      case 'blacksmith':
+        if((s.resources.iron||0)>=1&&(s.resources.logs||0)>=1){s.resources.iron--;s.resources.logs--;add('iron_tools',2);}
+        if(b.carts_unlocked){
+          const target=s.villagers.find(x=>x.state!=='dead'&&!x.has_cart);
+          if(target&&(s.resources.logs||0)>=2&&(s.resources.iron_tools||0)>=1&&Math.random()<0.3){
+            s.resources.logs-=2;
+            s.resources.iron_tools-=1;
+            target.has_cart=true;
+            if(!s.tech)s.tech={carts_unlocked:true,carts_built:0};
+            s.tech.carts_unlocked=true;
+            s.tech.carts_built=(s.tech.carts_built||0)+1;
+          }
+        }
+        break;
+      case 'tailor':
+        if((s.resources.leather||0)>=1){s.resources.leather--;add('hide_coat',1);}
+        else if((s.resources.wool||0)>=1){s.resources.wool--;add('wool_coat',1);}break;
+      case 'gatherer':{
+        const spot=this._nearestResourceNode(s,b.x+b.w/2,b.y+b.h/2,['berries','mushroom_patch'],RESOURCE_BUILDING_RADIUS);
+        if(spot){
+          const got=this._harvestNode(s,b.x+b.w/2,b.y+b.h/2,[spot.type],1,RESOURCE_BUILDING_RADIUS);
+          if(got>0){
+            if(spot.type==='berries')add(R()<0.5?'fruit':'vegetables',got);
+            else add('mushrooms',got);
+          }
+        }else{
+          add(['mushrooms','fruit','vegetables'][Math.floor(R()*3)],1);
+        }
+        break;
+      }
+      case 'hunter':{
+        // Hunter lodge: search/hunt wildlife in shared resource radius
+        const hunted=this._huntWildlife(s,b.x+b.w/2,b.y+b.h/2,RESOURCE_BUILDING_RADIUS);
+        if(hunted){
+          if(hunted.type==='deer'){add('venison',3);add('leather',1);}
+          else {add('venison',1);}
+        }else{
+          const got=this._harvestNode(s,b.x+b.w/2,b.y+b.h/2,['game'],1,RESOURCE_BUILDING_RADIUS);
+          if(got>0){add('venison',2*got);add('leather',got);}
+          else if(R()<0.12){add('venison',1);}
+        }
+        break;
+      }
+      case 'fishing_dock':{
+        const got=this._harvestNode(s,b.x+b.w/2,b.y+b.h/2,['fish_spot'],1,RESOURCE_BUILDING_RADIUS);
+        if(got>0)add('fish',R()<0.5?2:1);
+        else if(R()<0.2)add('fish',1);
+        break;
+      }
+      case 'herbalist':{
+        const got=this._harvestNode(s,b.x+b.w/2,b.y+b.h/2,['berries','mushroom_patch'],1,RESOURCE_BUILDING_RADIUS);
+        if(got>0)add('herbs',1);
+        else if(R()<0.2)add('herbs',1);
+        break;
+      }
+      case 'farm':if(s.time.season==='autumn')add('wheat',5);break;
+      case 'orchard':if(['summer','autumn'].includes(s.time.season))add('fruit',2);break;
+      case 'pasture':if(R()<0.3)add('mutton',1);if(R()<0.4)add('wool',1);break;
+      case 'trading_post':if((s.resources.gold||0)>=10){s.resources.gold-=10;add('logs',5);}break;
+    }
+  }
+
+  _assignWork(v,s){
+    const naturalOnly = (this.workerPolicy === 'natural_only');
+    const naturalTypes = ['woodcutter','forester','mine','quarry','gatherer','hunter','fishing_dock','herbalist'];
+
+    for(const b of s.buildings){
+      if(!b.built&&b.workers_assigned<3){b.workers_assigned++;v.building_id=b.id;v.state='building';
+        const p=bfsPath(s.map.tiles,s.map.width,s.map.height,Math.floor(v.x),Math.floor(v.y),b.x+Math.floor(b.w/2),b.y+Math.floor(b.h/2));
+        if(p){v.path=p;return;}
+        b.workers_assigned=Math.max(0,b.workers_assigned-1);
+        v.building_id=null;
+        v.state='idle';
+      }
+    }
+    for(const b of s.buildings){
+      if(naturalOnly && !naturalTypes.includes(b.type)) continue;
+      if(b.built&&b.workers_max>0&&b.workers_assigned<b.workers_max){b.workers_assigned++;v.building_id=b.id;v.state='working';
+        const p=bfsPath(s.map.tiles,s.map.width,s.map.height,Math.floor(v.x),Math.floor(v.y),b.x+Math.floor(b.w/2),b.y+Math.floor(b.h/2));
+        if(p){v.path=p;return;}
+        b.workers_assigned=Math.max(0,b.workers_assigned-1);
+        v.building_id=null;
+        v.state='idle';
+      }
+    }
+
+    if ((s.resources.labor||0)>=1 && (s.resources.water||0)<500) {
+      const w=this._findWaterSource(v);
+      if (w) {
+        const p=bfsPath(s.map.tiles,s.map.width,s.map.height,Math.floor(v.x),Math.floor(v.y),w.tx,w.ty);
+        if(p){
+          v.path=p;
+          v._gather_water=w;
+          v.state='working';
+          return;
+        }
+      }
+    }
+
+    v.state='idle';
+  }
+
+  _findWaterSource(v) {
+    let best=null, bd=Infinity;
+    const m=this.state.map;
+    for (const b of this.state.buildings) {
+      if (b.type==='well' && b.built) {
+        const d=Math.hypot(v.x-(b.x+0.5),v.y-(b.y+0.5));
+        if (d<bd){bd=d;best={tx:b.x,ty:b.y};}
+      }
+    }
+    const sx=Math.floor(v.x),sy=Math.floor(v.y),R=25;
+    for (let dy=-R;dy<=R;dy++) for (let dx=-R;dx<=R;dx++) {
+      const tx=sx+dx,ty=sy+dy;
+      if (tx<0||ty<0||tx>=m.width||ty>=m.height) continue;
+      if (m.tiles[ty][tx]===B_TILE.RIVER) {
+        const banks=[[1,0],[-1,0],[0,1],[0,-1]];
+        for(const [bx,by] of banks){
+          const nx=tx+bx, ny=ty+by;
+          if(nx<0||ny<0||nx>=m.width||ny>=m.height)continue;
+          if(!isPassableTile(m.tiles[ny][nx]))continue;
+          const d=Math.hypot(v.x-(nx+0.5),v.y-(ny+0.5));
+          if(d<bd){bd=d;best={tx:nx,ty:ny};}
+        }
+      }
+    }
+    return best;
+  }
+
+  _tickBuildings(s,isWinter){
+    const nodes=s.map?.resource_nodes||[];
+    for(const n of nodes){
+      if((n.regen||0)>0 && (n.amount||0)<(n.max_amount||0)){
+        n.amount=Math.min(n.max_amount||0,(n.amount||0)+(n.regen||0));
+      }
+    }
+
+    // Resource regeneration and growth on tiles
+    const tr=s.map?.tile_resources;
+    if(tr){
+      for(let y=0;y<s.map.height;y++){
+        for(let x=0;x<s.map.width;x++){
+          const tile=tr[y]?.[x];
+          if(!tile)continue;
+          const t=s.map.tiles[y][x];
+
+          // Grow existing trees and food
+          for(const tree of (tile.trees||[])){
+            if(tree.growth<tree.maxGrowth){
+              tree.growth=Math.min(tree.maxGrowth,tree.growth+0.003);
+            }
+          }
+          for(const f of (tile.food||[])){
+            if(f.growth<f.maxGrowth){
+              f.growth=Math.min(f.maxGrowth,f.growth+0.004);
+            }
+          }
+
+          // Regenerate resources if too sparse (only on GRASS/FOREST)
+          if(t===B_TILE.GRASS||t===B_TILE.FOREST){
+            const treeCount=(tile.trees||[]).length;
+            const foodCount=(tile.food||[]).length;
+            const R=Math.random;
+
+            // Regenerate trees if below threshold (2 trees for GRASS, 3 for FOREST)
+            const minTrees=t===B_TILE.FOREST?3:2;
+            if(treeCount<minTrees && R()<0.002){
+              const treeSize=Math.floor(sn(x*2.9+treeCount*3,y*4.1+treeCount*5,31+treeCount*7)*4);
+              tile.trees.push({
+                size:treeSize,
+                growth:0,
+                maxGrowth:1.0
+              });
+            }
+
+            // Regenerate food if below threshold (2 items)
+            if(foodCount<2 && R()<0.003){
+              const foodTypes=['berries','mushroom','root'];
+              const foodType=foodTypes[Math.floor(sn(x*5.1+foodCount,y*7.3+foodCount,91)*3)];
+              tile.food.push({
+                type:foodType,
+                growth:0,
+                maxGrowth:1.0
+              });
+            }
+          }
+        }
+      }
+    }
+
+    for(const b of s.buildings){
+      if(b.type==='well'&&b.built) b.water_storage=Math.min(200,(b.water_storage||0)+2);
+      if(isWinter&&['house','stone_house'].includes(b.type)&&b.built)
+        s.resources.firewood=Math.max(0,(s.resources.firewood||0)-0.005);
+    }
+  }
+
+  _tickWildlife(s){
+    const m=s.map;
+    if(!m)return;
+    if(!m.wildlife)m.wildlife=[];
+
+    // random wandering on grass/forest
+    for(const w of m.wildlife){
+      if(!w.alive)continue;
+      if(Math.random()>0.12)continue;
+      const dirs=[[1,0],[-1,0],[0,1],[0,-1],[0,0]];
+      const [dx,dy]=dirs[Math.floor(Math.random()*dirs.length)];
+      const nx=w.x+dx, ny=w.y+dy;
+      if(nx<1||ny<1||nx>=m.width-1||ny>=m.height-1)continue;
+      const t=m.tiles[ny]?.[nx];
+      if(t===B_TILE.GRASS||t===B_TILE.FOREST){w.x=nx;w.y=ny;}
+    }
+
+    // lightweight respawn
+    const aliveR=(m.wildlife||[]).filter(w=>w.alive&&w.type==='rabbit').length;
+    const aliveD=(m.wildlife||[]).filter(w=>w.alive&&w.type==='deer').length;
+    const spawn=(type)=>{
+      for(let k=0;k<30;k++){
+        const x=1+Math.floor(Math.random()*(m.width-2));
+        const y=1+Math.floor(Math.random()*(m.height-2));
+        const t=m.tiles[y]?.[x];
+        if(t!==B_TILE.GRASS&&t!==B_TILE.FOREST)continue;
+        m.wildlife.push({id:`w_live_${Date.now()}_${Math.random().toString(36).slice(2,6)}`,type,x,y,alive:true});
+        break;
+      }
+    };
+    if(aliveR<24&&Math.random()<0.2)spawn('rabbit');
+    if(aliveD<10&&Math.random()<0.15)spawn('deer');
+  }
+
+  _tickPop(s){
+    const alive=s.villagers.filter(v=>v.state!=='dead');
+    for(const v of alive){
+      v._ageTick=(v._ageTick||0)+1;
+      if(v._ageTick>=TICK_PER_YEAR){v.age++;v._ageTick=0;if(v.age>70&&Math.random()<0.04)v.health=(v.health||100)-25;}
+    }
+    const houses=s.buildings.filter(b=>['house','stone_house','boarding_house'].includes(b.type)&&b.built);
+    const cap=houses.reduce((a,b)=>a+(b.type==='boarding_house'?8:2),0);
+    if(alive.length<cap&&alive.length>=2&&Math.random()<0.0003){
+      const names=['小明','小红','阿强','翠花','大牛','小花','子豪','晓梅','阿虎','玲玲'];
+      const h=houses[0];
+      s.villagers.push({
+        id:`v_${Date.now()}_${Math.random().toString(36).slice(2,8)}`,
+        name:names[Math.floor(Math.random()*names.length)],age:0,gender:Math.random()<0.5?'m':'f',
+        x:h?h.x+1:10,y:h?h.y+1:10,state:'idle',building_id:null,home_id:h?h.id:null,
+        health:100,happiness:75,mood_tag:'平稳',educated:false,hunger:100,thirst:100,warmth:100,action:null,action_ticks_left:0,
+        carrying:{},has_cart:false,
+      });
+    }
+  }
+
+  _onDeath(v){
+    if(v.building_id){const b=this.state.buildings.find(b=>b.id===v.building_id);if(b)b.workers_assigned=Math.max(0,b.workers_assigned-1);}
+    v.path=null;
+  }
+
+  _render(){
+    const ctx=this.ctx,canvas=this.canvas,s=this.state,z=this.zoom;
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    if(!s.map?.tiles)return;
+    const m=s.map;
+    const stx=Math.max(0,Math.floor(this.camX/z));
+    const sty=Math.max(0,Math.floor(this.camY/z));
+    const etx=Math.min(m.width,Math.ceil((this.camX+canvas.width)/z)+1);
+    const ety=Math.min(m.height,Math.ceil((this.camY+canvas.height)/z)+1);
+    const resourceIndex=new Map();
+    for(const n of (m.resource_nodes||[])){
+      if((n.amount||0)<=0)continue;
+      resourceIndex.set(`${n.x},${n.y}`,n);
+    }
+    // World-space offset + seed for coherent coloring (follow backend terrain_freq)
+    const wox=m.world_ox||0,woy=m.world_oy||0,wseed=m.world_seed||3,WF=(m.terrain_freq||0.0008);
+
+    for(let ty=sty;ty<ety;ty++){
+      for(let tx=stx;tx<etx;tx++){
+        const tile=m.tiles[ty]?.[tx]??B_TILE.BORDER;
+        const sx2=tx*z-this.camX, sy2=ty*z-this.camY;
+
+        // Elevation from fractal noise — world coordinates match backend generation
+        const elev=fractalNoise((wox+tx)*WF,(woy+ty)*WF,wseed); // 0..1 large-scale height
+        // low-frequency tone map for large patches (avoid noisy checker look)
+        const nd=noise((wox+tx)*0.022,(woy+ty)*0.022,wseed+11); // 0..1
+
+        // Elevation-tinted base ground color
+        if(tile===B_TILE.GRASS){
+          // two-tone large blobs like reference style
+          let ri,gi,bi;
+          if(elev<0.50){ri=42+nd*7;gi=112+nd*10;bi=34+nd*6;}
+          else{ri=30+nd*7;gi=92+nd*10;bi=26+nd*6;}
+          ctx.fillStyle=`rgb(${ri|0},${gi|0},${bi|0})`;
+        }else if(tile===B_TILE.RIVER){
+          // deeper water = darker blue
+          const dep=Math.max(0,(0.38-elev)*2.2);
+          ctx.fillStyle=`rgb(${12+dep*4|0},${58+dep*16|0},${132+dep*30|0})`;
+        }else if(tile===B_TILE.MOUNTAIN){
+          const g=115+nd*20;
+          ctx.fillStyle=`rgb(${g|0},${g|0},${(g-4)|0})`;
+        }else if(tile===B_TILE.FOREST){
+          const nd2=noise((wox+tx)*0.024,(woy+ty)*0.024,wseed+37);
+          const ri2=18+nd2*7,gi2=78+nd2*10,bi2=20+nd2*7;
+          ctx.fillStyle=`rgb(${ri2|0},${gi2|0},${bi2|0})`;
+        }else if(tile===B_TILE.STONE||tile===B_TILE.IRON){
+          // Resources render as grass background (elevation-tinted) with dots overlay
+          let ri,gi,bi;
+          if(elev<0.50){ri=42+nd*7;gi=112+nd*10;bi=34+nd*6;}
+          else{ri=30+nd*7;gi=92+nd*10;bi=26+nd*6;}
+          ctx.fillStyle=`rgb(${ri|0},${gi|0},${bi|0})`;
+        }else{
+          ctx.fillStyle=getTileColor(tile);
+        }
+        ctx.fillRect(sx2,sy2,z,z);
+
+        // River waves disabled per UI preference (render solid water only)
+
+        // Roads & Bridges
+        if(z>=8 && (tile===B_TILE.DIRT_ROAD||tile===B_TILE.STONE_ROAD||isBridgeTile(tile))){
+          if(tile===B_TILE.DIRT_ROAD){
+            ctx.fillStyle='rgba(120,94,62,0.7)';
+            ctx.fillRect(sx2+z*0.08,sy2+z*0.08,z*0.84,z*0.84);
+          }else if(tile===B_TILE.STONE_ROAD){
+            ctx.fillStyle='rgba(145,145,145,0.78)';
+            ctx.fillRect(sx2+z*0.08,sy2+z*0.08,z*0.84,z*0.84);
+          }else if(tile===B_TILE.WOOD_BRIDGE){
+            ctx.fillStyle='rgba(126,86,48,0.8)';
+            ctx.fillRect(sx2+z*0.05,sy2+z*0.2,z*0.9,z*0.6);
+          }else if(tile===B_TILE.STONE_BRIDGE){
+            ctx.fillStyle='rgba(130,130,130,0.82)';
+            ctx.fillRect(sx2+z*0.05,sy2+z*0.2,z*0.9,z*0.6);
+          }
+        }
+
+        // Resource highlight after zone selection
+        const stoneZones=this.gatheringZones?.stone||[];
+        const ironZones=this.gatheringZones?.iron||[];
+        const woodZones=this.gatheringZones?.wood||[];
+        const inStoneZone=stoneZones.some(gz=>this._inZone(tx,ty,gz));
+        const inIronZone=ironZones.some(gz=>this._inZone(tx,ty,gz));
+        const inWoodZone=woodZones.some(gz=>this._inZone(tx,ty,gz));
+        const node=resourceIndex.get(`${tx},${ty}`);
+
+        let hl=null;
+        if(inStoneZone && (tile===B_TILE.STONE || node?.type==='stone')) hl='rgba(220,220,220,0.85)';
+        else if(inIronZone && (tile===B_TILE.IRON || node?.type==='iron')) hl='rgba(130,130,130,0.9)';
+        else if(inWoodZone && tile===B_TILE.FOREST) hl='rgba(100,230,150,0.85)';
+        if(hl){
+          ctx.strokeStyle=hl;
+          ctx.lineWidth=Math.max(1,z*0.08);
+          ctx.strokeRect(sx2+1,sy2+1,z-2,z-2);
+          if(z>=12){
+            ctx.fillStyle=hl.replace('0.85','0.12').replace('0.9','0.14');
+            ctx.fillRect(sx2+1,sy2+1,z-2,z-2);
+          }
+        }
+
+        // Resources - draw trees and food from tile_resources
+        if(z>=10){
+          const margin=z*0.15;
+          const innerSize=z-margin*2;
+          const tileRes=m.tile_resources?.[ty]?.[tx];
+
+          // Draw trees from tile_resources
+          if(tileRes && tileRes.trees && tileRes.trees.length>0){
+            for(let i=0;i<tileRes.trees.length;i++){
+              const tree=tileRes.trees[i];
+              const ox=margin+sn(tx*3.7+i*7,ty*2.3+i*5,17+i)*innerSize;
+              const oy=margin+sn(tx*2.1+i*5,ty*3.9+i*7,29+i)*innerSize;
+
+              // Tree size affects color and visual size
+              const treeSize=tree.size||0; // 0-3
+              const growth=tree.growth||0; // 0-1
+
+              // Scale size by growth
+              const baseDark = 20 + treeSize * 5;
+              const baseLight = 50 + treeSize * 8;
+              const alpha = tile===B_TILE.FOREST ? 0.75 : 0.5;
+              ctx.fillStyle=`rgba(${baseDark},${baseLight},${baseDark-5},${alpha})`;
+
+              // Visual size scales with growth
+              const baseRadius = tile===B_TILE.FOREST ? z*0.10 : z*0.08;
+              const treeRadius = baseRadius * (0.3 + growth * 0.7) * (1 + treeSize * 0.15);
+              const treeSize2 = treeRadius * 2;
+              ctx.fillRect(sx2+ox-treeRadius,sy2+oy-treeRadius,treeSize2,treeSize2);
+            }
+          }
+
+          // Draw food from tile_resources (berries, mushrooms, roots)
+          if(tileRes && tileRes.food && tileRes.food.length>0){
+            const foodColors={
+              berries:'rgba(220,60,100,0.8)',     // red/pink
+              mushroom:'rgba(180,140,100,0.8)',    // brown/tan
+              root:'rgba(200,160,80,0.8)'          // orange/brown
+            };
+            for(let i=0;i<tileRes.food.length;i++){
+              const food=tileRes.food[i];
+              // Different positions for food
+              const ox=margin+sn(tx*5.1+i*5,ty*4.7+i*7,51+i)*innerSize;
+              const oy=margin+sn(tx*4.3+i*7,ty*5.9+i*5,59+i)*innerSize;
+              const growth=food.growth||0;
+
+              ctx.fillStyle=foodColors[food.type]||foodColors.berries;
+
+              // Food grows from small dots to larger circles
+              const foodSize = z * (0.06 + growth * 0.08);
+              ctx.fillRect(sx2+ox-foodSize/2,sy2+oy-foodSize/2,foodSize,foodSize);
+            }
+          }
+          }else if(tile===B_TILE.STONE){
+            // Stone - 0-6 tiny white/silver specks (square dots)
+            const sc=Math.floor(sn(tx*2.3,ty*1.7,77)*7);
+            for(let i=0;i<sc;i++){
+              const ox=margin+sn(tx*4.1+i*9,ty*3.7+i*7,43+i)*innerSize;
+              const oy=margin+sn(tx*2.9+i*7,ty*4.3+i*9,61+i)*innerSize;
+              const stoneSize = z*0.16;
+              ctx.fillStyle='rgba(220,215,200,0.85)';
+              ctx.fillRect(sx2+ox-stoneSize/2,sy2+oy-stoneSize/2,stoneSize,stoneSize);
+            }
+          }else if(tile===B_TILE.IRON){
+            // Iron - 0-6 tiny dark specks (square dots)
+            const ic=Math.floor(sn(tx*1.9,ty*2.7,91)*7);
+            for(let i=0;i<ic;i++){
+              const ox=margin+sn(tx*3.3+i*8,ty*2.1+i*6,37+i)*innerSize;
+              const oy=margin+sn(tx*2.7+i*6,ty*3.9+i*8,53+i)*innerSize;
+              const ironSize = z*0.14;
+              ctx.fillStyle='rgba(120,85,70,0.8)';
+              ctx.fillRect(sx2+ox-ironSize/2,sy2+oy-ironSize/2,ironSize,ironSize);
+            }
+          }
+
+        // map resource nodes overlay (minerals + natural food)
+        if(z>=8){
+          const n=resourceIndex.get(`${tx},${ty}`);
+          if(n){
+            let c='rgba(255,255,255,0.7)';
+            if(n.type==='stone')c='rgba(168,168,168,0.95)';      // 灰色石材
+            else if(n.type==='iron')c='rgba(86,86,86,0.96)';     // 深灰色铁块
+            else if(['berries','mushroom_patch','fish_spot','game'].includes(n.type))
+              c='rgba(236,120,170,0.92)';                        // 食物统一粉红色
+            const sz=Math.max(2,z*0.18);
+            ctx.fillStyle=c;
+            ctx.fillRect(sx2+z*0.5-sz*0.5,sy2+z*0.5-sz*0.5,sz,sz);
+          }
+        }
+      }
+    }
+
+    // Wildlife render (rabbit / deer)
+    if(z>=8){
+      for(const w of (m.wildlife||[])){
+        if(!w.alive)continue;
+        if(w.x<stx||w.x>=etx||w.y<sty||w.y>=ety)continue;
+        const wx=w.x*z-this.camX+z*0.5;
+        const wy=w.y*z-this.camY+z*0.5;
+        const sz=w.type==='deer'?Math.max(2,z*0.2):Math.max(2,z*0.15);
+        ctx.fillStyle=w.type==='deer'?'rgba(170,120,70,0.9)':'rgba(230,230,230,0.9)';
+        ctx.fillRect(wx-sz*0.5,wy-sz*0.5,sz,sz);
+      }
+    }
+
+    // Region grid
+    if(z>=14){
+      ctx.strokeStyle='rgba(201,168,108,0.08)';ctx.lineWidth=0.5;
+      for(let ty=0;ty<=m.height;ty+=16){const sy2=ty*z-this.camY;ctx.beginPath();ctx.moveTo(0,sy2);ctx.lineTo(m.width*z-this.camX+this.camX,sy2);ctx.stroke();}
+      for(let tx=0;tx<=m.width;tx+=16){const sx2=tx*z-this.camX;ctx.beginPath();ctx.moveTo(sx2,0);ctx.lineTo(sx2,m.height*z);ctx.stroke();}
+    }
+
+    // Buildings
+    for(const b of s.buildings){
+      const sx2=b.x*z-this.camX,sy2=b.y*z-this.camY,sw=b.w*z,sh=b.h*z;
+      if(sx2+sw<0||sy2+sh<0||sx2>canvas.width||sy2>canvas.height)continue;
+      const sel=this.selectedBuilding?.id===b.id;
+      // Flat natural color fill
+      const bColor=BUILDING_COLORS[b.type]||'#9a8a7a';
+      ctx.globalAlpha=b.built?1.0:0.5;
+      ctx.fillStyle=bColor;
+      ctx.fillRect(sx2,sy2,sw,sh);
+      ctx.globalAlpha=1.0;
+      if(!b.built){
+        // 建造进度条
+        const progH=Math.max(3,sh*0.07);
+        ctx.fillStyle='rgba(0,0,0,0.25)';
+        ctx.fillRect(sx2,sy2+sh-progH,sw,progH);
+        ctx.fillStyle='#5ac480';
+        ctx.fillRect(sx2,sy2+sh-progH,Math.max(2,sw*(b.progress||0)),progH);
+      }
+      // Building name label (text only, no icons)
+      if(z>=8){
+        const name=BUILDINGS_DATA[b.type]?.name||b.type;
+        const fs=Math.max(6,Math.min(13,sw*0.28));
+        ctx.font=`600 ${fs}px sans-serif`;
+        ctx.textAlign='center';
+        ctx.textBaseline='middle';
+        ctx.shadowColor='rgba(0,0,0,0.55)';
+        ctx.shadowBlur=2;
+        ctx.fillStyle='rgba(255,255,255,0.95)';
+        ctx.fillText(name,sx2+sw/2,sy2+sh/2);
+        ctx.shadowBlur=0;
+        ctx.textBaseline='alphabetic';
+      }
+      // 选中/悬停高亮
+      const hover=this.hoverBuilding?.id===b.id;
+      if(sel){
+        ctx.strokeStyle='rgba(255,255,255,0.9)';
+        ctx.lineWidth=2;
+        ctx.setLineDash([]);
+        ctx.strokeRect(sx2-1,sy2-1,sw+2,sh+2);
+        if(RESOURCE_RANGE_BUILDINGS.has(b.type)){
+          const fcx=sx2+sw/2, fcy=sy2+sh/2, rr=RESOURCE_BUILDING_RADIUS*z;
+          ctx.strokeStyle='rgba(90,196,128,0.55)';
+          ctx.lineWidth=Math.max(1,z*0.08);
+          ctx.setLineDash([8,6]);
+          ctx.beginPath();
+          ctx.arc(fcx,fcy,rr,0,Math.PI*2);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+      }else if(hover){
+        ctx.strokeStyle='rgba(255,255,255,0.55)';
+        ctx.lineWidth=1.5;
+        ctx.setLineDash([4,3]);
+        ctx.strokeRect(sx2,sy2,sw,sh);
+        ctx.setLineDash([]);
+      }else{
+        ctx.strokeStyle='rgba(0,0,0,0.22)';
+        ctx.lineWidth=1;
+        ctx.setLineDash([]);
+        ctx.strokeRect(sx2,sy2,sw,sh);
+      }
+    }
+
+    // Gathering zones (stone / iron / wood)
+    const zoneColors={
+      stone:{s:'rgba(180,180,180,0.8)',f:'rgba(180,180,180,0.12)',label:'石头采集区'},
+      iron:{s:'rgba(110,110,110,0.85)',f:'rgba(110,110,110,0.14)',label:'铁块采集区'},
+      wood:{s:'rgba(90,196,128,0.85)',f:'rgba(90,196,128,0.12)',label:'树木采集区'},
+    };
+    for(const typ of ['stone','iron','wood']){
+      const zs=this.gatheringZones?.[typ]||[];
+      const c=zoneColors[typ];
+      for(const gz of zs){
+        const gx=gz.x*z-this.camX, gy=gz.y*z-this.camY, gw=gz.w*z, gh=gz.h*z;
+        ctx.strokeStyle=c.s;
+        ctx.lineWidth=2;
+        ctx.setLineDash([6,4]);
+        ctx.strokeRect(gx,gy,gw,gh);
+        ctx.setLineDash([]);
+        ctx.fillStyle=c.f;
+        ctx.fillRect(gx,gy,gw,gh);
+        if(z>=12){
+          ctx.fillStyle=c.s;
+          ctx.font=`${Math.max(9,z*0.35)}px sans-serif`;
+          ctx.textAlign='center';
+          ctx.fillText(c.label,gx+gw/2,gy+gh/2);
+        }
+      }
+    }
+    if(this.gatheringMode && this.gatheringStart && this.dragging){
+      const t = this._screenToTile(this.mouseX, this.mouseY);
+      const start = this.gatheringStart;
+      const x = Math.min(start.x, t.x);
+      const y = Math.min(start.y, t.y);
+      const w = Math.abs(t.x - start.x) + 1;
+      const h = Math.abs(t.y - start.y) + 1;
+      const gx=x*z-this.camX, gy=y*z-this.camY, gw=w*z, gh=h*z;
+      const c=zoneColors[this.gatheringResourceType||'wood'];
+      ctx.strokeStyle=c.s;
+      ctx.lineWidth=2;
+      ctx.setLineDash([4,3]);
+      ctx.strokeRect(gx,gy,gw,gh);
+      ctx.setLineDash([]);
+      ctx.fillStyle=c.f;
+      ctx.fillRect(gx,gy,gw,gh);
+    }
+
+    // Villagers
+    for(const v of s.villagers){
+      if(v.state==='dead')continue;
+      const scale=villagerDotScale(v);
+      const vs=z*0.4*scale;
+      const sx2=v.x*z-this.camX-vs/2,sy2=v.y*z-this.camY-vs/2;
+      if(sx2+vs<0||sy2+vs<0||sx2>canvas.width||sy2>canvas.height)continue;
+      // 路径显示 - 更明显
+      if(v.path?.length>0){
+        ctx.strokeStyle='rgba(90,196,128,0.4)';
+        ctx.lineWidth=Math.max(1,z*0.08);
+        ctx.setLineDash([4,3]);
+        ctx.beginPath();
+        ctx.moveTo(sx2+vs/2,sy2+vs/2);
+        v.path.slice(0,Math.min(6,v.path.length)).forEach((p,i)=>{
+          const alpha=1-i*0.15;
+          ctx.strokeStyle=`rgba(90,196,128,${alpha*0.4})`;
+          ctx.lineTo(p.x*z-this.camX+z/2,p.y*z-this.camY+z/2);
+        });
+        ctx.stroke();
+        ctx.setLineDash([]);
+        // 目标点标记
+        if(v.path.length>0){
+          const last=v.path[v.path.length-1];
+          const tx=last.x*z-this.camX+z/2,ty=last.y*z-this.camY+z/2;
+          ctx.fillStyle='rgba(90,196,128,0.3)';
+          const pz=Math.max(2,z*0.3);
+          ctx.fillRect(tx-pz/2,ty-pz/2,pz,pz);
+        }
+      }
+      const sel=this.selectedVillager?.id===v.id;
+      const hover=this.hoverVillager?.id===v.id;
+      if(sel){
+        // 选中发光效果
+        ctx.shadowColor='#c9a86c';
+        ctx.shadowBlur=12;
+        ctx.strokeStyle='#c9a86c';
+        ctx.lineWidth=2;
+        const pad=Math.max(1,vs*0.2);
+        ctx.strokeRect(sx2-pad,sy2-pad,vs+pad*2,vs+pad*2);
+        ctx.shadowBlur=0;
+      }else if(hover){
+        // 悬停高亮
+        ctx.strokeStyle='rgba(201,168,108,0.6)';
+        ctx.lineWidth=2;
+        ctx.setLineDash([3,2]);
+        const pad=Math.max(1,vs*0.14);
+        ctx.strokeRect(sx2-pad,sy2-pad,vs+pad*2,vs+pad*2);
+        ctx.setLineDash([]);
+      }
+      // 村民本体 - 带状态边框
+      ctx.fillStyle=VILLAGER_COLORS[v.state]||VILLAGER_COLORS.idle;
+      ctx.fillRect(sx2,sy2,vs,vs);
+      // 内部高光
+      ctx.fillStyle='rgba(255,255,255,0.2)';
+      ctx.fillRect(sx2,sy2,vs,vs*0.3);
+      // 状态指示器
+      if(v.state==='working'||v.state==='building'){
+        ctx.fillStyle='#5ac480';
+        const ds=Math.max(2,vs*0.34);
+        ctx.fillRect(sx2+vs-ds-1,sy2+1,ds,ds);
+      }else if(v.state==='hungry'||v.state==='thirsty'){
+        ctx.fillStyle='#c45a5a';
+        const ds=Math.max(2,vs*0.34);
+        ctx.fillRect(sx2+vs-ds-1,sy2+1,ds,ds);
+      }
+    }
+
+    // Build ghost - 优化的建造预览
+    if(this.buildGhost&&this.buildMode){
+      const g=this.buildGhost;
+      const sx2=g.x*z-this.camX,sy2=g.y*z-this.camY,sw=g.w*z,sh=g.h*z;
+      const bd=BUILDINGS_DATA[this.buildMode];
+      const canPlace=this._canPlaceAt(g.x,g.y,bd);
+
+      // 半透明填充
+      ctx.fillStyle=canPlace?'rgba(90,196,128,0.15)':'rgba(196,90,90,0.2)';
+      ctx.fillRect(sx2,sy2,sw,sh);
+
+      // 虚线边框
+      ctx.strokeStyle=canPlace?'rgba(90,196,128,0.8)':'rgba(196,90,90,0.9)';
+      ctx.lineWidth=2;
+      ctx.setLineDash([6,4]);
+      ctx.strokeRect(sx2,sy2,sw,sh);
+      ctx.setLineDash([]);
+
+      // 四角标记
+      const cornerSize=z*0.3;
+      ctx.strokeStyle=canPlace?'#5ac480':'#c45a5a';
+      ctx.lineWidth=2;
+      // 左上
+      ctx.beginPath();
+      ctx.moveTo(sx2,sy2+cornerSize);
+      ctx.lineTo(sx2,sy2);
+      ctx.lineTo(sx2+cornerSize,sy2);
+      ctx.stroke();
+      // 右上
+      ctx.beginPath();
+      ctx.moveTo(sx2+sw-cornerSize,sy2);
+      ctx.lineTo(sx2+sw,sy2);
+      ctx.lineTo(sx2+sw,sy2+cornerSize);
+      ctx.stroke();
+      // 右下
+      ctx.beginPath();
+      ctx.moveTo(sx2+sw,sy2+sh-cornerSize);
+      ctx.lineTo(sx2+sw,sy2+sh);
+      ctx.lineTo(sx2+sw-cornerSize,sy2+sh);
+      ctx.stroke();
+      // 左下
+      ctx.beginPath();
+      ctx.moveTo(sx2+cornerSize,sy2+sh);
+      ctx.lineTo(sx2,sy2+sh);
+      ctx.lineTo(sx2,sy2+sh-cornerSize);
+      ctx.stroke();
+
+      // 建筑名称和尺寸
+      if(z>=10){
+        ctx.fillStyle=canPlace?'rgba(90,196,128,0.9)':'rgba(196,90,90,0.9)';
+        ctx.font=`${Math.max(9,z*0.45)}px sans-serif`;
+        ctx.textAlign='center';
+        ctx.fillText(bd?.name||this.buildMode,sx2+sw/2,sy2-6);
+        ctx.font=`${Math.max(7,z*0.35)}px sans-serif`;
+        ctx.fillStyle='rgba(255,255,255,0.6)';
+        ctx.fillText(`${g.w}×${g.h}`,sx2+sw/2,sy2+sh+10);
+      }
+
+      // 不可放置时显示警告
+      if(!canPlace){
+        ctx.fillStyle='rgba(196,90,90,0.8)';
+        ctx.font=`${Math.max(10,z*0.5)}px sans-serif`;
+        ctx.textAlign='center';
+        ctx.fillText('✗',sx2+sw/2,sy2+sh/2+4);
+      }
+    }
+
+    // 资源生产动画效果
+    if(this._productionEffects){
+      this._productionEffects=this._productionEffects.filter(eff=>{
+        eff.life--;
+        if(eff.life<=0)return false;
+        const alpha=eff.life/eff.maxLife;
+        const sx2=eff.x*z-this.camX+z/2,sy2=eff.y*z-this.camY+z/2-eff.life*0.3;
+        ctx.fillStyle=`rgba(${eff.color},${alpha*0.8})`;
+        ctx.font=`${Math.max(10,z*0.5)}px sans-serif`;
+        ctx.textAlign='center';
+        ctx.fillText(eff.text,sx2,sy2);
+        return true;
+      });
+    }
+  }
+
+  _canPlaceAt(x,y,bd){
+    if(!bd)return false;
+    const res=this.state.resources;
+    for(const [r,a] of Object.entries(bd.cost)){
+      if((res[r]||0)<a)return false;
+    }
+    const m=this.state.map;
+    if(x<0||y<0||x+bd.size[0]>m.width||y+bd.size[1]>m.height)return false;
+    if(bd.isTile){
+      const t=m.tiles[y]?.[x];
+      const overlapBuilding=this.state.buildings.some(ob=>x>=ob.x&&x<ob.x+ob.w&&y>=ob.y&&y<ob.y+ob.h);
+      if(overlapBuilding)return false;
+      if(bd.place==='land')return !(t===B_TILE.MOUNTAIN||t===B_TILE.BORDER||t===B_TILE.RIVER);
+      if(bd.place==='river')return t===B_TILE.RIVER;
+      return false;
+    }
+    for(let dy=0;dy<bd.size[1];dy++)for(let dx=0;dx<bd.size[0];dx++){
+      const tt=m.tiles[y+dy]?.[x+dx];
+      if(tt===B_TILE.MOUNTAIN||tt===B_TILE.BORDER||tt===B_TILE.RIVER)return false;
+    }
+    for(const ob of this.state.buildings){
+      const overlap = !(x + bd.size[0] <= ob.x || ob.x + ob.w <= x || y + bd.size[1] <= ob.y || ob.y + ob.h <= y);
+      if(overlap)return false;
+    }
+    return true;
+  }
+
+  // 添加生产效果
+  _addProductionEffect(x,y,text,color){
+    if(!this._productionEffects)this._productionEffects=[];
+    this._productionEffects.push({x,y,text,color,life:40,maxLife:40});
+  }
+}
+{% endverbatim %}

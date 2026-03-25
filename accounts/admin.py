@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.utils.html import format_html
-from accounts.models import User, TokenUsage, SiteConfig, VerificationCode
+from accounts.models import User, TokenUsage, SiteConfig, VerificationCode, CloudFile
 
 
 @admin.register(User)
@@ -110,3 +110,22 @@ class VerificationCodeAdmin(admin.ModelAdmin):
             return format_html('<span style="color:#686460">⌛ 已过期</span>')
         return format_html('<span style="color:#c9a86c">● 有效</span>')
     status_badge.short_description = '状态'
+
+
+@admin.register(CloudFile)
+class CloudFileAdmin(admin.ModelAdmin):
+    list_display = ('user', 'name', 'file_type', 'size_display', 'uploaded_at')
+    list_filter = ('file_type',)
+    search_fields = ('user__email', 'name')
+    ordering = ('-uploaded_at',)
+    readonly_fields = ('user', 'name', 'size', 'file_type', 'file', 'sha256', 'uploaded_at')
+
+    def has_add_permission(self, request):
+        return False
+
+    def size_display(self, obj):
+        kb = obj.size / 1024
+        if kb < 1024:
+            return f'{kb:.1f} KB'
+        return f'{kb/1024:.2f} MB'
+    size_display.short_description = '大小'

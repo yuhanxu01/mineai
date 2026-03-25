@@ -13,7 +13,7 @@ from rest_framework.permissions import IsAuthenticated
 from .models import BridgeConnection, BridgeSession, BridgeMessage, PendingPermission, PendingCommand
 
 
-def _token_auth(request):
+def token_auth_user(request):
     auth = request.META.get('HTTP_AUTHORIZATION', '')
     if not auth.startswith('Token '):
         return None
@@ -36,7 +36,7 @@ def _next_seq(session):
 @method_decorator(csrf_exempt, name='dispatch')
 class BridgeConnectView(View):
     def post(self, request):
-        user = _token_auth(request)
+        user = token_auth_user(request)
         if not user:
             return JsonResponse({'error': '需要认证'}, status=401)
 
@@ -69,7 +69,7 @@ class BridgeConnectView(View):
 @method_decorator(csrf_exempt, name='dispatch')
 class BridgeHeartbeatView(View):
     def post(self, request, connection_id):
-        user = _token_auth(request)
+        user = token_auth_user(request)
         if not user:
             return JsonResponse({'error': '需要认证'}, status=401)
         try:
@@ -86,7 +86,7 @@ class BridgeHeartbeatView(View):
 class BridgePollView(View):
     """Bridge client polls for queued commands."""
     def get(self, request, connection_id):
-        user = _token_auth(request)
+        user = token_auth_user(request)
         if not user:
             return JsonResponse({'error': '需要认证'}, status=401)
         try:
@@ -118,7 +118,7 @@ class BridgePollView(View):
 class BridgePostMessageView(View):
     """Bridge client posts a Claude event to the platform."""
     def post(self, request, session_id):
-        user = _token_auth(request)
+        user = token_auth_user(request)
         if not user:
             return JsonResponse({'error': '需要认证'}, status=401)
         try:
@@ -148,7 +148,7 @@ class BridgePostMessageView(View):
 class BridgeUpdateSessionView(View):
     """Bridge client updates session status / model info."""
     def post(self, request, session_id):
-        user = _token_auth(request)
+        user = token_auth_user(request)
         if not user:
             return JsonResponse({'error': '需要认证'}, status=401)
         try:
@@ -175,7 +175,7 @@ class BridgeUpdateSessionView(View):
 class BridgeCreatePermissionView(View):
     """Bridge creates a permission request and posts it as a message."""
     def post(self, request, session_id):
-        user = _token_auth(request)
+        user = token_auth_user(request)
         if not user:
             return JsonResponse({'error': '需要认证'}, status=401)
         try:
@@ -215,7 +215,7 @@ class BridgeCreatePermissionView(View):
 class BridgePollPermissionView(View):
     """Bridge polls for a permission response."""
     def get(self, request, permission_id):
-        user = _token_auth(request)
+        user = token_auth_user(request)
         if not user:
             return JsonResponse({'error': '需要认证'}, status=401)
         try:
@@ -461,7 +461,7 @@ class BridgeRespondPermissionView(APIView):
 @method_decorator(csrf_exempt, name='dispatch')
 class BridgeSessionStreamView(View):
     def get(self, request, session_id):
-        user = _token_auth(request)
+        user = token_auth_user(request)
         if not user:
             return JsonResponse({'error': '需要认证'}, status=401)
         try:
@@ -537,3 +537,38 @@ class BridgeScriptDownloadView(APIView):
         resp = HttpResponse(script, content_type='text/x-python; charset=utf-8')
         resp['Content-Disposition'] = 'attachment; filename="claude_bridge.py"'
         return resp
+
+
+class BridgeInstallerView(View):
+    """Serve a shell installer for: curl .../install/?token=xxx | bash"""
+
+    def get(self, request):
+        token = (request.GET.get('token') or '').strip()
+        if not token:
+            return HttpResponse('Missing token query parameter: ?token=YOUR_TOKEN', status=400, content_type='text/plain; charset=utf-8')
+
+        from django.conf import settings
+        site_url = getattr(settings, 'SITE_URL', request.build_absolute_uri('/').rstrip('/')).rstrip('/')
+        script_url = f"{site_url}/api/bridge/client/script/"
+
+        install_script = f"""#!/usr/bin/env bash
+set -euo pipefail
+
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "python3 is required but not found in PATH."
+  exit 1
+fi
+
+if ! command -v curl >/dev/null 2>&1; then
+  echo "curl is required but not found in PATH."
+  exit 1
+fi
+
+echo ">>> Downloading claude_bridge.py ..."
+curl -fsSL -H "Authorization: Token {token}" "{script_url}" -o claude_bridge.py
+chmod +x claude_bridge.py
+
+echo ">>> Done. Start it with:"
+echo "python3 claude_bridge.py"
+"""
+        return HttpResponse(install_script, content_type='text/plain; charset=utf-8')

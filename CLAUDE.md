@@ -197,9 +197,37 @@ python manage.py migrate
 3. 流式用 `chat_stream()`，非流式用 `chat()`
 
 ### 修改前端组件
-- `templates/index.html` 是单文件，用 Grep 搜索组件名定位行号再编辑
-- 修改前用 Read 确认上下文，不要盲改
-- 改完后用 preview_screenshot 验证
+前端已拆分为多个 partial 文件，不再是单一 index.html：
+
+| 文件 | 内容 | 约行数 |
+|------|------|--------|
+| `templates/index.html` | HTML骨架 + CDN + include指令 | 64 |
+| `templates/partials/_styles.html` | 全局 CSS（`<style>` 块） | ~396 |
+| `templates/partials/_globals.html` | F/P/U/streamSSE/useAuth/Svg/Icon 等全局工具 | ~441 |
+| `templates/partials/_novel.html` | UserPanelApp + MemoryForgeApp + FloatingChat + AuthScreen + 网文写作全部组件 | ~1660 |
+| `templates/partials/_settings.html` | Settings / ThemeSettings / AppColorModal / SLUG_MAP | ~295 |
+| `templates/partials/_platform.html` | FeatureNavMap / PlatformHome / Root | ~656 |
+| `templates/partials/_ocr.html` | OCRStudioApp + OCRUpload + OCRWork + OCRResult | ~485 |
+| `templates/partials/_paper.html` | typeset + 所有学术研究组件 + PaperLabApp | ~1236 |
+| `templates/partials/_kg.html` | KG常量 + 所有知识图谱组件 + KGApp | ~1209 |
+| `templates/partials/_code_agent.html` | DiffBlock + FileTree + CodeAgentApp | ~922 |
+| `templates/partials/_bridge.html` | TOOL_META + 所有Bridge组件 + ClaudeBridgeApp | ~1411 |
+| `templates/partials/_scan.html` | CameraCapture + MeshEditor + StitchPanel + ScanEnhanceApp | ~2336 |
+| `templates/partials/_qbank.html` | QBMd + QuestionBankApp + 所有QB子组件 | ~1039 |
+| `templates/partials/_docreader.html` | DocReaderApp + ReactDOM.createRoot 挂载 | ~688 |
+
+**工作流：**
+1. 用 Grep 在 `templates/partials/` 下搜索组件名，确定所在文件
+2. 用 Read 读取对应 partial 文件（每个文件均可完整一次读完）
+3. 用 Edit 修改，改完用 preview_screenshot 验证
+
+**每个 partial 结构：**
+```
+{% verbatim %}
+... JSX/JS 代码 ...
+{% endverbatim %}
+```
+Django 通过 `{% include %}` 在服务端拼接，浏览器收到的仍是一个完整 HTML。
 
 ### 部署检查
 ```bash

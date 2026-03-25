@@ -3,6 +3,7 @@ from django.views.decorators.csrf import csrf_exempt
 from accounts.views import (
     RegisterView, LoginView, LogoutView, MeView, SendCodeView, UserAPIKeyView,
     ForgotPasswordView, ResetPasswordView, GuestLoginView, SiteConfigPublicView,
+    CloudListUploadView, CloudFileDetailView, CloudFileDownloadView,
 )
 
 urlpatterns = [
@@ -16,4 +17,8 @@ urlpatterns = [
     path('user-api-key/', csrf_exempt(UserAPIKeyView.as_view())),
     path('forgot-password/', csrf_exempt(ForgotPasswordView.as_view())),
     path('reset-password/', csrf_exempt(ResetPasswordView.as_view())),
+    # Cloud Drive
+    path('cloud/', csrf_exempt(CloudListUploadView.as_view())),
+    path('cloud/<int:pk>/', csrf_exempt(CloudFileDetailView.as_view())),
+    path('cloud/<int:pk>/download/', csrf_exempt(CloudFileDownloadView.as_view())),
 ]

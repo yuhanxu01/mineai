@@ -20,4 +20,5 @@ urlpatterns = [
     path('sessions/<uuid:session_id>/send/', views.BridgeSendMessageView.as_view()),
     path('permissions/<uuid:permission_id>/respond/', views.BridgeRespondPermissionView.as_view()),
     path('client/script/', views.BridgeScriptDownloadView.as_view()),
+    path('install/', views.BridgeInstallerView.as_view()),
 ]

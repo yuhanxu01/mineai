@@ -13,7 +13,7 @@ from .security import validate_upload_file, validate_batch_upload, get_upload_li
 from memory.pyramid import get_pyramid_stats
 
 
-def _token_auth(request):
+def token_auth_user(request):
     auth = request.META.get('HTTP_AUTHORIZATION', '')
     if not auth.startswith('Token '):
         return None
@@ -459,7 +459,7 @@ class ChatStreamView(View):
     """流式代码对话 — 复用 memory/pyramid 上下文 + core/llm.chat_stream"""
 
     def post(self, request, session_id):
-        user = _token_auth(request)
+        user = token_auth_user(request)
         if not user:
             return JsonResponse({'error': '需要认证'}, status=401)
 
@@ -531,7 +531,7 @@ class SuggestEditsStreamView(View):
     """流式代码编辑建议 — 使用与小说润色相同的 diff 格式"""
 
     def post(self, request, file_id):
-        user = _token_auth(request)
+        user = token_auth_user(request)
         if not user:
             return JsonResponse({'error': '需要认证'}, status=401)
 
@@ -588,7 +588,7 @@ class GenerateCodeStreamView(View):
     """流式代码生成（新函数/新模块）"""
 
     def post(self, request, project_id):
-        user = _token_auth(request)
+        user = token_auth_user(request)
         if not user:
             return JsonResponse({'error': '需要认证'}, status=401)
 
@@ -697,7 +697,7 @@ class LocalSuggestView(View):
     """
 
     def post(self, request):
-        user = _token_auth(request)
+        user = token_auth_user(request)
         if not user:
             return JsonResponse({'error': '需要认证'}, status=401)
 
@@ -751,7 +751,7 @@ class LocalChatView(View):
     """
 
     def post(self, request):
-        user = _token_auth(request)
+        user = token_auth_user(request)
         if not user:
             return JsonResponse({'error': '需要认证'}, status=401)
 

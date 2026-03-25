@@ -1,0 +1,664 @@
+{% verbatim %}
+function FeatureNavMap({onNavigate}) {
+  const [open, setOpen] = useState(false);
+  const [elements, setElements] = useState([]);
+  const cyRef = useRef(null);
+  const containerRef = useRef(null);
+  const [query, setQuery] = useState('');
+  const [aiLoading, setAiLoading] = useState(false);
+  const [hint, setHint] = useState('');
+
+  useEffect(() => {
+    fetch(`${KG_API_BASE}/platform/`).then(r=>r.json()).then(d => {
+      const els = [
+        ...d.nodes.map(n => ({data:{...n.data, _color: n.data.color}})),
+        ...d.edges,
+      ];
+      setElements(els);
+    }).catch(()=>{});
+  }, []);
+
+  useEffect(() => {
+    if (!open || !containerRef.current || !window.cytoscape || !elements.length) return;
+    if (cyRef.current) { cyRef.current.destroy(); cyRef.current = null; }
+    const cy = window.cytoscape({
+      container: containerRef.current,
+      elements,
+      style: [
+        { selector:'node', style:{
+          'background-color': e => e.data('_color') || '#888',
+          'label': 'data(label)', 'color':'#e8e4df', 'font-size':'10px',
+          'font-family':'Noto Sans SC, sans-serif',
+          'text-valign':'bottom', 'text-halign':'center', 'text-margin-y':'3px',
+          'width': e => e.data('importance') >= 0.8 ? 32 : 20,
+          'height': e => e.data('importance') >= 0.8 ? 32 : 20,
+          'border-width':1.5, 'border-color': e => e.data('_color') || '#888', 'border-opacity':0.6,
+        }},
+        { selector:'node.highlighted', style:{'border-width':3,'border-opacity':1,'background-opacity':1}},
+        { selector:'node.dimmed', style:{'opacity':0.2}},
+        { selector:'edge', style:{
+          'width':1.2, 'line-color':'rgba(90,90,120,0.4)',
+          'target-arrow-color':'rgba(90,90,120,0.5)',
+          'target-arrow-shape':'triangle', 'curve-style':'bezier',
+          'opacity':0.6,
+        }},
+        { selector:'edge.dimmed', style:{'opacity':0.05}},
+      ],
+      layout:{ name:'cose', animate:false, padding:30, nodeRepulsion:4000, idealEdgeLength:60 },
+      userZoomingEnabled:true, userPanningEnabled:true, boxSelectionEnabled:false,
+    });
+    cy.on('mouseover','node', e => {
+      const n = e.target;
+      const neighbors = n.neighborhood();
+      cy.elements().addClass('dimmed');
+      n.removeClass('dimmed').addClass('highlighted');
+      neighbors.removeClass('dimmed');
+    });
+    cy.on('mouseout','node', () => {
+      cy.elements().removeClass('dimmed highlighted');
+    });
+    cy.on('tap','node', e => {
+      const label = e.target.data('label');
+      const slug = SLUG_MAP[label];
+      if (slug) onNavigate(slug);
+    });
+    cyRef.current = cy;
+    return () => { if (cyRef.current) { cyRef.current.destroy(); cyRef.current = null; }};
+  }, [open, elements]);
+
+  const doAiNav = async () => {
+    if (!query.trim() || aiLoading) return;
+    setAiLoading(true); setHint('');
+    try {
+      const appLabels = Object.keys(SLUG_MAP).join('、');
+      const messages = [{role:'user',content:`用户说：「${query}」\n\n平台应用列表：${appLabels}\n\n请分析用户最可能需要哪个应用（可以多个），用JSON格式回复，只输出：{"highlight":["应用名1","应用名2"]}`}];
+      let buf = '';
+      const _tok = localStorage.getItem('mf_token');
+      for await (const chunk of streamSSE(`/api/core/chat-stream/`, {messages, stream:true}, _tok)) {
+        if (chunk.content) buf += chunk.content;
+      }
+      const m = buf.match(/\{[^}]*"highlight"[^}]*\}/);
+      if (m) {
+        try {
+          const parsed = JSON.parse(m[0]);
+          const labels = parsed.highlight || [];
+          if (cyRef.current && labels.length) {
+            cyRef.current.elements().removeClass('highlighted dimmed');
+            cyRef.current.elements().addClass('dimmed');
+            labels.forEach(lbl => {
+              cyRef.current.nodes().filter(n => n.data('label') === lbl).forEach(n => {
+                n.removeClass('dimmed').addClass('highlighted');
+                n.neighborhood().removeClass('dimmed');
+              });
+            });
+            setHint(`推荐：${labels.join('、')}`);
+          }
+        } catch(e) {}
+      }
+    } catch(e) {}
+    setAiLoading(false);
+  };
+
+  return (
+    <div style={{marginBottom:20,borderRadius:'var(--r)',border:'1px solid var(--border2)',overflow:'hidden',background:'var(--bg2)'}}>
+      <div onClick={() => setOpen(o=>!o)} style={{padding:'10px 16px',cursor:'pointer',display:'flex',alignItems:'center',gap:10,userSelect:'none'}}>
+        <Icon name="share-2" size={16} stroke={1.5} style={{color:'var(--gold)',flexShrink:0}} />
+        <span style={{fontWeight:500,fontSize:13,color:'var(--fg)'}}>功能导航图谱</span>
+        <span style={{fontSize:11,color:'var(--fg3)',marginLeft:4}}>点击节点直接跳转应用</span>
+        <Icon name={open?'chevron-up':'chevron-down'} size={14} stroke={2} style={{color:'var(--fg3)',marginLeft:'auto'}} />
+      </div>
+      {open && (
+        <div style={{borderTop:'1px solid var(--border)'}}>
+          <div ref={containerRef} style={{width:'100%',height:320,background:'var(--bg)'}} />
+          <div style={{padding:'8px 12px',borderTop:'1px solid var(--border)',display:'flex',gap:8,alignItems:'center'}}>
+            <input value={query} onChange={e=>setQuery(e.target.value)}
+              onKeyDown={e=>e.key==='Enter'&&doAiNav()}
+              placeholder="描述你想做的事，AI 帮你找到合适的应用..."
+              style={{flex:1,fontSize:12,padding:'5px 10px'}} />
+            <button className="btn btn-p" onClick={doAiNav} disabled={aiLoading} style={{fontSize:12,padding:'5px 12px'}}>
+              {aiLoading?'..':'AI 导航'}
+            </button>
+            {hint && <span style={{fontSize:11,color:'var(--gold)'}}>{hint}</span>}
+          </div>
+          <div style={{padding:'0 12px 6px',fontSize:11,color:'var(--fg3)'}}>
+            点击图谱节点可直接跳转应用 · 鼠标悬停高亮关联节点
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PlatformHome({user, onLogout, siteConfig}) {
+  const [apps, setApps] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [query, setQuery] = useState('');
+  const [aiRec, setAiRec] = useState('');
+  const [aiLoading, setAiLoading] = useState(false);
+  const [showTheme, setShowTheme] = useState(false);
+  const [editApp, setEditApp] = useState(null);
+  const [openMenu, setOpenMenu] = useState(null);
+  const [appColors, setAppColors] = useState({});
+  const [pinnedApps, setPinnedApps] = useState([]);
+  const [appOrder, setAppOrder] = useState([]);
+  const [dragOver, setDragOver] = useState(null);
+  const [draggingSlug, setDraggingSlug] = useState(null);
+  const dragRef = useRef(null);
+  const longPressTimer = useRef(null);
+
+  // Per-user namespace
+  const ns = useCallback((k) => user?.is_guest ? `mf:guest:${k}` : user?.email ? `mf:${user.email}:${k}` : `mf:guest:${k}`, [user?.email, user?.is_guest]);
+  const savePref = useCallback((k, v) => localStorage.setItem(ns(k), JSON.stringify(v)), [ns]);
+  const getPref = useCallback((k, def) => { try { return JSON.parse(localStorage.getItem(ns(k))) ?? def; } catch { return def; } }, [ns]);
+
+  // Load per-user prefs when user resolves
+  useEffect(() => {
+    setAppColors(getPref('colors', {}));
+    setPinnedApps(getPref('pinned', []));
+    setAppOrder(getPref('order', []));
+  }, [user?.email, user?.is_guest]);
+
+  // Apply stored theme on mount
+  useEffect(() => {
+    const tid = localStorage.getItem('mf_tid') || 'dark_gold';
+    const t = THEMES.find(t => t.id === tid);
+    if (t) applyTheme(t.vars);
+    const accent = localStorage.getItem('mf_accent');
+    if (accent) {
+      document.documentElement.style.setProperty('--gold', accent);
+      document.documentElement.style.setProperty('--gold2', accent);
+    }
+    F(`${API}/platform/apps/`)
+      .then(data => { setApps(data); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, []);
+
+  // Close menu on outside click
+  useEffect(() => {
+    if (!openMenu) return;
+    const h = (e) => {
+      if (!e.target.closest('.app-menu-wrap')) setOpenMenu(null);
+    };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [openMenu]);
+
+  const allApps = useMemo(() => {
+    const slugs = new Set(apps.map(a => a.slug));
+    return [...apps, ...STATIC_APPS.filter(a => !slugs.has(a.slug))];
+  }, [apps]);
+
+  const filteredApps = useMemo(() => {
+    if (!query.trim()) return allApps;
+    const q = query.toLowerCase();
+    return allApps.filter(a => a.name.toLowerCase().includes(q) || a.description.toLowerCase().includes(q));
+  }, [allApps, query]);
+
+  // Pinned first, then custom order
+  const sortedApps = useMemo(() => {
+    const list = [...filteredApps];
+    if (appOrder.length) {
+      list.sort((a, b) => {
+        const ia = appOrder.indexOf(a.slug), ib = appOrder.indexOf(b.slug);
+        if (ia < 0 && ib < 0) return 0;
+        if (ia < 0) return 1;
+        if (ib < 0) return -1;
+        return ia - ib;
+      });
+    }
+    list.sort((a, b) => {
+      const pa = pinnedApps.includes(a.slug), pb = pinnedApps.includes(b.slug);
+      return pa === pb ? 0 : pa ? -1 : 1;
+    });
+    return list;
+  }, [filteredApps, appOrder, pinnedApps]);
+
+  const u = user?.usage || {};
+  const quota = user?.quota;
+  const pct = (v, max) => max ? Math.min(100, Math.round(v / max * 100)) : 0;
+  // Default: gold for all apps
+  const getColor = (app) => appColors[app.slug] || '#c9a86c';
+
+  const saveAppColor = (slug, color) => {
+    const next = {...appColors, [slug]: color};
+    setAppColors(next);
+    savePref('colors', next);
+  };
+
+  const togglePin = (slug) => {
+    const next = pinnedApps.includes(slug) ? pinnedApps.filter(s => s !== slug) : [...pinnedApps, slug];
+    setPinnedApps(next);
+    savePref('pinned', next);
+  };
+
+  const handleShare = (app) => {
+    const url = `${location.origin}/#/app/${app.slug}`;
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(url).then(() => {
+        const orig = document.title;
+        document.title = `已复制 ${app.name} 链接`;
+        setTimeout(() => { document.title = orig; }, 1500);
+      }).catch(() => {
+        prompt('请手动复制链接:', url);
+      });
+    } else {
+      prompt('请手动复制链接:', url);
+    }
+  };
+
+  const handleFeedback = (app) => {
+    // 打开反馈表单或链接到反馈页面
+    const feedbackUrl = 'https://github.com/anthropics/claude-code/issues';
+    window.open(feedbackUrl, '_blank');
+  };
+
+  // Drag & drop reorder
+  const handleDrop = (targetSlug) => {
+    const src = dragRef.current;
+    if (!src || src === targetSlug) return;
+    const slugs = sortedApps.map(a => a.slug);
+    const from = slugs.indexOf(src), to = slugs.indexOf(targetSlug);
+    if (from < 0 || to < 0) return;
+    slugs.splice(from, 1);
+    slugs.splice(to, 0, src);
+    dragRef.current = null;
+    setAppOrder(slugs);
+    savePref('order', slugs);
+  };
+
+  const goApp = (app) => {
+    if (draggingSlug) return;
+    if (!user) { window.location.hash = '#/login'; return; }
+    if (app.slug === 'novel_share') window.location.href = '/share/';
+    else window.location.hash = `#/app/${app.slug}`;
+  };
+
+  const aiRecommend = async () => {
+    if (!query.trim() || aiLoading) return;
+    if (!user) { window.location.hash = '#/login'; return; }
+    setAiLoading(true); setAiRec('');
+    const appList = allApps.map(a => `- ${a.name}: ${a.description}`).join('\n');
+    const msg = `用户需求: "${query}"\n\n平台可用应用:\n${appList}\n\n请推荐最合适的1-2个应用并简要说明原因，格式简洁。`;
+    const token = localStorage.getItem('mf_token');
+    const hdrs = {'Content-Type':'application/json'};
+    if (token) hdrs['Authorization'] = `Token ${token}`;
+    try {
+      const resp = await fetch(`${API}/core/chat-stream/`, {method:'POST', headers:hdrs, body:JSON.stringify({message:msg})});
+      if (!resp.ok) throw new Error(await resp.text());
+      const reader = resp.body.getReader(); const dec = new TextDecoder();
+      let buf = '', full = '';
+      while (true) {
+        const {done, value} = await reader.read(); if (done) break;
+        buf += dec.decode(value, {stream:true});
+        const lns = buf.split('\n'); buf = lns.pop();
+        for (const ln of lns) {
+          if (!ln.startsWith('data: ')) continue;
+          let ev; try { ev = JSON.parse(ln.slice(6)); } catch { continue; }
+          if (ev.type==='chunk') { full += ev.text; setAiRec(full); }
+          else if (ev.type==='done') { setAiRec(full); }
+        }
+      }
+    } catch { setAiRec('推荐失败，请稍后再试'); }
+    setAiLoading(false);
+  };
+
+  return (
+    <div className="dash-wrap">
+      <nav className="dash-nav">
+        <div className="dash-logo"><Icon name="spark" size={14} /> {siteConfig?.site_title || '应用平台'}</div>
+        <div className="dash-sw">
+          <div className="dash-sw-ic"><Icon name="search" size={14} /></div>
+          <input
+            placeholder="搜索应用，或描述需求让 AI 推荐…"
+            value={query}
+            onChange={e => { setQuery(e.target.value); setAiRec(''); }}
+            onKeyDown={e => e.key === 'Enter' && aiRecommend()}
+          />
+        </div>
+        <div className="dash-right">
+          {query.trim() && (
+            <button className={`btn btn-sm${aiLoading ? ' btn-ai generating' : ' btn-ai'}`}
+              onClick={aiRecommend} disabled={aiLoading}
+              style={{display:'inline-flex',alignItems:'center',gap:6}}>
+              <Icon name="spark" size={12} />
+              {aiLoading ? 'AI 推荐中…' : 'AI 推荐'}
+            </button>
+          )}
+          <button className="btn btn-s btn-sm" onClick={() => setShowTheme(true)} title="个性化设置" style={{padding:'6px'}}><Icon name="adjust" size={16} /></button>
+          {user ? (
+            <>
+              <span style={{fontSize:12,color:'var(--fg3)',maxWidth:160,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{displayName(user)}</span>
+              {user.is_guest
+                ? <button className="btn btn-p btn-sm" onClick={() => { window.location.hash = '#/login'; }}>登录</button>
+                : <>
+                    <button className="btn btn-s btn-sm" onClick={() => { window.location.hash = '#/profile'; }}
+                      style={{display:'inline-flex',alignItems:'center',gap:4}}>
+                      <Icon name="user" size={13}/> 个人中心
+                    </button>
+                    <button className="btn btn-s btn-sm" onClick={onLogout}>退出</button>
+                  </>
+              }
+            </>
+          ) : (
+            <button className="btn btn-p btn-sm" onClick={() => { window.location.hash = '#/login'; }}>登录 / 注册</button>
+          )}
+        </div>
+      </nav>
+
+      <div className="dash-body">
+        {/* Token Stats */}
+        {user && (
+          <div style={{marginBottom:28}}>
+            <div className="sec-hd">
+              <div className="sec-title">Token 用量</div>
+              <span style={{fontSize:11,color:'var(--fg3)'}}>
+                {user.has_own_key ? '自有 API 密钥 · 无限额度' : quota ? `今日已用 ${pct(u.daily_prompt_count||0, quota.daily_prompt_count)}%` : ''}
+              </span>
+            </div>
+            <div className="stat-grid">
+              <div className="stat-c">
+                <div className="stat-v" style={{color:'var(--gold2)'}}>{(u.prompt_count||0).toLocaleString()}</div>
+                <div className="stat-l">总提问次数</div>
+                {quota && <>
+                  <div className="stat-bar"><div className="stat-fill" style={{width:`${pct(u.daily_prompt_count||0,quota.daily_prompt_count)}%`,background:'var(--gold)'}} /></div>
+                  <div style={{fontSize:10,color:'var(--fg3)',marginTop:3}}>今日 {u.daily_prompt_count||0} / {quota.daily_prompt_count}</div>
+                </>}
+              </div>
+              <div className="stat-c">
+                <div className="stat-v" style={{color:'var(--cyan)'}}>{((u.total_tokens||0)/1000).toFixed(1)}<span style={{fontSize:14}}>K</span></div>
+                <div className="stat-l">累计 Token</div>
+                <div style={{fontSize:10,color:'var(--fg3)',marginTop:6}}>
+                  输入 {((u.input_tokens||0)/1000).toFixed(1)}K · 输出 {((u.output_tokens||0)/1000).toFixed(1)}K
+                </div>
+              </div>
+              {quota && <>
+                <div className="stat-c">
+                  <div className="stat-v" style={{color:'var(--blue)'}}>{((u.daily_input_tokens||0)/1000).toFixed(1)}<span style={{fontSize:14}}>K</span></div>
+                  <div className="stat-l">今日输入</div>
+                  <div className="stat-bar"><div className="stat-fill" style={{width:`${pct(u.daily_input_tokens||0,quota.daily_input_tokens)}%`,background:'var(--blue)'}} /></div>
+                  <div style={{fontSize:10,color:'var(--fg3)',marginTop:3}}>限额 {(quota.daily_input_tokens/1000).toFixed(0)}K</div>
+                </div>
+                <div className="stat-c">
+                  <div className="stat-v" style={{color:'var(--green)'}}>{((u.daily_output_tokens||0)/1000).toFixed(1)}<span style={{fontSize:14}}>K</span></div>
+                  <div className="stat-l">今日输出</div>
+                  <div className="stat-bar"><div className="stat-fill" style={{width:`${pct(u.daily_output_tokens||0,quota.daily_output_tokens)}%`,background:'var(--green)'}} /></div>
+                  <div style={{fontSize:10,color:'var(--fg3)',marginTop:3}}>限额 {(quota.daily_output_tokens/1000).toFixed(0)}K</div>
+                </div>
+              </>}
+            </div>
+          </div>
+        )}
+
+        {/* 功能导航图谱 */}
+        <FeatureNavMap onNavigate={(slug) => { window.location.hash = `#/app/${slug}`; }} />
+
+        {/* Apps grid */}
+        <div>
+          <div className="sec-hd">
+            <div className="sec-title">应用</div>
+            {query.trim() && <span style={{fontSize:12,color:'var(--fg3)'}}>找到 {sortedApps.length} 个</span>}
+          </div>
+          {loading ? (
+            <div className="load">加载中...</div>
+          ) : sortedApps.length === 0 ? (
+            <div className="empty"><h3>未找到相关应用</h3><p>试试「AI 推荐」</p></div>
+          ) : (
+            <div className="apps-grid2">
+              {sortedApps.map(app => {
+                const color = getColor(app);
+                const icStyle = {color, background:hexToRgba(color,.12)||'var(--bg3)', border:`1px solid ${hexToRgba(color,.28)||'var(--border)'}`};
+                const pinned = pinnedApps.includes(app.slug);
+                const isDragging = draggingSlug === app.slug;
+                const isOver = dragOver === app.slug;
+                return (
+                  <div key={app.slug}
+                    className={`ac2${isOver?' drag-over':''}${isDragging?' dragging':''}`}
+                    style={{
+                      borderColor: appColors[app.slug] ? hexToRgba(color,.35)||'var(--border)' : 'var(--border)',
+                      position:'relative', cursor: isDragging ? 'grabbing' : 'grab'
+                    }}
+                    draggable
+                    onDragStart={e => {
+                      dragRef.current = app.slug;
+                      setDraggingSlug(app.slug);
+                      e.dataTransfer.effectAllowed = 'move';
+                      e.dataTransfer.setData('text/plain', app.slug);
+                    }}
+                    onDragOver={e => { e.preventDefault(); if (dragRef.current !== app.slug) setDragOver(app.slug); }}
+                    onDrop={e => { e.preventDefault(); handleDrop(app.slug); setDragOver(null); setDraggingSlug(null); }}
+                    onDragEnd={() => { dragRef.current = null; setDragOver(null); setDraggingSlug(null); }}
+                    onClick={() => goApp(app)}
+                  >
+                    {pinned && <span className="ac2-pinmark"><Icon name="pin" size={11} /></span>}
+                    {/* 3-dot menu */}
+                    <div className="app-menu-wrap" onClick={e => e.stopPropagation()}>
+                      <button className="app-menu-btn"
+                        onClick={() => setOpenMenu(openMenu === app.slug ? null : app.slug)}>
+                        <Icon name="dots" size={15} />
+                      </button>
+                      {openMenu === app.slug && (
+                        <div className="app-menu">
+                          <div className="app-menu-item" onClick={(e) => { e.stopPropagation(); handleShare(app); setOpenMenu(null); }}>
+                            <Icon name="share" size={12} /> 分享链接
+                          </div>
+                          <div className="app-menu-item" onClick={(e) => { e.stopPropagation(); handleFeedback(app); setOpenMenu(null); }}>
+                            <Icon name="message-square" size={12} /> 反馈
+                          </div>
+                          <div className="app-menu-sep" />
+                          <div className="app-menu-item" onClick={(e) => { e.stopPropagation(); togglePin(app.slug); setOpenMenu(null); }}>
+                            <Icon name="pin" size={12} /> {pinned ? '取消置顶' : '固定在首位'}
+                          </div>
+                          <div className="app-menu-sep" />
+                          <div className="app-menu-item" onClick={(e) => { e.stopPropagation(); setEditApp(app); setOpenMenu(null); }}>
+                            <Icon name="palette" size={12} /> 修改应用颜色
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    <div style={{display:'flex',alignItems:'center',gap:12}}>
+                      <div className="ac2-ico" style={icStyle}>
+                        <Icon name={pickAppIcon(app)} size={24} stroke={1.7} />
+                      </div>
+                      <div className="ac2-name">{app.name}</div>
+                    </div>
+                    <div className="ac2-desc">{app.description}</div>
+                    <div className="ac2-foot">
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {(aiRec || aiLoading) && (
+            <div className="ai-rec">
+              <div className="ai-rec-hd"><Icon name="spark" size={13} /> AI 应用推荐</div>
+              <div className="ai-rec-txt">
+                {aiRec || '思考中...'}
+                {aiLoading && <span style={{opacity:.7, animation:'blink 1s infinite'}}>▌</span>}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {showTheme && <ThemeSettings onClose={() => setShowTheme(false)} />}
+      {editApp && <AppColorModal app={editApp} appColors={appColors} onSave={saveAppColor} onClose={() => setEditApp(null)} />}
+    </div>
+  );
+}
+
+function applyFavicon(favicon) {
+  if (!favicon) return;
+  let link = document.getElementById('site-favicon');
+  if (!link) {
+    link = document.createElement('link');
+    link.id = 'site-favicon';
+    link.rel = 'icon';
+    document.head.appendChild(link);
+  }
+  if (favicon.startsWith('http') || favicon.startsWith('/') || favicon.startsWith('data:')) {
+    link.type = favicon.endsWith('.ico') ? 'image/x-icon' : 'image/png';
+    link.href = favicon;
+  } else {
+    // emoji — render as inline SVG
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">${favicon}</text></svg>`;
+    link.type = 'image/svg+xml';
+    link.href = `data:image/svg+xml,${encodeURIComponent(svg)}`;
+  }
+}
+
+function Root() {
+  const [user, setUser] = useState(null);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [route, setRoute] = useState(window.location.hash || '#/');
+  const [siteConfig, setSiteConfig] = useState(null);
+
+  useEffect(() => {
+    const handler = () => setRoute(window.location.hash || '#/');
+    window.addEventListener('hashchange', handler);
+    return () => window.removeEventListener('hashchange', handler);
+  }, []);
+
+  useEffect(() => {
+    fetch(`${API}/auth/site-config/`)
+      .then(r => r.json())
+      .then(cfg => {
+        setSiteConfig(cfg);
+        if (cfg.site_title) document.title = cfg.site_title;
+        if (cfg.site_favicon) applyFavicon(cfg.site_favicon);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => { checkAuth(); }, []);
+
+  const checkAuth = async () => {
+    const token = localStorage.getItem('mf_token');
+    if (!token) {
+      try {
+        const g = await P(`${API}/auth/guest/`, {});
+        localStorage.setItem('mf_token', g.token);
+        setUser({email: g.email, is_guest: true, token: g.token, usage: g.usage || {prompt_count:0, input_tokens:0, output_tokens:0, total_tokens:0}});
+      } catch(e) {
+        setUser(null);
+      }
+      setAuthChecked(true);
+      return;
+    }
+    try {
+      const me = await F(`${API}/auth/me/`);
+      if (me.authenticated) setUser({...me, token});
+      else {
+        localStorage.removeItem('mf_token');
+        const g = await P(`${API}/auth/guest/`, {});
+        localStorage.setItem('mf_token', g.token);
+        setUser({email: g.email, is_guest: true, token: g.token, usage: g.usage || {prompt_count:0, input_tokens:0, output_tokens:0, total_tokens:0}});
+      }
+    } catch(e) {
+      localStorage.removeItem('mf_token');
+      try {
+        const g = await P(`${API}/auth/guest/`, {});
+        localStorage.setItem('mf_token', g.token);
+        setUser({email: g.email, is_guest: true, token: g.token, usage: g.usage || {prompt_count:0, input_tokens:0, output_tokens:0, total_tokens:0}});
+      } catch {
+        setUser(null);
+      }
+    }
+    setAuthChecked(true);
+  };
+
+  const handleAuth = async (data) => {
+    localStorage.setItem('mf_token', data.token);
+    try {
+      const me = await F(`${API}/auth/me/`);
+      if (me.authenticated) setUser({...me, token: data.token});
+      else setUser({email: data.email, is_guest: false, token: data.token, usage: {prompt_count:0, input_tokens:0, output_tokens:0, total_tokens:0}});
+    } catch(e) {
+      setUser({email: data.email, is_guest: false, token: data.token, usage: {prompt_count:0, input_tokens:0, output_tokens:0, total_tokens:0}});
+    }
+    setAuthChecked(true);
+    window.location.hash = '#/';
+  };
+
+  const logout = async () => {
+    if (user?.is_guest) {
+      window.location.hash = '#/login';
+      return;
+    }
+    try { await P(`${API}/auth/logout/`, {}); } catch(e) {}
+    localStorage.removeItem('mf_token');
+    setUser(null);
+    await checkAuth();
+    window.location.hash = '#/';
+  };
+
+  if (!authChecked) return (
+    <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100vh',background:'var(--bg)'}}>
+      <div className="load">初始化中...</div>
+    </div>
+  );
+
+  if (route === '#/login') {
+    if (user && !user.is_guest) {
+      window.setTimeout(() => { window.location.hash = '#/'; }, 0);
+      return null;
+    }
+    return <AuthScreen onAuth={handleAuth} siteConfig={siteConfig} />;
+  }
+
+  if (route.startsWith('#/reset-password')) {
+    return <ResetPasswordScreen siteConfig={siteConfig} />;
+  }
+
+  if (route === '#/app/memoryforge') {
+    return <MemoryForgeApp user={user} onLogout={logout} onUpdateUser={setUser} />;
+  }
+  
+  if (route === '#/app/ocr_studio') {
+    return <OCRStudioApp user={user} onLogout={logout} onUpdateUser={setUser} />;
+  }
+
+  if (route === '#/app/paper_lab') {
+    return <PaperLabApp user={user} onLogout={logout} onUpdateUser={setUser} />;
+  }
+
+  if (route === '#/app/knowledge_graph') {
+    return <KGApp user={user} onLogout={logout} onUpdateUser={setUser} />;
+  }
+
+  if (route === '#/app/code_agent') {
+    return <CodeAgentApp user={user} onLogout={logout} onUpdateUser={setUser} />;
+  }
+
+  if (route === '#/app/claude_bridge') {
+    return <ClaudeBridgeApp user={user} onLogout={logout} onUpdateUser={setUser} />;
+  }
+
+  if (route === '#/app/scan_enhance') {
+    return <ScanEnhanceApp user={user} onLogout={logout} onUpdateUser={setUser} />;
+  }
+
+  if (route === '#/app/question_bank') {
+    return <QuestionBankApp user={user} onLogout={logout} onUpdateUser={setUser} />;
+  }
+
+  if (route === '#/app/doc_reader') {
+    return <DocReaderApp user={user} onLogout={logout} onUpdateUser={setUser} />;
+  }
+
+  if (route === '#/app/banished') {
+    return <BanishedApp user={user} onLogout={logout} onUpdateUser={setUser} />;
+  }
+
+  if (route === '#/app/chat') {
+    return <ChatApp user={user} onLogout={logout} onUpdateUser={setUser} />;
+  }
+
+  if (route === '#/profile') {
+    return <UserPanelApp user={user} onLogout={logout} onUpdateUser={setUser} siteConfig={siteConfig} />;
+  }
+
+  return <PlatformHome user={user} onLogout={logout} siteConfig={siteConfig} />;
+}
+
+{% endverbatim %}

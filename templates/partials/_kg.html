@@ -1,0 +1,1211 @@
+{% verbatim %}
+// ── 知识图谱 应用 ────────────────────────────────────────────────
+
+const KG_API = `${API}/kg`;
+
+// 节点类型颜色映射
+const KG_NODE_COLORS = {
+  concept: '#c9a86c',
+  entity: '#5ac4b4',
+  event: '#d49a5a',
+  claim: '#5a8ac4',
+  method: '#9a6ac4',
+  result: '#5eb87a',
+  character: '#c45a5a',
+  paper: '#5ab4c4',
+  place: '#a0b45a',
+  term: '#c45aaa',
+  memory: '#dbb97a',
+};
+
+const KG_NODE_LABELS = {
+  concept:'概念', entity:'实体', event:'事件', claim:'论断',
+  method:'方法', result:'结论', character:'人物', paper:'论文',
+  place:'地点', term:'术语', memory:'记忆',
+};
+
+const KG_RELATION_LABELS = {
+  supports:'支持', contradicts:'矛盾', causes:'导致', extends:'扩展',
+  related_to:'相关', defines:'定义', exemplifies:'举例', cites:'引用',
+  part_of:'组成', leads_to:'推导', opposes:'对立', has_method:'使用方法',
+  has_result:'得出结论', is_a:'属于', instance_of:'实例化',
+  precedes:'先于', follows:'后于',
+};
+
+// ── Cytoscape图谱可视化 ──────────────────────────────────────────
+
+function KGCytoGraph({elements, onNodeClick, selectedNodeId}) {
+  const containerRef = useRef(null);
+  const cyRef = useRef(null);
+
+  useEffect(() => {
+    if (!containerRef.current || !window.cytoscape) return;
+
+    if (cyRef.current) {
+      cyRef.current.destroy();
+    }
+
+    const cy = window.cytoscape({
+      container: containerRef.current,
+      elements: elements,
+      style: [
+        {
+          selector: 'node',
+          style: {
+            'background-color': (ele) => ele.data('_color') || KG_NODE_COLORS[ele.data('type')] || '#888888',
+            'label': 'data(label)',
+            'color': '#e8e4df',
+            'font-size': '11px',
+            'font-family': 'Noto Sans SC, sans-serif',
+            'text-valign': 'bottom',
+            'text-halign': 'center',
+            'text-margin-y': '4px',
+            'width': (ele) => Math.max(18, 12 + (ele.data('importance') || 0.5) * 24),
+            'height': (ele) => Math.max(18, 12 + (ele.data('importance') || 0.5) * 24),
+            'border-width': 1.5,
+            'border-color': (ele) => ele.data('_color') || KG_NODE_COLORS[ele.data('type')] || '#888888',
+            'border-opacity': 0.6,
+            'background-opacity': 0.85,
+          }
+        },
+        {
+          selector: 'node:selected',
+          style: {
+            'border-width': 3,
+            'border-opacity': 1,
+            'background-opacity': 1,
+          }
+        },
+        {
+          selector: 'edge',
+          style: {
+            'width': (ele) => Math.max(1, (ele.data('weight') || 1) * 1.5),
+            'line-color': 'rgba(90,90,120,0.6)',
+            'target-arrow-color': 'rgba(90,90,120,0.8)',
+            'target-arrow-shape': 'triangle',
+            'curve-style': 'bezier',
+            'label': 'data(relation_label)',
+            'font-size': '9px',
+            'color': 'rgba(160,154,146,0.7)',
+            'text-rotation': 'autorotate',
+            'font-family': 'Noto Sans SC, sans-serif',
+            'opacity': 0.8,
+          }
+        },
+        {
+          selector: 'edge:selected',
+          style: {
+            'line-color': 'var(--gold)',
+            'target-arrow-color': 'var(--gold)',
+            'opacity': 1,
+          }
+        }
+      ],
+      layout: {
+        name: 'cose',
+        animate: false,
+        nodeRepulsion: 8000,
+        idealEdgeLength: 100,
+        gravity: 0.25,
+        numIter: 1000,
+      },
+      userZoomingEnabled: true,
+      userPanningEnabled: true,
+      boxSelectionEnabled: false,
+    });
+
+    cy.on('tap', 'node', (evt) => {
+      const node = evt.target;
+      if (onNodeClick) onNodeClick({
+        id: node.id(),
+        label: node.data('label'),
+        type: node.data('type'),
+        importance: node.data('importance'),
+        description: node.data('description'),
+        source_ref: node.data('source_ref'),
+      });
+    });
+
+    cyRef.current = cy;
+
+    return () => {
+      if (cyRef.current) {
+        cyRef.current.destroy();
+        cyRef.current = null;
+      }
+    };
+  }, [elements]);
+
+  // 高亮选中节点
+  useEffect(() => {
+    if (!cyRef.current || !selectedNodeId) return;
+    cyRef.current.$(':selected').unselect();
+    cyRef.current.$(`#${selectedNodeId}`).select();
+  }, [selectedNodeId]);
+
+  return (
+    <div ref={containerRef} style={{
+      width:'100%', height:'100%',
+      background:'var(--bg)',
+      borderRadius:'var(--r)',
+    }} />
+  );
+}
+
+// ── 图谱项目列表 ──────────────────────────────────────────────────
+
+function KGProjectList({onSelect}) {
+  const [projects, setProjects] = useState([]);
+  const [platformKG, setPlatformKG] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [showNew, setShowNew] = useState(false);
+  const [newTitle, setNewTitle] = useState('');
+  const [newDesc, setNewDesc] = useState('');
+  const [cloning, setCloning] = useState(false);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const [userProjects, platform] = await Promise.all([
+        F(`${KG_API}/projects/`),
+        fetch(`${KG_API}/platform/`).then(r=>r.json()),
+      ]);
+      setProjects(userProjects);
+      // 构造平台图谱虚拟对象
+      setPlatformKG({
+        _platform: true,
+        title: '平台功能图谱',
+        description: '了解 MineAI 平台各应用的所有功能，只读',
+        node_count: platform.nodes.length,
+        edge_count: platform.edges.length,
+      });
+    } catch(e) {}
+    setLoading(false);
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const createProject = async () => {
+    if (!newTitle.trim()) return;
+    try {
+      await P(`${KG_API}/projects/`, {title: newTitle.trim(), description: newDesc});
+      setNewTitle(''); setNewDesc(''); setShowNew(false);
+      load();
+    } catch(e) { showAlert('创建失败', '错误'); }
+  };
+
+  const clonePlatform = async (e) => {
+    e.stopPropagation();
+    setCloning(true);
+    try {
+      const res = await P(`${KG_API}/platform/clone/`, {});
+      if (res && res.id) { load(); showAlert(`已克隆为"${res.title}"，可在我的图谱中编辑`, '克隆成功'); }
+    } catch(e) { showAlert('克隆失败', '错误'); }
+    setCloning(false);
+  };
+
+  const deleteProject = async (id, e) => {
+    e.stopPropagation();
+    const confirmed = await showConfirm('确认删除图谱？此操作不可撤销');
+    if (!confirmed) return;
+    try {
+      await fetch(`${KG_API}/projects/${id}/`, {
+        method:'DELETE', headers:{'Authorization':`Token ${localStorage.getItem('mf_token')}`}
+      });
+      load();
+    } catch(e) {}
+  };
+
+  if (loading) return <div className="load" style={{padding:40}}>加载中...</div>;
+
+  return (
+    <div style={{padding:24,maxWidth:700}}>
+      {/* 平台内置图谱 */}
+      {platformKG && (
+        <div style={{marginBottom:24}}>
+          <div style={{fontSize:11,color:'var(--fg3)',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:10}}>
+            平台内置
+          </div>
+          <div onClick={() => onSelect(platformKG)}
+            style={{background:'var(--bg3)',border:'1px solid rgba(201,168,108,.4)',borderRadius:'var(--r)',
+              padding:'14px 16px',cursor:'pointer',display:'flex',alignItems:'center',gap:12,
+              transition:'border-color .15s'}}
+            onMouseEnter={e=>e.currentTarget.style.borderColor='var(--gold)'}
+            onMouseLeave={e=>e.currentTarget.style.borderColor='rgba(201,168,108,.4)'}
+          >
+            <div style={{width:40,height:40,borderRadius:8,background:'rgba(201,168,108,.15)',
+              border:'1px solid rgba(201,168,108,.3)',display:'flex',alignItems:'center',
+              justifyContent:'center',flexShrink:0}}>
+              <Icon name="share-2" size={20} stroke={1.5} style={{color:'var(--gold)'}} />
+            </div>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontWeight:600,marginBottom:3,display:'flex',alignItems:'center',gap:8}}>
+                {platformKG.title}
+                <span style={{fontSize:11,padding:'1px 6px',borderRadius:10,
+                  background:'rgba(201,168,108,.15)',color:'var(--gold)',border:'1px solid rgba(201,168,108,.3)'}}>
+                  只读
+                </span>
+              </div>
+              <div style={{color:'var(--fg3)',fontSize:12}}>
+                {platformKG.node_count} 功能节点 · {platformKG.edge_count} 关联关系
+              </div>
+            </div>
+            <button onClick={clonePlatform} disabled={cloning}
+              style={{background:'rgba(201,168,108,.12)',color:'var(--gold)',
+                border:'1px solid rgba(201,168,108,.3)',borderRadius:6,
+                padding:'5px 10px',fontSize:12,cursor:'pointer',whiteSpace:'nowrap'}}>
+              {cloning ? '克隆中...' : '克隆到我的图谱'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 我的图谱 */}
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}}>
+        <div style={{fontSize:11,color:'var(--fg3)',textTransform:'uppercase',letterSpacing:'.06em'}}>我的图谱</div>
+        <button className="btn btn-p" onClick={() => setShowNew(true)}>+ 新建图谱</button>
+      </div>
+
+      {showNew && (
+        <div style={{background:'var(--bg3)',border:'1px solid var(--border2)',borderRadius:'var(--r)',padding:16,marginBottom:16}}>
+          <input value={newTitle} onChange={e=>setNewTitle(e.target.value)} placeholder="图谱名称" style={{width:'100%',marginBottom:8}} />
+          <textarea value={newDesc} onChange={e=>setNewDesc(e.target.value)} placeholder="描述（可选）" style={{width:'100%',marginBottom:8,minHeight:60}} />
+          <div style={{display:'flex',gap:8}}>
+            <button className="btn btn-p" onClick={createProject}>创建</button>
+            <button className="btn" onClick={() => setShowNew(false)}>取消</button>
+          </div>
+        </div>
+      )}
+
+      {projects.length === 0 && (
+        <div style={{color:'var(--fg3)',textAlign:'center',padding:40,fontSize:13}}>
+          暂无知识图谱，点击"新建图谱"开始构建，或克隆平台图谱进行编辑
+        </div>
+      )}
+
+      <div style={{display:'flex',flexDirection:'column',gap:10}}>
+        {projects.map(p => (
+          <div key={p.id} onClick={() => onSelect(p)}
+            style={{background:'var(--bg3)',border:'1px solid var(--border2)',borderRadius:'var(--r)',
+              padding:'14px 16px',cursor:'pointer',transition:'border-color .15s',
+              display:'flex',alignItems:'center',gap:12}}
+            onMouseEnter={e=>e.currentTarget.style.borderColor='var(--gold)'}
+            onMouseLeave={e=>e.currentTarget.style.borderColor='var(--border2)'}
+          >
+            <div style={{width:40,height:40,borderRadius:8,background:'rgba(201,168,108,.12)',
+              border:'1px solid rgba(201,168,108,.25)',display:'flex',alignItems:'center',
+              justifyContent:'center',flexShrink:0}}>
+              <Icon name="share-2" size={20} stroke={1.5} style={{color:'var(--gold)'}} />
+            </div>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontWeight:600,marginBottom:3}}>{p.title}</div>
+              <div style={{color:'var(--fg3)',fontSize:12}}>
+                {p.source_app !== 'manual' && <span style={{marginRight:8}}>[{p.source_app}]</span>}
+                {p.node_count} 节点 · {p.edge_count} 边 · {new Date(p.updated_at).toLocaleDateString()}
+              </div>
+            </div>
+            <button onClick={(e) => deleteProject(p.id, e)}
+              style={{background:'transparent',color:'var(--fg3)',padding:'4px 8px',fontSize:12}}>
+              删除
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── 图谱可视化视图 ────────────────────────────────────────────────
+
+function KGGraphView({kg}) {
+  const isPlatform = kg && kg._platform === true;
+  const [elements, setElements] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [selectedNode, setSelectedNode] = useState(null);
+  const [nodePanel, setNodePanel] = useState(null);
+  const [maxNodes, setMaxNodes] = useState(100);
+  const [stats, setStats] = useState({nodes:0, edges:0});
+
+  const loadGraph = async () => {
+    setLoading(true);
+    try {
+      if (isPlatform) {
+        const data = await fetch(`${KG_API}/platform/`).then(r=>r.json());
+        // 平台图谱节点用 color 字段着色
+        const els = [
+          ...data.nodes.map(n => ({
+            data: {
+              ...n.data,
+              // 用节点自带颜色覆盖
+              _color: n.data.color,
+            }
+          })),
+          ...data.edges,
+        ];
+        setElements(els);
+        setStats({nodes: data.nodes.length, edges: data.edges.length});
+      } else {
+        const data = await F(`${KG_API}/projects/${kg.id}/graph/?max_nodes=${maxNodes}`);
+        setElements(data.elements || []);
+        setStats({nodes: data.node_count, edges: data.edge_count});
+      }
+    } catch(e) {}
+    setLoading(false);
+  };
+
+  useEffect(() => { loadGraph(); }, [kg._platform ? 'platform' : kg.id, maxNodes]);
+
+  const handleNodeClick = async (nodeInfo) => {
+    setSelectedNode(nodeInfo.id);
+    if (isPlatform) { setNodePanel(nodeInfo); return; }
+    // 获取节点详情
+    try {
+      const detail = await F(`${KG_API}/projects/${kg.id}/nodes/${nodeInfo.id}/`);
+      setNodePanel(detail);
+    } catch(e) {
+      setNodePanel(nodeInfo);
+    }
+  };
+
+  return (
+    <div style={{display:'flex',height:'100%',gap:0}}>
+      {/* 图谱区域 */}
+      <div style={{flex:1,position:'relative',minWidth:0}}>
+        {loading && (
+          <div style={{position:'absolute',top:16,left:'50%',transform:'translateX(-50%)',
+            background:'var(--bg3)',padding:'6px 16px',borderRadius:20,zIndex:10,
+            fontSize:12,color:'var(--fg2)'}}>加载中...</div>
+        )}
+        <div style={{position:'absolute',top:12,left:12,zIndex:10,display:'flex',gap:8,alignItems:'center'}}>
+          <select value={maxNodes} onChange={e=>setMaxNodes(Number(e.target.value))}
+            style={{padding:'4px 8px',fontSize:12,background:'var(--bg3)'}}>
+            <option value={50}>50节点</option>
+            <option value={100}>100节点</option>
+            <option value={200}>200节点</option>
+          </select>
+          <button className="btn" style={{fontSize:12,padding:'4px 12px'}} onClick={loadGraph}>刷新</button>
+          <span style={{fontSize:11,color:'var(--fg3)',background:'var(--bg3)',padding:'3px 8px',borderRadius:12}}>
+            {stats.nodes} 节点 · {stats.edges} 边
+          </span>
+        </div>
+
+        {/* 节点类型图例 */}
+        <div style={{position:'absolute',bottom:12,left:12,zIndex:10,
+          background:'rgba(8,8,11,.85)',borderRadius:'var(--r)',padding:'8px 12px',
+          display:'flex',flexWrap:'wrap',gap:'4px 12px',maxWidth:320}}>
+          {Object.entries(KG_NODE_COLORS).slice(0,8).map(([type, color]) => (
+            <span key={type} style={{display:'flex',alignItems:'center',gap:4,fontSize:11,color:'var(--fg2)'}}>
+              <span style={{width:8,height:8,borderRadius:'50%',background:color,display:'inline-block'}} />
+              {KG_NODE_LABELS[type]}
+            </span>
+          ))}
+        </div>
+
+        {elements.length > 0 ? (
+          <KGCytoGraph elements={elements} onNodeClick={handleNodeClick} selectedNodeId={selectedNode} />
+        ) : (
+          !loading && (
+            <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100%',color:'var(--fg3)'}}>
+              暂无节点数据，请先提取知识
+            </div>
+          )
+        )}
+      </div>
+
+      {/* 节点详情面板 */}
+      {nodePanel && (
+        <div style={{width:280,background:'var(--bg2)',borderLeft:'1px solid var(--border)',
+          padding:16,overflowY:'auto',flexShrink:0}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+            <span style={{fontWeight:600,fontSize:14}}>{nodePanel.label}</span>
+            <button onClick={() => setNodePanel(null)}
+              style={{background:'transparent',color:'var(--fg3)',fontSize:16}}>×</button>
+          </div>
+          <div style={{display:'flex',gap:6,marginBottom:10}}>
+            <span style={{fontSize:11,padding:'2px 8px',borderRadius:10,
+              background:`${KG_NODE_COLORS[nodePanel.node_type]}22`,
+              color: KG_NODE_COLORS[nodePanel.node_type]}}>
+              {KG_NODE_LABELS[nodePanel.node_type]}
+            </span>
+            <span style={{fontSize:11,color:'var(--fg3)'}}>重要度 {(nodePanel.importance||0).toFixed(2)}</span>
+          </div>
+          {nodePanel.description && (
+            <p style={{color:'var(--fg2)',fontSize:12,marginBottom:10,lineHeight:1.6}}>{nodePanel.description}</p>
+          )}
+          {nodePanel.source_ref && (
+            <div style={{fontSize:11,color:'var(--gold)',marginBottom:10}}>来源: {nodePanel.source_ref}</div>
+          )}
+          {nodePanel.keywords && nodePanel.keywords.length > 0 && (
+            <div style={{marginBottom:10}}>
+              <div style={{fontSize:11,color:'var(--fg3)',marginBottom:4}}>关键词</div>
+              <div style={{display:'flex',flexWrap:'wrap',gap:4}}>
+                {nodePanel.keywords.map((k,i) => (
+                  <span key={i} style={{fontSize:11,padding:'2px 6px',background:'var(--bg4)',borderRadius:10}}>{k}</span>
+                ))}
+              </div>
+            </div>
+          )}
+          {nodePanel.out_edges && nodePanel.out_edges.length > 0 && (
+            <div style={{marginBottom:10}}>
+              <div style={{fontSize:11,color:'var(--fg3)',marginBottom:4}}>出边 ({nodePanel.out_edges.length})</div>
+              {nodePanel.out_edges.map(e => (
+                <div key={e.edge_id} style={{fontSize:11,color:'var(--fg2)',padding:'3px 0',
+                  borderBottom:'1px solid var(--border)'}}>
+                  <span style={{color:'var(--cyan)'}}>{e.relation_label}</span> → {e.target_label}
+                </div>
+              ))}
+            </div>
+          )}
+          {nodePanel.in_edges && nodePanel.in_edges.length > 0 && (
+            <div>
+              <div style={{fontSize:11,color:'var(--fg3)',marginBottom:4}}>入边 ({nodePanel.in_edges.length})</div>
+              {nodePanel.in_edges.map(e => (
+                <div key={e.edge_id} style={{fontSize:11,color:'var(--fg2)',padding:'3px 0',
+                  borderBottom:'1px solid var(--border)'}}>
+                  {e.source_label} <span style={{color:'var(--orange)'}}>{e.relation_label}</span> →
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── 节点管理 ──────────────────────────────────────────────────────
+
+function KGNodeManager({kg}) {
+  const [nodes, setNodes] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [search, setSearch] = useState('');
+  const [filterType, setFilterType] = useState('');
+  const [offset, setOffset] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [showAdd, setShowAdd] = useState(false);
+  const [addLabel, setAddLabel] = useState('');
+  const [addType, setAddType] = useState('concept');
+  const [addDesc, setAddDesc] = useState('');
+  const LIMIT = 30;
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      let url = `${KG_API}/projects/${kg.id}/nodes/?limit=${LIMIT}&offset=${offset}`;
+      if (search) url += `&q=${encodeURIComponent(search)}`;
+      if (filterType) url += `&type=${filterType}`;
+      const data = await F(url);
+      setNodes(data.nodes || []);
+      setTotal(data.total || 0);
+    } catch(e) {}
+    setLoading(false);
+  };
+
+  useEffect(() => { load(); }, [kg.id, offset, filterType]);
+  useEffect(() => { setOffset(0); }, [search, filterType]);
+
+  const addNode = async () => {
+    if (!addLabel.trim()) return;
+    try {
+      await P(`${KG_API}/projects/${kg.id}/nodes/`, {
+        label: addLabel.trim(), node_type: addType, description: addDesc,
+      });
+      setAddLabel(''); setAddDesc(''); setShowAdd(false);
+      load();
+    } catch(e) { showAlert('添加失败', '错误'); }
+  };
+
+  const deleteNode = async (id) => {
+    const confirmed = await showConfirm('确认删除节点？相关边也会被删除');
+    if (!confirmed) return;
+    try {
+      await fetch(`${KG_API}/projects/${kg.id}/nodes/${id}/`, {
+        method:'DELETE', headers:{'Authorization':`Token ${localStorage.getItem('mf_token')}`}
+      });
+      load();
+    } catch(e) {}
+  };
+
+  return (
+    <div style={{padding:20,height:'100%',display:'flex',flexDirection:'column'}}>
+      <div style={{display:'flex',gap:8,marginBottom:16,flexWrap:'wrap',alignItems:'center'}}>
+        <input value={search} onChange={e=>setSearch(e.target.value)}
+          onKeyDown={e=>e.key==='Enter'&&load()}
+          placeholder="搜索节点..." style={{flex:1,minWidth:160}} />
+        <select value={filterType} onChange={e=>setFilterType(e.target.value)}
+          style={{padding:'8px',background:'var(--bg3)',fontSize:13}}>
+          <option value="">所有类型</option>
+          {Object.entries(KG_NODE_LABELS).map(([k,v]) => (
+            <option key={k} value={k}>{v}</option>
+          ))}
+        </select>
+        <button className="btn" onClick={load} style={{fontSize:12}}>搜索</button>
+        <button className="btn btn-p" style={{fontSize:12}}
+          onClick={() => setShowAdd(!showAdd)}>+ 添加节点</button>
+      </div>
+
+      {showAdd && (
+        <div style={{background:'var(--bg3)',borderRadius:'var(--r)',border:'1px solid var(--border2)',
+          padding:14,marginBottom:14}}>
+          <div style={{display:'flex',gap:8,marginBottom:8}}>
+            <input value={addLabel} onChange={e=>setAddLabel(e.target.value)} placeholder="节点标签" style={{flex:1}} />
+            <select value={addType} onChange={e=>setAddType(e.target.value)}
+              style={{padding:'8px',background:'var(--bg3)',fontSize:13}}>
+              {Object.entries(KG_NODE_LABELS).map(([k,v]) => (
+                <option key={k} value={k}>{v}</option>
+              ))}
+            </select>
+          </div>
+          <textarea value={addDesc} onChange={e=>setAddDesc(e.target.value)} placeholder="描述（可选）"
+            style={{width:'100%',marginBottom:8,minHeight:50}} />
+          <div style={{display:'flex',gap:8}}>
+            <button className="btn btn-p" style={{fontSize:12}} onClick={addNode}>添加</button>
+            <button className="btn" style={{fontSize:12}} onClick={() => setShowAdd(false)}>取消</button>
+          </div>
+        </div>
+      )}
+
+      <div style={{fontSize:12,color:'var(--fg3)',marginBottom:10}}>
+        共 {total} 个节点 {search && `（搜索"${search}"）`}
+      </div>
+
+      <div style={{flex:1,overflowY:'auto'}}>
+        {loading ? <div className="load" style={{padding:20}}>加载中...</div> : (
+          <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
+            <thead>
+              <tr style={{borderBottom:'1px solid var(--border2)'}}>
+                <th style={{padding:'8px 6px',textAlign:'left',color:'var(--fg3)',fontWeight:400}}>标签</th>
+                <th style={{padding:'8px 6px',textAlign:'left',color:'var(--fg3)',fontWeight:400,width:70}}>类型</th>
+                <th style={{padding:'8px 6px',textAlign:'left',color:'var(--fg3)',fontWeight:400,width:60}}>重要度</th>
+                <th style={{padding:'8px 6px',textAlign:'left',color:'var(--fg3)',fontWeight:400}}>描述</th>
+                <th style={{padding:'8px 6px',width:50}}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {nodes.map(n => (
+                <tr key={n.id} style={{borderBottom:'1px solid var(--border)'}}>
+                  <td style={{padding:'8px 6px',fontWeight:500}}>
+                    <span style={{display:'inline-block',width:8,height:8,borderRadius:'50%',
+                      background:KG_NODE_COLORS[n.node_type]||'#888',marginRight:6}} />
+                    {n.label}
+                  </td>
+                  <td style={{padding:'8px 6px',color:'var(--fg3)',fontSize:11}}>
+                    {KG_NODE_LABELS[n.node_type]}
+                  </td>
+                  <td style={{padding:'8px 6px',color:'var(--fg2)',fontSize:11}}>
+                    {n.importance.toFixed(2)}
+                  </td>
+                  <td style={{padding:'8px 6px',color:'var(--fg2)',maxWidth:300,
+                    overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                    {n.description || <span style={{color:'var(--fg3)'}}>-</span>}
+                  </td>
+                  <td style={{padding:'8px 6px',textAlign:'right'}}>
+                    <button onClick={() => deleteNode(n.id)}
+                      style={{background:'transparent',color:'var(--fg3)',fontSize:11,padding:'2px 6px'}}>
+                      删除
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <div style={{display:'flex',gap:8,marginTop:12,justifyContent:'center'}}>
+        <button className="btn" disabled={offset===0} onClick={() => setOffset(Math.max(0,offset-LIMIT))}
+          style={{fontSize:12}}>上一页</button>
+        <span style={{padding:'6px 12px',fontSize:12,color:'var(--fg3)'}}>
+          {Math.floor(offset/LIMIT)+1} / {Math.ceil(total/LIMIT)||1}
+        </span>
+        <button className="btn" disabled={offset+LIMIT>=total} onClick={() => setOffset(offset+LIMIT)}
+          style={{fontSize:12}}>下一页</button>
+      </div>
+    </div>
+  );
+}
+
+// ── 知识探索（搜索+子图+路径） ────────────────────────────────────
+
+function KGExplorer({kg}) {
+  const [mode, setMode] = useState('search'); // search|subgraph|path
+  const [query, setQuery] = useState('');
+  const [source, setSource] = useState('');
+  const [target, setTarget] = useState('');
+  const [results, setResults] = useState(null);
+  const [subElements, setSubElements] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [stats, setStats] = useState(null);
+  const [selectedNode, setSelectedNode] = useState(null);
+
+  const doSearch = async () => {
+    if (!query.trim()) return;
+    setLoading(true);
+    try {
+      const data = await P(`${KG_API}/projects/${kg.id}/search/`, {query, top_k:20});
+      setResults(data.nodes || []);
+      setStats({duration_ms: data.duration_ms});
+    } catch(e) {}
+    setLoading(false);
+  };
+
+  const doSubgraph = async () => {
+    if (!query.trim() && !source.trim()) return;
+    setLoading(true);
+    try {
+      const payload = {max_depth:2, max_nodes:50};
+      if (query.trim()) payload.seed_labels = query.split(',').map(s=>s.trim()).filter(Boolean);
+      const data = await P(`${KG_API}/projects/${kg.id}/subgraph/`, payload);
+      setSubElements(data.elements || []);
+      setStats(data.stats);
+    } catch(e) {}
+    setLoading(false);
+  };
+
+  const doPath = async () => {
+    if (!source.trim() || !target.trim()) return;
+    setLoading(true);
+    try {
+      const data = await P(`${KG_API}/projects/${kg.id}/path/`, {source, target});
+      setResults(data);
+      setStats({duration_ms: data.duration_ms});
+    } catch(e) {}
+    setLoading(false);
+  };
+
+  return (
+    <div style={{padding:20,height:'100%',display:'flex',flexDirection:'column'}}>
+      <div style={{display:'flex',gap:0,marginBottom:16,background:'var(--bg3)',
+        borderRadius:'var(--r)',padding:3,alignSelf:'flex-start'}}>
+        {[['search','节点搜索'],['subgraph','子图探索'],['path','路径搜索']].map(([m,l]) => (
+          <button key={m} onClick={() => {setMode(m);setResults(null);setSubElements([]);setStats(null);}}
+            style={{padding:'6px 16px',borderRadius:'calc(var(--r) - 2px)',fontSize:13,
+              background:mode===m?'var(--gold)':'transparent',
+              color:mode===m?'#0a0a0c':'var(--fg2)'}}>
+            {l}
+          </button>
+        ))}
+      </div>
+
+      <div style={{display:'flex',gap:8,marginBottom:16,alignItems:'center'}}>
+        {mode === 'path' ? (
+          <>
+            <input value={source} onChange={e=>setSource(e.target.value)} placeholder="起始概念" style={{flex:1}} />
+            <span style={{color:'var(--fg3)',fontSize:16}}>→</span>
+            <input value={target} onChange={e=>setTarget(e.target.value)} placeholder="目标概念" style={{flex:1}} />
+          </>
+        ) : (
+          <input value={query} onChange={e=>setQuery(e.target.value)}
+            onKeyDown={e=>e.key==='Enter'&&(mode==='search'?doSearch():doSubgraph())}
+            placeholder={mode==='subgraph'?'输入种子概念（逗号分隔）':'搜索节点关键词...'}
+            style={{flex:1}} />
+        )}
+        <button className="btn btn-p" style={{fontSize:13}}
+          onClick={mode==='search'?doSearch:mode==='subgraph'?doSubgraph:doPath}
+          disabled={loading}>
+          {loading?'...':(mode==='path'?'查找路径':mode==='subgraph'?'展开子图':'搜索')}
+        </button>
+      </div>
+
+      {stats && (
+        <div style={{fontSize:11,color:'var(--fg3)',marginBottom:10}}>
+          耗时 {stats.duration_ms}ms
+          {stats.nodes !== undefined && ` · ${stats.nodes}节点 · ${stats.edges}边`}
+          {stats.nodes_traversed !== undefined && ` · 遍历${stats.nodes_traversed}节点`}
+        </div>
+      )}
+
+      {/* 搜索结果 */}
+      {mode === 'search' && results && (
+        <div style={{flex:1,overflowY:'auto'}}>
+          {results.length === 0 ? (
+            <div style={{color:'var(--fg3)',padding:20}}>无匹配节点</div>
+          ) : results.map(n => (
+            <div key={n.id} style={{padding:'10px 12px',background:'var(--bg3)',
+              borderRadius:'var(--r)',marginBottom:6,
+              borderLeft:`3px solid ${KG_NODE_COLORS[n.node_type]||'#888'}`}}>
+              <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:4}}>
+                <span style={{fontWeight:600}}>{n.label}</span>
+                <span style={{fontSize:11,color:KG_NODE_COLORS[n.node_type]}}>{KG_NODE_LABELS[n.node_type]}</span>
+                <span style={{fontSize:11,color:'var(--fg3)',marginLeft:'auto'}}>重要度 {n.importance.toFixed(2)}</span>
+              </div>
+              {n.description && <div style={{fontSize:12,color:'var(--fg2)'}}>{n.description}</div>}
+              {n.source_ref && <div style={{fontSize:11,color:'var(--gold)',marginTop:3}}>{n.source_ref}</div>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* 路径结果 */}
+      {mode === 'path' && results && (
+        <div style={{flex:1,overflowY:'auto'}}>
+          {!results.found ? (
+            <div style={{color:'var(--fg3)',padding:20}}>未找到路径（可尝试增大max_length）</div>
+          ) : (
+            <div>
+              <div style={{color:'var(--green)',marginBottom:12,fontSize:13}}>
+                找到路径，长度 {results.length}
+              </div>
+              <div style={{display:'flex',flexWrap:'wrap',alignItems:'center',gap:4}}>
+                {results.path_nodes && results.path_nodes.map((n, i) => (
+                  <React.Fragment key={n.id}>
+                    <span style={{padding:'4px 10px',background:'var(--bg3)',
+                      border:`1px solid ${KG_NODE_COLORS[n.type]||'#888'}`,
+                      borderRadius:16,fontSize:12,color:KG_NODE_COLORS[n.type]}}>
+                      {n.label}
+                    </span>
+                    {i < results.path_edges.length && (
+                      <span style={{fontSize:11,color:'var(--fg3)',padding:'0 4px'}}>
+                        —[{results.path_edges[i].relation}]→
+                      </span>
+                    )}
+                  </React.Fragment>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 子图可视化 */}
+      {mode === 'subgraph' && subElements.length > 0 && (
+        <div style={{flex:1,minHeight:0}}>
+          <KGCytoGraph elements={subElements} onNodeClick={n=>setSelectedNode(n)} selectedNodeId={selectedNode?.id} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── AI提取知识 ────────────────────────────────────────────────────
+
+function KGExtractor({kg}) {
+  const [text, setText] = useState('');
+  const [sourceRef, setSourceRef] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState(null);
+  const [chatQ, setChatQ] = useState('');
+  const [chatAnswer, setChatAnswer] = useState('');
+  const [chatLoading, setChatLoading] = useState(false);
+  const [tab, setTab] = useState('extract');
+
+  const extract = async () => {
+    if (!text.trim()) return;
+    setLoading(true);
+    setResult(null);
+    try {
+      const data = await P(`${KG_API}/projects/${kg.id}/extract/`, {
+        text, source_ref: sourceRef,
+      });
+      setResult(data);
+    } catch(e) { showAlert('提取失败', '错误'); }
+    setLoading(false);
+  };
+
+  const computeRank = async () => {
+    try {
+      const data = await P(`${KG_API}/projects/${kg.id}/rank/`, {});
+      showAlert(`PageRank计算完成，更新了 ${data.updated} 个节点，耗时 ${data.duration_ms}ms`, '计算完成');
+    } catch(e) { showAlert('计算失败', '错误'); }
+  };
+
+  const doChat = async () => {
+    if (!chatQ.trim()) return;
+    setChatLoading(true);
+    setChatAnswer('');
+    try {
+      const token = localStorage.getItem('mf_token');
+      const res = await fetch(`${KG_API}/projects/${kg.id}/chat/`, {
+        method: 'POST',
+        headers: {'Content-Type':'application/json','Authorization':`Token ${token}`},
+        body: JSON.stringify({question: chatQ}),
+      });
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+      while (true) {
+        const {done, value} = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, {stream:true});
+        const lines = buf.split('\n');
+        buf = lines.pop();
+        for (const line of lines) {
+          if (!line.startsWith('data:')) continue;
+          try {
+            const d = JSON.parse(line.slice(5));
+            if (d.type === 'chunk') setChatAnswer(a => a + d.text);
+          } catch(e) {}
+        }
+      }
+    } catch(e) { setChatAnswer('错误: ' + e.message); }
+    setChatLoading(false);
+  };
+
+  return (
+    <div style={{padding:20,height:'100%',display:'flex',flexDirection:'column'}}>
+      <div style={{display:'flex',gap:0,marginBottom:16,background:'var(--bg3)',
+        borderRadius:'var(--r)',padding:3,alignSelf:'flex-start'}}>
+        {[['extract','提取知识'],['chat','图谱问答']].map(([t,l]) => (
+          <button key={t} onClick={() => setTab(t)}
+            style={{padding:'6px 16px',borderRadius:'calc(var(--r) - 2px)',fontSize:13,
+              background:tab===t?'var(--gold)':'transparent',
+              color:tab===t?'#0a0a0c':'var(--fg2)'}}>
+            {l}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'extract' && (
+        <div style={{display:'flex',flexDirection:'column',gap:10,flex:1}}>
+          <input value={sourceRef} onChange={e=>setSourceRef(e.target.value)}
+            placeholder="来源引用（如 paper.md:L45-60，可选）" style={{width:'100%'}} />
+          <textarea value={text} onChange={e=>setText(e.target.value)}
+            placeholder="粘贴要提取知识的文本（最多4000字）..."
+            style={{flex:1,minHeight:200,width:'100%',resize:'none',fontFamily:'var(--mono)',fontSize:12}} />
+          <div style={{display:'flex',gap:8,alignItems:'center'}}>
+            <button className="btn btn-p"
+              onClick={extract} disabled={loading||!text.trim()}>
+              {loading ? '提取中...' : 'AI提取知识'}
+            </button>
+            <button className="btn" onClick={computeRank} style={{fontSize:12}}>
+              重算PageRank
+            </button>
+          </div>
+          {result && (
+            <div style={{background:'var(--bg3)',borderRadius:'var(--r)',padding:14,
+              border:'1px solid var(--border2)'}}>
+              {result.error ? (
+                <div style={{color:'var(--red)'}}>提取失败: {result.error}</div>
+              ) : (
+                <div>
+                  <div style={{color:'var(--green)',marginBottom:6}}>
+                    提取成功！新增 {result.nodes_created} 节点、{result.edges_created} 条边
+                  </div>
+                  <div style={{fontSize:12,color:'var(--fg3)'}}>
+                    图谱现有 {result.total_nodes} 节点、{result.total_edges} 条边
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === 'chat' && (
+        <div style={{display:'flex',flexDirection:'column',gap:10,flex:1}}>
+          <div style={{color:'var(--fg3)',fontSize:12,padding:'8px 12px',background:'var(--bg3)',
+            borderRadius:'var(--r)'}}>
+            基于当前知识图谱内容回答问题，不会编造图谱外信息
+          </div>
+          <div style={{flex:1,background:'var(--bg3)',borderRadius:'var(--r)',padding:14,
+            overflowY:'auto',minHeight:150,fontFamily:'var(--mono)',fontSize:13,lineHeight:1.7,
+            whiteSpace:'pre-wrap',color:'var(--fg)'}}>
+            {chatAnswer || <span style={{color:'var(--fg3)'}}>回答将显示在这里...</span>}
+          </div>
+          <div style={{display:'flex',gap:8}}>
+            <input value={chatQ} onChange={e=>setChatQ(e.target.value)}
+              onKeyDown={e=>e.key==='Enter'&&!e.shiftKey&&doChat()}
+              placeholder="基于知识图谱提问..." style={{flex:1}} />
+            <button className="btn btn-p"
+              onClick={doChat} disabled={chatLoading||!chatQ.trim()}>
+              {chatLoading?'..':'发送'}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── 统计分析 ──────────────────────────────────────────────────────
+
+function KGAnalytics({kg}) {
+  const [stats, setStats] = useState(null);
+  const [days, setDays] = useState(30);
+  const [loading, setLoading] = useState(false);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const url = `${KG_API}/stats/?days=${days}${kg?`&kg_id=${kg.id}`:''}`;
+      const data = await F(url);
+      setStats(data);
+    } catch(e) {}
+    setLoading(false);
+  };
+
+  useEffect(() => { load(); }, [days, kg?.id]);
+
+  const OPERATION_LABELS = {
+    extract_text:'文本提取', add_node:'添加节点', add_edge:'添加边',
+    query_subgraph:'查询子图', search_nodes:'搜索节点', find_path:'路径搜索',
+    batch_extract:'批量提取', get_context:'获取上下文', compute_rank:'计算排名',
+    bfs_traverse:'BFS遍历',
+  };
+
+  if (loading) return <div className="load" style={{padding:40}}>加载中...</div>;
+  if (!stats) return null;
+
+  const agg = stats.aggregates || {};
+
+  return (
+    <div style={{padding:20,height:'100%',overflowY:'auto'}}>
+      <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:20}}>
+        <h3 style={{fontSize:15,color:'var(--gold)'}}>调用统计</h3>
+        <select value={days} onChange={e=>setDays(Number(e.target.value))}
+          style={{padding:'4px 8px',fontSize:12,background:'var(--bg3)'}}>
+          <option value={7}>近7天</option>
+          <option value={30}>近30天</option>
+          <option value={90}>近90天</option>
+        </select>
+        <button className="btn" style={{fontSize:12}} onClick={load}>刷新</button>
+      </div>
+
+      {/* 汇总指标 */}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))',gap:10,marginBottom:20}}>
+        {[
+          ['总调用次数', stats.total_calls, '次'],
+          ['总耗时', Math.round((agg.total_duration_ms||0)/1000), '秒'],
+          ['LLM输入Token', agg.total_tokens_in||0, ''],
+          ['LLM输出Token', agg.total_tokens_out||0, ''],
+          ['遍历节点', agg.total_nodes_traversed||0, '个'],
+          ['遍历边', agg.total_edges_traversed||0, '条'],
+          ['平均耗时', Math.round(agg.avg_duration_ms||0), 'ms'],
+        ].map(([label, val, unit]) => (
+          <div key={label} style={{background:'var(--bg3)',borderRadius:'var(--r)',
+            padding:'12px 14px',border:'1px solid var(--border2)'}}>
+            <div style={{fontSize:11,color:'var(--fg3)',marginBottom:4}}>{label}</div>
+            <div style={{fontSize:18,fontWeight:600,color:'var(--gold)'}}>
+              {typeof val === 'number' ? val.toLocaleString() : val}
+              <span style={{fontSize:12,fontWeight:400,color:'var(--fg3)',marginLeft:3}}>{unit}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* 按操作分类 */}
+      {stats.by_operation && stats.by_operation.length > 0 && (
+        <div style={{marginBottom:20}}>
+          <div style={{fontSize:13,color:'var(--fg2)',marginBottom:10,fontWeight:500}}>操作分布</div>
+          {stats.by_operation.map(op => (
+            <div key={op.operation} style={{display:'flex',alignItems:'center',gap:8,marginBottom:6}}>
+              <span style={{width:80,fontSize:12,color:'var(--fg3)'}}>{OPERATION_LABELS[op.operation]||op.operation}</span>
+              <div style={{flex:1,height:16,background:'var(--bg3)',borderRadius:8,overflow:'hidden'}}>
+                <div style={{height:'100%',background:'var(--gold)',opacity:0.7,
+                  width:`${Math.min(100, (op.count/stats.total_calls)*100)}%`,
+                  borderRadius:8,transition:'width .3s'}} />
+              </div>
+              <span style={{width:40,fontSize:12,color:'var(--fg2)',textAlign:'right'}}>{op.count}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* 最近日志 */}
+      {stats.recent_logs && stats.recent_logs.length > 0 && (
+        <div>
+          <div style={{fontSize:13,color:'var(--fg2)',marginBottom:10,fontWeight:500}}>最近调用记录</div>
+          <div style={{background:'var(--bg3)',borderRadius:'var(--r)',overflow:'hidden'}}>
+            {stats.recent_logs.map(log => (
+              <div key={log.id} style={{padding:'8px 12px',borderBottom:'1px solid var(--border)',
+                display:'flex',alignItems:'center',gap:8,fontSize:12}}>
+                <span style={{color:log.success?'var(--green)':'var(--red)',fontSize:10}}>●</span>
+                <span style={{width:90,color:'var(--fg2)'}}>{OPERATION_LABELS[log.operation]||log.operation}</span>
+                <span style={{width:60,color:'var(--fg3)'}}>{log.caller_app}</span>
+                <span style={{width:55,color:'var(--fg2)'}}>{log.duration_ms}ms</span>
+                {log.nodes_created > 0 && <span style={{color:'var(--green)'}}>+{log.nodes_created}节点</span>}
+                {log.edges_created > 0 && <span style={{color:'var(--cyan)'}}>+{log.edges_created}边</span>}
+                {(log.llm_tokens_input||0) > 0 && (
+                  <span style={{color:'var(--gold)',fontSize:11,marginLeft:'auto'}}>
+                    {log.llm_tokens_input}+{log.llm_tokens_output} tok
+                  </span>
+                )}
+                <span style={{color:'var(--fg3)',fontSize:11,marginLeft:'auto'}}>
+                  {new Date(log.created_at).toLocaleString()}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── 主应用组件 ────────────────────────────────────────────────────
+
+function KGApp({user, onLogout, onUpdateUser}) {
+  const [v, setV] = useState('projects');
+  const [currentKG, setCurrentKG] = useState(null);
+  const [sbOpen, setSbOpen] = useState(true);
+
+  const isPlatformKG = currentKG && currentKG._platform === true;
+  // 平台图谱只展示图谱可视化，不允许编辑
+  const navItems = currentKG ? (isPlatformKG ? [
+    {id:'graph', label:'图谱可视化', icon:'share-2'},
+  ] : [
+    {id:'graph', label:'图谱可视化', icon:'share-2'},
+    {id:'explorer', label:'知识探索', icon:'search'},
+    {id:'nodes', label:'节点管理', icon:'list'},
+    {id:'extract', label:'AI提取', icon:'zap'},
+    {id:'analytics', label:'统计分析', icon:'bar-chart-2'},
+  ]) : [];
+
+  const topNavItems = [
+    {id:'projects', label:'所有图谱', icon:'folder'},
+    {id:'analytics_global', label:'全局统计', icon:'activity'},
+  ];
+
+  return (
+    <div className="app">
+      {/* 侧边栏 */}
+      <div className="sb" style={{display:'flex',flexDirection:'column'}}>
+        <div style={{padding:'16px 14px 12px',borderBottom:'1px solid var(--border)',
+          display:'flex',alignItems:'center',gap:10}}>
+          <div style={{width:32,height:32,borderRadius:8,background:'rgba(201,168,108,.15)',
+            display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+            <Icon name="share-2" size={18} stroke={1.5} style={{color:'var(--gold)'}} />
+          </div>
+          <div>
+            <div style={{fontWeight:700,fontSize:14,color:'var(--fg)',fontFamily:'var(--serif)'}}>知识图谱</div>
+            {currentKG && <div style={{fontSize:11,color:'var(--gold)',marginTop:1,maxWidth:130,
+              overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{currentKG.title}</div>}
+          </div>
+        </div>
+
+        <nav style={{flex:1,overflowY:'auto',padding:'8px 0'}}>
+          {/* 顶层导航 */}
+          {topNavItems.map(item => (
+            <div key={item.id} onClick={() => {setV(item.id);if(item.id==='projects')setCurrentKG(null);}}
+              style={{padding:'8px 14px',cursor:'pointer',display:'flex',alignItems:'center',gap:8,
+                background: v===item.id?'rgba(201,168,108,.12)':'transparent',
+                color: v===item.id?'var(--gold)':'var(--fg2)',
+                borderLeft: v===item.id?'2px solid var(--gold)':'2px solid transparent',
+                fontSize:13}}>
+              <Icon name={item.icon} size={15} stroke={1.5} />
+              {item.label}
+            </div>
+          ))}
+
+          {/* 当前图谱导航 */}
+          {currentKG && (
+            <>
+              <div style={{padding:'10px 14px 4px',fontSize:11,color:'var(--fg3)',textTransform:'uppercase',letterSpacing:'.05em'}}>
+                当前图谱
+              </div>
+              {navItems.map(item => (
+                <div key={item.id} onClick={() => setV(item.id)}
+                  style={{padding:'8px 14px 8px 20px',cursor:'pointer',display:'flex',alignItems:'center',gap:8,
+                    background: v===item.id?'rgba(201,168,108,.12)':'transparent',
+                    color: v===item.id?'var(--gold)':'var(--fg2)',
+                    borderLeft: v===item.id?'2px solid var(--gold)':'2px solid transparent',
+                    fontSize:13}}>
+                  <Icon name={item.icon} size={14} stroke={1.5} />
+                  {item.label}
+                </div>
+              ))}
+            </>
+          )}
+        </nav>
+
+        <div style={{padding:'10px 14px',borderTop:'1px solid var(--border)'}}>
+          <div style={{fontSize:11,color:'var(--fg3)',marginBottom:6}}>{displayName(user)}</div>
+          <div style={{display:'flex',gap:6}}>
+            <button onClick={() => {window.location.hash='#/';}}
+              style={{flex:1,background:'var(--bg3)',color:'var(--fg2)',
+                padding:'5px 0',borderRadius:'var(--r)',fontSize:11}}>
+              ← 平台首页
+            </button>
+            <button onClick={onLogout}
+              style={{flex:1,background:'var(--bg3)',color:'var(--fg2)',
+                padding:'5px 0',borderRadius:'var(--r)',fontSize:11}}>
+              退出
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* 主内容 */}
+      <div style={{flex:1,display:'flex',flexDirection:'column',minWidth:0,overflow:'hidden'}}>
+        {/* 标题栏 */}
+        <div style={{height:46,borderBottom:'1px solid var(--border)',display:'flex',
+          alignItems:'center',padding:'0 16px',gap:12,background:'var(--bg2)',flexShrink:0}}>
+          {currentKG && (
+            <button onClick={() => {setCurrentKG(null);setV('projects');}}
+              style={{background:'transparent',color:'var(--fg3)',fontSize:12,
+                display:'flex',alignItems:'center',gap:4}}>
+              ← 返回
+            </button>
+          )}
+          <span style={{fontSize:14,fontWeight:500,color:'var(--fg)'}}>
+            {v==='projects'?'知识图谱项目':
+             v==='analytics_global'?'全局统计':
+             v==='graph'?'图谱可视化':
+             v==='explorer'?'知识探索':
+             v==='nodes'?'节点管理':
+             v==='extract'?'AI提取知识':
+             v==='analytics'?'统计分析':''}
+          </span>
+          {currentKG && (
+            <span style={{fontSize:12,color:'var(--fg3)',marginLeft:'auto'}}>
+              {currentKG.node_count} 节点 · {currentKG.edge_count} 边
+            </span>
+          )}
+        </div>
+
+        {/* 视图内容 */}
+        <div style={{flex:1,overflow:'auto',minHeight:0}}>
+          {v === 'projects' && (
+            <KGProjectList onSelect={(kg) => {setCurrentKG(kg);setV('graph');}} />
+          )}
+          {v === 'analytics_global' && <KGAnalytics kg={null} />}
+          {currentKG && v === 'graph' && <KGGraphView kg={currentKG} />}
+          {currentKG && v === 'explorer' && <KGExplorer kg={currentKG} />}
+          {currentKG && v === 'nodes' && <KGNodeManager kg={currentKG} />}
+          {currentKG && v === 'extract' && <KGExtractor kg={currentKG} />}
+          {currentKG && v === 'analytics' && <KGAnalytics kg={currentKG} />}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── 代码助手 CodeAgentApp ──────────────────────────────────────
+
+// ---- helper: parse diff blocks from raw SSE text ----
+function parseDiffBlocks(text) {
+  const blocks = [];
+  const re = /<<<<\n?([\s\S]*?)\n?====\n?([\s\S]*?)\n?>>>>/g;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    blocks.push({ original: m[1].trim(), replacement: m[2].trim() });
+  }
+  return blocks;
+}
+
+// ---- helper: streaming fetch ----
+async function* streamSSE(url, body, token) {
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json','Authorization':`Token ${token}`},
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok) throw new Error(`${resp.status}: ${await resp.text()}`);
+  const reader = resp.body.getReader();
+  const dec = new TextDecoder();
+  let buf = '';
+  while (true) {
+    const {done, value} = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, {stream: true});
+    const lines = buf.split('\n');
+    buf = lines.pop();
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        try { yield JSON.parse(line.slice(6)); } catch {}
+      }
+    }
+  }
+}
+
+{% endverbatim %}

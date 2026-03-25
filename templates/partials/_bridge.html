@@ -1,0 +1,1412 @@
+{% verbatim %}
+// ── Claude Bridge App ────────────────────────────────────────
+
+// Tool metadata: icon text + color for each Claude Code tool
+const TOOL_META = {
+  Read:     {icon:'book',     label:'Read',      color:'var(--blue)'},
+  Write:    {icon:'pen',      label:'Write',     color:'var(--gold)'},
+  Edit:     {icon:'note',     label:'Edit',      color:'var(--gold)'},
+  Bash:     {icon:'terminal', label:'Bash',      color:'var(--red)'},
+  Glob:     {icon:'folder',   label:'Glob',      color:'var(--green)'},
+  Grep:     {icon:'search',   label:'Grep',      color:'var(--cyan)'},
+  LS:       {icon:'clipboard',label:'LS',        color:'var(--fg2)'},
+  WebSearch:{icon:'globe',    label:'WebSearch', color:'var(--purple)'},
+  WebFetch: {icon:'globe',    label:'WebFetch',  color:'var(--purple)'},
+  TodoWrite:{icon:'check',    label:'TodoWrite', color:'var(--green)'},
+  TodoRead: {icon:'pin',      label:'TodoRead',  color:'var(--fg2)'},
+};
+
+function toolMeta(name) {
+  return TOOL_META[name] || {icon:'settings', label: name || 'Tool', color:'var(--fg3)'};
+}
+
+// ── Permission mode badge ──
+function PermBadge({mode}) {
+  const cfg = {
+    full_auto:  {label:'全自动',  bg:'rgba(232,93,47,.18)', color:'#e85d2f'},
+    read_only:  {label:'只读',    bg:'rgba(90,184,122,.18)', color:'var(--green)'},
+    default:    {label:'默认',    bg:'rgba(255,255,255,.08)', color:'var(--fg3)'},
+  }[mode] || {label: mode, bg:'rgba(255,255,255,.08)', color:'var(--fg3)'};
+  return <span style={{fontSize:10,padding:'2px 7px',borderRadius:10,background:cfg.bg,color:cfg.color,fontWeight:600,letterSpacing:.5}}>{cfg.label}</span>;
+}
+
+// ── Status dot ──
+function StatusDot({status, style={}}) {
+  const c = {
+    online:'var(--green)', pending:'var(--gold)', running:'var(--blue)',
+    waiting:'var(--orange)', completed:'var(--green)', error:'var(--red)',
+    cancelled:'var(--fg3)', offline:'var(--fg3)',
+  }[status] || 'var(--fg3)';
+  const pulse = ['running','waiting','pending'].includes(status);
+  return (
+    <span style={{display:'inline-block',width:7,height:7,borderRadius:'50%',
+      background:c,flexShrink:0,
+      boxShadow: pulse ? `0 0 0 2px ${c}44` : 'none',
+      animation: pulse ? 'pulse 1.6s ease-in-out infinite' : 'none', ...style}}/>
+  );
+}
+
+// ── Tool call card ──
+function ToolUseCard({content}) {
+  const [open, setOpen] = React.useState(false);
+  const meta = toolMeta(content.tool_name);
+  const inp = content.tool_input || {};
+
+  // Pretty summary line
+  const summary = (() => {
+    if (inp.file_path) return inp.file_path;
+    if (inp.command)   return inp.command;
+    if (inp.pattern)   return inp.pattern;
+    if (inp.path)      return inp.path;
+    if (inp.old_string) return 'edit block';
+    const keys = Object.keys(inp);
+    return keys.length ? `${keys[0]}: ${String(inp[keys[0]]).slice(0,60)}` : '';
+  })();
+
+  return (
+    <div style={{border:'1px solid var(--border2)',borderRadius:8,overflow:'hidden',marginBottom:6,fontSize:12}}>
+      <div onClick={()=>setOpen(o=>!o)}
+        style={{display:'flex',alignItems:'center',gap:8,padding:'7px 12px',background:'var(--bg3)',cursor:'pointer',userSelect:'none'}}>
+        <span style={{display:'inline-flex',alignItems:'center'}}><Icon name={meta.icon} size={14} /></span>
+        <span style={{fontWeight:600,color:meta.color,fontFamily:'var(--mono)',fontSize:11}}>{content.tool_name}</span>
+        {summary && <span style={{color:'var(--fg3)',flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{summary}</span>}
+        <span style={{color:'var(--fg3)',fontSize:10,marginLeft:'auto'}}>{open ? '▲' : '▼'}</span>
+      </div>
+      {open && (
+        <div style={{padding:'8px 12px',background:'var(--bg2)',borderTop:'1px solid var(--border)'}}>
+          <pre style={{margin:0,fontFamily:'var(--mono)',fontSize:11,color:'var(--fg2)',whiteSpace:'pre-wrap',wordBreak:'break-all',maxHeight:200,overflowY:'auto'}}>
+            {JSON.stringify(inp, null, 2)}
+          </pre>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Tool result card ──
+function ToolResultCard({content}) {
+  const [open, setOpen] = React.useState(false);
+  const isErr = content.is_error;
+  const text = content.content || '';
+  const lines = text.split('\n').length;
+  return (
+    <div style={{border:`1px solid ${isErr?'var(--red)':'var(--border)'}`,borderRadius:8,overflow:'hidden',marginBottom:6,fontSize:12}}>
+      <div onClick={()=>setOpen(o=>!o)}
+        style={{display:'flex',alignItems:'center',gap:8,padding:'5px 12px',background:'var(--bg2)',cursor:'pointer',userSelect:'none'}}>
+        <span style={{display:'inline-flex',alignItems:'center'}}>
+          {isErr ? <Icon name="x" size={12} /> : <Icon name="check" size={12} />}
+        </span>
+        <span style={{color:isErr?'var(--red)':'var(--fg3)',fontFamily:'var(--mono)',fontSize:10,flex:1}}>
+          {isErr ? '工具出错' : `结果 (${lines} 行)`}
+        </span>
+        <span style={{color:'var(--fg3)',fontSize:10}}>{open ? '▲' : '▼'}</span>
+      </div>
+      {open && text && (
+        <div style={{padding:'8px 12px',borderTop:'1px solid var(--border)',background:'var(--bg)'}}>
+          <pre style={{margin:0,fontFamily:'var(--mono)',fontSize:10,color:isErr?'var(--red)':'var(--fg2)',whiteSpace:'pre-wrap',wordBreak:'break-all',maxHeight:300,overflowY:'auto',lineHeight:1.5}}>
+            {text}
+          </pre>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Permission request card ──
+function PermissionCard({content, onRespond}) {
+  const [responded, setResponded] = React.useState(false);
+  const [loading, setLoading] = React.useState(false);
+  const meta = toolMeta(content.tool_name);
+
+  const respond = async (decision) => {
+    setLoading(true);
+    await onRespond(content.permission_id, decision);
+    setResponded(decision);
+    setLoading(false);
+  };
+
+  return (
+    <div style={{border:`2px solid ${responded==='approved'?'var(--green)':responded==='denied'?'var(--red)':'var(--gold)'}`,
+      borderRadius:10,padding:'12px 16px',marginBottom:8,background:'rgba(255,200,0,.04)'}}>
+      <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:10}}>
+        <span style={{display:'inline-flex',alignItems:'center'}}><Icon name="alert" size={16} /></span>
+        <div>
+          <div style={{fontSize:12,fontWeight:700,color:'var(--gold)'}}>权限请求</div>
+          <div style={{fontSize:11,color:'var(--fg3)'}}>Claude Code 请求使用工具</div>
+        </div>
+      </div>
+      <div style={{display:'flex',alignItems:'center',gap:8,padding:'8px 12px',background:'var(--bg3)',borderRadius:6,marginBottom:10}}>
+        <span style={{display:'inline-flex',alignItems:'center'}}><Icon name={meta.icon} size={14} /></span>
+        <span style={{fontFamily:'var(--mono)',fontSize:12,color:meta.color,fontWeight:600}}>{content.tool_name}</span>
+      </div>
+      {content.tool_input && Object.keys(content.tool_input).length > 0 && (
+        <pre style={{fontFamily:'var(--mono)',fontSize:10,color:'var(--fg3)',background:'var(--bg)',padding:'8px',borderRadius:4,marginBottom:10,overflow:'auto',maxHeight:120,whiteSpace:'pre-wrap',wordBreak:'break-all'}}>
+          {JSON.stringify(content.tool_input, null, 2)}
+        </pre>
+      )}
+      {!responded
+        ? <div style={{display:'flex',gap:8}}>
+            <button disabled={loading}
+              onClick={()=>respond('approved')}
+              className="btn" style={{flex:1,background:'var(--green)',color:'#000',fontWeight:700,fontSize:12,display:'inline-flex',alignItems:'center',justifyContent:'center',gap:6}}>
+              <Icon name="check" size={12} /> 批准
+            </button>
+            <button disabled={loading}
+              onClick={()=>respond('denied')}
+              className="btn" style={{flex:1,background:'var(--red)',color:'#fff',fontWeight:700,fontSize:12,display:'inline-flex',alignItems:'center',justifyContent:'center',gap:6}}>
+              <Icon name="x" size={12} /> 拒绝
+            </button>
+          </div>
+        : <div style={{textAlign:'center',fontSize:12,color:responded==='approved'?'var(--green)':'var(--red)',fontWeight:600,padding:'4px 0'}}>
+            {responded==='approved'
+              ? <span style={{display:'inline-flex',alignItems:'center',gap:4}}><Icon name="check" size={12} /> 已批准</span>
+              : <span style={{display:'inline-flex',alignItems:'center',gap:4}}><Icon name="x" size={12} /> 已拒绝</span>}
+          </div>
+      }
+    </div>
+  );
+}
+
+// ── System init card ──
+function SystemInitCard({content}) {
+  return (
+    <div style={{border:'1px solid var(--border2)',borderRadius:10,padding:'12px 16px',marginBottom:8,background:'var(--bg2)'}}>
+      <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
+        <span style={{display:'inline-flex',alignItems:'center'}}><Icon name="bot" size={16} /></span>
+        <div>
+          <div style={{fontSize:12,fontWeight:700,color:'var(--fg)'}}>Claude Code 会话已启动</div>
+          {content.model && <div style={{fontSize:10,color:'var(--fg3)',fontFamily:'var(--mono)'}}>{content.model}</div>}
+        </div>
+      </div>
+      {content.tools && content.tools.length > 0 && (
+        <div style={{display:'flex',flexWrap:'wrap',gap:4}}>
+          {content.tools.map(t => {
+            const m = toolMeta(t);
+            return (
+              <span key={t} style={{fontSize:10,padding:'2px 6px',borderRadius:4,background:'var(--bg4)',color:m.color,fontFamily:'var(--mono)',display:'inline-flex',alignItems:'center',gap:4}}>
+                <Icon name={m.icon} size={10} /> {t}
+              </span>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Result card ──
+function ResultCard({content}) {
+  const ok = !content.is_error;
+  return (
+    <div style={{border:`1px solid ${ok?'var(--green)':'var(--red)'}`,borderRadius:10,padding:'12px 16px',marginBottom:8,background:ok?'rgba(90,184,122,.05)':'rgba(196,90,90,.05)'}}>
+      <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:6}}>
+        <span style={{display:'inline-flex',alignItems:'center'}}>{ok ? <Icon name="check" size={16} /> : <Icon name="x" size={16} />}</span>
+        <div style={{flex:1}}>
+          <div style={{fontSize:12,fontWeight:700,color:ok?'var(--green)':'var(--red)'}}>
+            {ok ? '任务完成' : '任务出错'}
+          </div>
+          {content.cost_usd > 0 && (
+            <div style={{fontSize:10,color:'var(--fg3)'}}>
+              花费 ${content.cost_usd.toFixed(4)}
+            </div>
+          )}
+        </div>
+      </div>
+      {content.text && (
+        <p style={{fontSize:12,color:'var(--fg2)',margin:0,lineHeight:1.6,whiteSpace:'pre-wrap'}}>{content.text}</p>
+      )}
+    </div>
+  );
+}
+
+// ── Edit diff card (when Claude writes/edits files) ──
+function EditDiffCard({content}) {
+  const [open, setOpen] = React.useState(true);
+  const inp = content.tool_input || {};
+  const isWrite = content.tool_name === 'Write';
+  const isEdit  = content.tool_name === 'Edit';
+  const filePath = inp.file_path || inp.path || '';
+
+  if (!isEdit && !isWrite) return null;
+
+  return (
+    <div style={{border:'1px solid var(--border2)',borderRadius:8,overflow:'hidden',marginBottom:6}}>
+      <div onClick={()=>setOpen(o=>!o)}
+        style={{display:'flex',alignItems:'center',gap:8,padding:'6px 12px',background:'var(--bg3)',cursor:'pointer'}}>
+        <span style={{display:'inline-flex',alignItems:'center'}}>{isWrite ? <Icon name="pen" size={12} /> : <Icon name="note" size={12} />}</span>
+        <span style={{fontFamily:'var(--mono)',fontSize:11,color:'var(--gold)',flex:1}}>{filePath || (isWrite?'写入文件':'编辑文件')}</span>
+        <span style={{fontSize:10,color:'var(--fg3)'}}>{open?'▲':'▼'}</span>
+      </div>
+      {open && isEdit && inp.old_string !== undefined && (
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',fontSize:11}}>
+          <div style={{padding:'8px 12px',background:'rgba(196,90,90,.08)',borderRight:'1px solid var(--border)'}}>
+            <div style={{fontSize:9,color:'var(--red)',marginBottom:4,fontWeight:600}}>删除</div>
+            <pre style={{margin:0,fontFamily:'var(--mono)',whiteSpace:'pre-wrap',wordBreak:'break-word',color:'var(--fg2)',lineHeight:1.5,maxHeight:200,overflow:'auto'}}>{inp.old_string}</pre>
+          </div>
+          <div style={{padding:'8px 12px',background:'rgba(90,184,122,.08)'}}>
+            <div style={{fontSize:9,color:'var(--green)',marginBottom:4,fontWeight:600}}>新增</div>
+            <pre style={{margin:0,fontFamily:'var(--mono)',whiteSpace:'pre-wrap',wordBreak:'break-word',color:'var(--fg)',lineHeight:1.5,maxHeight:200,overflow:'auto'}}>{inp.new_string}</pre>
+          </div>
+        </div>
+      )}
+      {open && isWrite && inp.content && (
+        <div style={{padding:'8px 12px',background:'var(--bg)'}}>
+          <pre style={{margin:0,fontFamily:'var(--mono)',fontSize:10,color:'var(--fg2)',whiteSpace:'pre-wrap',wordBreak:'break-all',maxHeight:300,overflowY:'auto',lineHeight:1.5}}>{inp.content.slice(0,3000)}</pre>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── A single message in the feed ──
+function BridgeMessageItem({msg, onRespond}) {
+  const {direction, msg_type, content} = msg;
+
+  // user input bubble
+  if (msg_type === 'user_input') {
+    return (
+      <div className="cht-m u" style={{marginBottom:8}}>
+        <div className="cht-lb">你</div>
+        <div className="cht-bbl" style={{whiteSpace:'pre-wrap',wordBreak:'break-word'}}>{content.text}</div>
+      </div>
+    );
+  }
+
+  // Claude text bubble
+  if (msg_type === 'text') {
+    return (
+      <div className="cht-m a" style={{marginBottom:8}}>
+        <div className="cht-lb">Claude</div>
+        <div className="cht-bbl" style={{whiteSpace:'pre-wrap',wordBreak:'break-word',lineHeight:1.7}}>{content.text}</div>
+      </div>
+    );
+  }
+
+  if (msg_type === 'system_init')       return <SystemInitCard content={content} />;
+  if (msg_type === 'result')            return <ResultCard content={content} />;
+  if (msg_type === 'permission_request') return <PermissionCard content={content} onRespond={onRespond} />;
+  if (msg_type === 'permission_response') {
+    const ok = content.decision === 'approved';
+    return (
+      <div style={{display:'flex',alignItems:'center',gap:6,fontSize:11,color:'var(--fg3)',marginBottom:6,padding:'4px 8px'}}>
+        <span style={{display:'inline-flex',alignItems:'center'}}>{ok ? <Icon name="check" size={11} /> : <Icon name="x" size={11} />}</span>
+        <span style={{color:ok?'var(--green)':'var(--red)'}}>
+          {ok?'批准':'拒绝'} {content.tool_name}
+        </span>
+      </div>
+    );
+  }
+
+  if (msg_type === 'tool_use') {
+    const isFileMod = ['Write','Edit'].includes(content.tool_name);
+    return isFileMod
+      ? <EditDiffCard content={content} />
+      : <ToolUseCard content={content} />;
+  }
+
+  if (msg_type === 'tool_result') return <ToolResultCard content={content} />;
+
+  if (msg_type === 'error') {
+    return (
+      <div style={{border:'1px solid var(--red)',borderRadius:8,padding:'10px 14px',marginBottom:6,background:'rgba(196,90,90,.07)',fontSize:12}}>
+        <div style={{color:'var(--red)',fontWeight:600,marginBottom:4,display:'inline-flex',alignItems:'center',gap:6}}><Icon name="x" size={12} /> 错误</div>
+        <pre style={{margin:0,color:'var(--red)',fontFamily:'var(--mono)',fontSize:11,whiteSpace:'pre-wrap'}}>{content.text}</pre>
+      </div>
+    );
+  }
+
+  return null;
+}
+
+// ── New Session Modal ──
+function NewSessionModal({connections, onClose, onCreated}) {
+  const [connId, setConnId]   = React.useState(connections.find(c=>c.status==='online')?.id || '');
+  const [dir, setDir]         = React.useState('~');
+  const [prompt, setPrompt]   = React.useState('');
+  const [pmode, setPmode]     = React.useState('default');
+  const [loading, setLoading] = React.useState(false);
+  const [err, setErr]         = React.useState('');
+
+  const start = async () => {
+    if (!connId)   return setErr('请选择一个在线的桥接连接');
+    if (!prompt.trim()) return setErr('请输入任务描述');
+    setLoading(true); setErr('');
+    try {
+      const res = await P(`${API}/bridge/connections/${connId}/sessions/`, {working_dir: dir, prompt, permission_mode: pmode});
+      onCreated(connId, res.session_id);
+      onClose();
+    } catch(e) { setErr(e.message); }
+    setLoading(false);
+  };
+
+  const onlineConns = connections.filter(c => c.status === 'online');
+
+  return (
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.55)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center'}}
+      onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div style={{background:'var(--bg2)',border:'1px solid var(--border2)',borderRadius:14,padding:'28px 32px',width:'min(540px,95vw)',boxShadow:'0 20px 60px rgba(0,0,0,.5)'}}>
+        <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:22}}>
+          <span style={{display:'inline-flex',alignItems:'center'}}><Icon name="bolt" size={18} /></span>
+          <h2 style={{fontSize:17,fontFamily:'var(--serif)',margin:0}}>新建 Claude Code 会话</h2>
+        </div>
+
+        <div className="fg" style={{marginBottom:14}}>
+          <label>桥接客户端</label>
+          {onlineConns.length === 0
+            ? <div style={{padding:'8px 12px',borderRadius:6,background:'var(--bg3)',color:'var(--fg3)',fontSize:12,display:'inline-flex',alignItems:'center',gap:6}}>
+                <Icon name="alert" size={12} /> 暂无在线连接，请先启动 claude_bridge.py
+              </div>
+            : <select value={connId} onChange={e=>setConnId(e.target.value)}>
+                {onlineConns.map(c => <option key={c.id} value={c.id}>{c.name} ({c.os_info})</option>)}
+              </select>
+          }
+        </div>
+
+        <div className="fg" style={{marginBottom:14}}>
+          <label>工作目录（本地路径）</label>
+          <input value={dir} onChange={e=>setDir(e.target.value)} placeholder="~/projects/myapp" style={{fontFamily:'var(--mono)',fontSize:12}}/>
+        </div>
+
+        <div className="fg" style={{marginBottom:14}}>
+          <label>权限模式</label>
+          <select value={pmode} onChange={e=>setPmode(e.target.value)}>
+            <option value="default">默认 — Claude Code 标准权限</option>
+            <option value="full_auto">全自动 — 跳过所有权限确认（慎用）</option>
+            <option value="read_only">只读 — 仅允许 Read / Glob / Grep</option>
+          </select>
+        </div>
+
+        <div className="fg" style={{marginBottom:18}}>
+          <label>任务描述 / 初始提示词</label>
+          <textarea value={prompt} onChange={e=>setPrompt(e.target.value)} rows={4}
+            placeholder="描述你希望 Claude Code 完成的任务，例如：分析 src/ 目录下的代码架构，找出潜在性能问题并给出优化建议…"
+            style={{resize:'vertical',fontSize:13,lineHeight:1.6}}/>
+        </div>
+
+        {err && <div style={{color:'var(--red)',fontSize:12,marginBottom:12}}>{err}</div>}
+
+        <div style={{display:'flex',gap:10,justifyContent:'flex-end'}}>
+          <button className="btn btn-s" onClick={onClose}>取消</button>
+          <button className="btn btn-p" onClick={start} disabled={loading || onlineConns.length===0}>
+            {loading ? '启动中…' : '▶ 启动会话'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Setup Instructions Page ──
+function BridgeSetupPage({user, onDownload}) {
+  const [showManual, setShowManual] = React.useState(false);
+  const token = localStorage.getItem('mf_token') || 'YOUR_TOKEN_HERE';
+  const origin = window.location.origin;
+  const installCmd = `curl -sSL ${origin}/api/bridge/install/?token=${token} | bash`;
+
+  const copyCmd = () => {
+    navigator.clipboard.writeText(installCmd);
+    showAlert('已复制到剪贴板', '复制成功');
+  };
+
+  return (
+    <div style={{flex:1,overflowY:'auto',display:'flex',alignItems:'flex-start',justifyContent:'center',padding:'40px 20px'}}>
+      <div style={{maxWidth:600,width:'100%'}}>
+        <div style={{textAlign:'center',marginBottom:36}}>
+          <div style={{marginBottom:12}}><Icon name="bolt" size={48} /></div>
+          <h1 style={{fontFamily:'var(--serif)',fontSize:26,marginBottom:8}}>Claude Bridge</h1>
+          <p style={{color:'var(--fg3)',fontSize:14,lineHeight:1.7}}>
+            将您本地的 Claude Code 连接到平台，在任何地方可视化监控和控制 AI 编码会话
+          </p>
+        </div>
+
+        <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12,marginBottom:32}}>
+          {[
+            {icon:'link',title:'安全连接',desc:'Token 认证，数据经由平台中转'},
+            {icon:'eye',title:'全程可视',desc:'工具调用、文件 Diff、权限请求实时呈现'},
+            {icon:'globe',title:'远程控制',desc:'在任何设备上发消息、审批权限'},
+          ].map(f => (
+            <div key={f.title} style={{border:'1px solid var(--border)',borderRadius:10,padding:'16px',textAlign:'center'}}>
+              <div style={{marginBottom:8}}><Icon name={f.icon} size={22} /></div>
+              <div style={{fontSize:12,fontWeight:700,marginBottom:4}}>{f.title}</div>
+              <div style={{fontSize:11,color:'var(--fg3)',lineHeight:1.5}}>{f.desc}</div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{border:'1px solid var(--border2)',borderRadius:12,overflow:'hidden',marginBottom:20}}>
+          <div style={{padding:'14px 20px',background:'var(--bg3)',borderBottom:'1px solid var(--border)',display:'flex',alignItems:'center',gap:10,justifyContent:'space-between'}}>
+            <div style={{display:'flex',alignItems:'center',gap:10}}>
+              <span style={{display:'inline-flex',alignItems:'center'}}><Icon name="rocket" size={16} /></span>
+              <span style={{fontWeight:700,fontSize:14}}>一键安装</span>
+            </div>
+          </div>
+          <div style={{padding:'24px'}}>
+            <p style={{fontSize:13,color:'var(--fg2)',marginBottom:16}}>在您的服务器或本地终端执行以下命令，即可自动完成所有配置并启动服务：</p>
+            
+            <div style={{position:'relative',marginBottom:20}}>
+              <pre style={{
+                background:'var(--bg)',padding:'16px 50px 16px 16px',borderRadius:8,
+                fontFamily:'var(--mono)',fontSize:12,color:'var(--gold2)',
+                border:'1px solid var(--border2)',overflowX:'auto',whiteSpace:'pre-wrap',wordBreak:'break-all'
+              }}>
+                {installCmd}
+              </pre>
+              <button 
+                onClick={copyCmd}
+                style={{
+                  position:'absolute',right:12,top:12,background:'var(--bg4)',color:'var(--fg2)',
+                  padding:'6px',borderRadius:6,border:'1px solid var(--border2)',cursor:'pointer'
+                }}
+                title="复制代码"
+              >
+                <Icon name="clipboard" size={14} />
+              </button>
+            </div>
+
+            <div style={{background:'rgba(201,168,108,0.05)',border:'1px solid rgba(201,168,108,0.2)',borderRadius:8,padding:'12px 14px',display:'flex',gap:12}}>
+              <Icon name="alert" size={18} style={{color:'var(--gold)',flexShrink:0}} />
+              <div style={{fontSize:12,color:'var(--fg2)',lineHeight:1.6}}>
+                <strong>注意：</strong>安装脚本会自动检查 Python3 和 Node.js 环境，并尝试安装 <code>@anthropic-ai/claude-code</code>。安装完成后，会以 <code>systemd</code> (Linux) 或 <code>LaunchAgent</code> (macOS) 方式在后台运行。
+              </div>
+            </div>
+
+            <div style={{textAlign:'center',marginTop:24}}>
+              <button 
+                className="btn-s" 
+                style={{background:'none',border:'none',color:'var(--fg3)',fontSize:12,textDecoration:'underline'}}
+                onClick={() => setShowManual(!showManual)}
+              >
+                {showManual ? '隐藏手动安装步骤' : '需要手动安装？查看传统步骤'}
+              </button>
+            </div>
+
+            {showManual && (
+              <div style={{marginTop:24,paddingTop:24,borderTop:'1px dotted var(--border2)'}}>
+                {[
+                  {n:1, title:'下载桥接脚本', content:
+                    <div>
+                      <p style={{fontSize:12,color:'var(--fg2)',marginBottom:10}}>点击下载预配置版本（已内嵌您的 Token）</p>
+                      <button className="btn btn-p" style={{fontSize:12}} onClick={onDownload}>⬇ 下载 claude_bridge.py</button>
+                    </div>
+                  },
+                  {n:2, title:'安装依赖', content:
+                    <pre style={{background:'var(--bg)',padding:'10px 14px',borderRadius:6,fontFamily:'var(--mono)',fontSize:12,color:'var(--fg2)',margin:0}}>pip install requests</pre>
+                  },
+                  {n:3, title:'确保 Claude Code CLI 已安装', content:
+                    <pre style={{background:'var(--bg)',padding:'10px 14px',borderRadius:6,fontFamily:'var(--mono)',fontSize:12,color:'var(--fg2)',margin:0}}>npm install -g @anthropic-ai/claude-code{'\n'}claude --version  # 验证安装</pre>
+                  },
+                  {n:4, title:'运行桥接客户端', content:
+                    <pre style={{background:'var(--bg)',padding:'10px 14px',borderRadius:6,fontFamily:'var(--mono)',fontSize:12,color:'var(--fg2)',margin:0}}>python claude_bridge.py</pre>
+                  },
+                ].map(step => (
+                  <div key={step.n} style={{display:'flex',gap:14,marginBottom:20}}>
+                    <div style={{width:24,height:24,borderRadius:'50%',background:'var(--bg4)',color:'var(--fg3)',
+                      display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,flexShrink:0,border:'1px solid var(--border2)'}}>
+                      {step.n}
+                    </div>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:13,fontWeight:600,marginBottom:8}}>{step.title}</div>
+                      {step.content}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Session view (message feed + input) ──
+function BridgeSessionView({session, token}) {
+  const [messages, setMessages]   = React.useState([]);
+  const [status, setStatus]       = React.useState(session.status);
+  const [modelInfo, setModelInfo] = React.useState(session.model_info || {});
+  const [input, setInput]         = React.useState('');
+  const [sending, setSending]     = React.useState(false);
+  const [lastSeq, setLastSeq]     = React.useState(-1);
+  const feedRef = React.useRef(null);
+  const abortRef = React.useRef(null);
+
+  const scrollDown = () => {
+    if (feedRef.current) feedRef.current.scrollTop = feedRef.current.scrollHeight;
+  };
+
+  // Connect SSE stream
+  React.useEffect(() => {
+    setMessages([]);
+    setStatus(session.status);
+    setModelInfo(session.model_info || {});
+    setLastSeq(-1);
+
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+
+    (async () => {
+      try {
+        const resp = await fetch(
+          `${API}/bridge/sessions/${session.id}/stream/?since=-1`,
+          {headers: {'Authorization': `Token ${token}`}, signal: ctrl.signal}
+        );
+        if (!resp.ok) return;
+        const reader = resp.body.getReader();
+        const dec = new TextDecoder();
+        let buf = '';
+        while (true) {
+          const {done, value} = await reader.read();
+          if (done) break;
+          buf += dec.decode(value, {stream: true});
+          const lines = buf.split('\n');
+          buf = lines.pop();
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            try {
+              const evt = JSON.parse(line.slice(6));
+              if (evt.type === 'message') {
+                setMessages(prev => {
+                  if (prev.find(m => m.id === evt.id)) return prev;
+                  return [...prev, evt];
+                });
+                setLastSeq(evt.seq);
+                setTimeout(scrollDown, 50);
+              } else if (evt.type === 'status' || evt.type === 'session_info') {
+                setStatus(evt.status);
+                if (evt.model_info) setModelInfo(evt.model_info);
+              }
+            } catch {}
+          }
+        }
+      } catch (e) {
+        if (e.name !== 'AbortError') console.warn('SSE error', e);
+      }
+    })();
+
+    return () => ctrl.abort();
+  }, [session.id]);
+
+  const respondPermission = async (permId, decision) => {
+    await P(`${API}/bridge/permissions/${permId}/respond/`, {decision});
+  };
+
+  const sendMessage = async () => {
+    if (!input.trim()) return;
+    setSending(true);
+    try {
+      await P(`${API}/bridge/sessions/${session.id}/send/`, {message: input.trim()});
+      setInput('');
+    } catch(e) { showAlert(e.message, '发送失败'); }
+    setSending(false);
+  };
+
+  const cancelSession = async () => {
+    const confirmed = await showConfirm('确认取消此会话？');
+    if (!confirmed) return;
+    try { await fetch(`${API}/bridge/sessions/${session.id}/`, {method:'DELETE', headers:{'Authorization':`Token ${token}`}}); }
+    catch {}
+  };
+
+  const isActive = ['pending','running','waiting'].includes(status);
+  const done     = ['completed','error','cancelled'].includes(status);
+
+  const statusLabel = {
+    pending:'等待桥接…', running:'运行中', waiting:'等待权限',
+    completed:'已完成', error:'出错', cancelled:'已取消',
+  }[status] || status;
+
+  return (
+    <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>
+      {/* session top bar */}
+      <div style={{padding:'8px 16px',borderBottom:'1px solid var(--border)',background:'var(--bg2)',display:'flex',alignItems:'center',gap:10,flexShrink:0}}>
+        <StatusDot status={status}/>
+        <span style={{fontSize:12,color:'var(--fg2)',fontFamily:'var(--mono)',flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+          {session.working_dir}
+        </span>
+        <PermBadge mode={session.permission_mode}/>
+        <span style={{fontSize:11,padding:'3px 8px',borderRadius:6,
+          background: status==='running'?'rgba(90,140,196,.2)':status==='completed'?'rgba(90,184,122,.2)':status==='error'?'rgba(196,90,90,.2)':'var(--bg3)',
+          color: status==='running'?'var(--blue)':status==='completed'?'var(--green)':status==='error'?'var(--red)':'var(--fg3)',
+          fontWeight:500}}>
+          {statusLabel}
+        </span>
+        {modelInfo.total_cost_usd > 0 &&
+          <span style={{fontSize:10,color:'var(--fg3)'}}>${modelInfo.total_cost_usd.toFixed(4)}</span>}
+        {isActive &&
+          <button className="btn btn-sm btn-d" style={{fontSize:11}} onClick={cancelSession}>取消</button>}
+      </div>
+
+      {/* initial prompt */}
+      {session.initial_prompt && (
+        <div style={{padding:'10px 16px',borderBottom:'1px solid var(--border)',background:'var(--bg3)',flexShrink:0}}>
+          <div style={{fontSize:10,color:'var(--fg3)',marginBottom:3}}>任务描述</div>
+          <div style={{fontSize:12,color:'var(--fg2)',lineHeight:1.6,whiteSpace:'pre-wrap'}}>{session.initial_prompt}</div>
+        </div>
+      )}
+
+      {/* message feed */}
+      <div ref={feedRef} style={{flex:1,overflowY:'auto',padding:'14px 16px'}}>
+        {messages.length === 0 && isActive && (
+          <div style={{textAlign:'center',padding:'40px 20px',color:'var(--fg3)',fontSize:13}}>
+            <div style={{marginBottom:8,fontSize:24}}>◆</div>
+            <div>等待 Claude Code 响应中</div>
+            <div style={{fontSize:11,marginTop:6}}>桥接客户端正在处理…</div>
+          </div>
+        )}
+        {messages.map((m,i) => (
+          <BridgeMessageItem key={m.id||i} msg={m} onRespond={respondPermission}/>
+        ))}
+        {isActive && <div style={{textAlign:'center',padding:'8px 0',color:'var(--fg3)',fontSize:11}}>
+          <span style={{animation:'blink 1s infinite'}}>▌</span>
+        </div>}
+      </div>
+
+      {/* follow-up input */}
+      {!done && (
+        <div style={{padding:'10px 12px',borderTop:'1px solid var(--border)',background:'var(--bg2)',display:'flex',gap:8,flexShrink:0}}>
+          <textarea value={input} onChange={e=>setInput(e.target.value)} rows={2}
+            placeholder="发送跟进消息给 Claude Code…"
+            style={{flex:1,resize:'none',fontSize:12,lineHeight:1.5}}
+            onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage();}}}/>
+          <button className="btn btn-p" onClick={sendMessage} disabled={sending||!input.trim()} style={{alignSelf:'flex-end',fontSize:12}}>
+            {sending?'…':'发送'}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Main App ──────────────────────────────────────────────────
+function ClaudeBridgeApp({user, onLogout, onUpdateUser}) {
+  const [connections, setConnections]       = React.useState([]);
+  const [sessions, setSessions]             = React.useState([]);
+  const [selectedSession, setSelectedSession] = React.useState(null);
+  const [showNewModal, setShowNewModal]     = React.useState(false);
+  const [showSetup, setShowSetup]           = React.useState(false);
+  const [sbOpen, setSbOpen]                 = React.useState(false);
+  const [loadingConns, setLoadingConns]     = React.useState(true);
+
+  const token = user?.token || '';
+
+  const loadConnections = async () => {
+    try {
+      const res = await F(`${API}/bridge/connections/`);
+      setConnections(res);
+      if (res.length === 0) setShowSetup(true);
+    } catch {}
+    setLoadingConns(false);
+  };
+
+  const loadSessions = async () => {
+    try {
+      const res = await F(`${API}/bridge/sessions/`);
+      setSessions(res);
+    } catch {}
+  };
+
+  React.useEffect(() => {
+    loadConnections();
+    loadSessions();
+    const t = setInterval(() => { loadConnections(); loadSessions(); }, 8000);
+    return () => clearInterval(t);
+  }, []);
+
+  const handleDownloadScript = async () => {
+    try {
+      const resp = await fetch(`${API}/bridge/client/script/`, {headers:{'Authorization':`Token ${token}`}});
+      if (!resp.ok) throw new Error('下载失败');
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'claude_bridge.py'; a.click();
+      URL.revokeObjectURL(url);
+    } catch(e) { showAlert(e.message, '下载失败'); }
+  };
+
+  const handleSessionCreated = async (connId, sessionId) => {
+    await loadSessions();
+    // Auto-select the new session
+    try {
+      const s = await F(`${API}/bridge/sessions/${sessionId}/`);
+      setSelectedSession(s);
+      setSbOpen(false);
+    } catch {}
+  };
+
+  const onlineCount = connections.filter(c => c.status === 'online').length;
+
+  const statusColor = s => ({
+    pending:'var(--gold)',running:'var(--blue)',waiting:'var(--orange)',
+    completed:'var(--green)',error:'var(--red)',cancelled:'var(--fg3)',
+  }[s] || 'var(--fg3)');
+
+  return (
+    <div style={{display:'flex',height:'100vh',flexDirection:'column',overflow:'hidden'}}>
+      {/* top nav */}
+      <div className="top" style={{flexShrink:0,justifyContent:'space-between',borderBottom:'1px solid var(--border)'}}>
+        <button className="menu-btn" onClick={()=>setSbOpen(o=>!o)}><Icon name="menu" size={18} /></button>
+        <div style={{display:'flex',alignItems:'center',gap:10}}>
+          <span style={{display:'inline-flex',alignItems:'center'}}><Icon name="bolt" size={16} /></span>
+          <span style={{fontFamily:'var(--serif)',fontSize:16,fontWeight:700}}>Claude Bridge</span>
+          <span style={{fontSize:11,padding:'2px 8px',borderRadius:10,
+            background: onlineCount>0?'rgba(90,184,122,.15)':'rgba(255,255,255,.06)',
+            color: onlineCount>0?'var(--green)':'var(--fg3)'}}>
+            {onlineCount} 在线
+          </span>
+        </div>
+        <div style={{display:'flex',gap:8}}>
+          <button className="btn btn-sm btn-s" onClick={handleDownloadScript} title="下载桥接客户端" style={{display:'inline-flex',alignItems:'center',gap:6}}>
+            <Icon name="download" size={12} /> 脚本
+          </button>
+          <button className="btn btn-sm btn-p" onClick={()=>setShowNewModal(true)}>+ 新建会话</button>
+          <button className="btn btn-sm btn-s" onClick={onLogout} style={{color:'var(--fg3)'}}>退出</button>
+        </div>
+      </div>
+
+      <div style={{display:'flex',flex:1,overflow:'hidden'}}>
+        {/* ── Sidebar ── */}
+        <div className={`sb${sbOpen?' open':''}`} style={{width:260,display:'flex',flexDirection:'column',borderRight:'1px solid var(--border)',overflow:'hidden',background:'var(--bg2)'}}>
+          <div style={{padding:'12px 12px 8px',borderBottom:'1px solid var(--border)',flexShrink:0}}>
+            <div style={{fontSize:10,color:'var(--fg3)',letterSpacing:1,fontWeight:600,marginBottom:8}}>桥接连接</div>
+            {loadingConns && <div style={{fontSize:12,color:'var(--fg3)',padding:'4px 0'}}>加载中…</div>}
+            {connections.map(c => (
+              <div key={c.id} style={{padding:'6px 8px',borderRadius:6,marginBottom:4,
+                background:'var(--bg3)',display:'flex',alignItems:'center',gap:8}}>
+                <StatusDot status={c.status}/>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:12,fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c.name}</div>
+                  <div style={{fontSize:10,color:'var(--fg3)'}}>{c.os_info || '—'}</div>
+                </div>
+                <span style={{fontSize:10,color:c.status==='online'?'var(--green)':'var(--fg3)',flexShrink:0}}>
+                  {c.status==='online'?'在线':'离线'}
+                </span>
+              </div>
+            ))}
+            {connections.length === 0 && !loadingConns && (
+              <div style={{fontSize:11,color:'var(--fg3)',padding:'4px 0',lineHeight:1.5}}>
+                暂无连接<br/>
+                <span style={{color:'var(--blue)',cursor:'pointer',textDecoration:'underline'}} onClick={handleDownloadScript}>下载脚本</span>后运行
+              </div>
+            )}
+          </div>
+
+          <div style={{flex:1,overflowY:'auto',padding:'8px'}}>
+            <div style={{fontSize:10,color:'var(--fg3)',letterSpacing:1,fontWeight:600,padding:'4px 4px 8px'}}>最近会话</div>
+            {sessions.map(s => (
+              <div key={s.id}
+                onClick={async ()=>{
+                  try { const full = await F(`${API}/bridge/sessions/${s.id}/`); setSelectedSession(full); setSbOpen(false); }
+                  catch {}
+                }}
+                style={{padding:'8px 10px',borderRadius:7,marginBottom:5,cursor:'pointer',
+                  border:`1px solid ${selectedSession?.id===s.id?'var(--gold)':'var(--border)'}`,
+                  background: selectedSession?.id===s.id?'var(--bg4)':'var(--bg3)'}}>
+                <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:3}}>
+                  <StatusDot status={s.status} style={{width:6,height:6}}/>
+                  <span style={{fontSize:10,color:statusColor(s.status),fontWeight:600}}>{
+                    {pending:'等待',running:'运行中',waiting:'等待权限',completed:'完成',error:'出错',cancelled:'取消'}[s.status]||s.status
+                  }</span>
+                  <span style={{marginLeft:'auto',fontSize:9,color:'var(--fg3)'}}>{s.created_at?.slice(5,16)}</span>
+                </div>
+                <div style={{fontSize:11,color:'var(--fg2)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',marginBottom:2}}>
+                  {s.initial_prompt || '(无描述)'}
+                </div>
+                <div style={{fontSize:10,color:'var(--fg3)',fontFamily:'var(--mono)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                  {s.working_dir}
+                </div>
+              </div>
+            ))}
+            {sessions.length === 0 && (
+              <div style={{padding:'20px 8px',textAlign:'center',color:'var(--fg3)',fontSize:12}}>
+                暂无会话<br/>点击「+ 新建会话」开始
+              </div>
+            )}
+          </div>
+
+          <div style={{padding:'10px 12px',borderTop:'1px solid var(--border)',flexShrink:0}}>
+            <button className="btn btn-p" style={{width:'100%',fontSize:12}} onClick={()=>setShowNewModal(true)}>
+              + 新建 Claude Code 会话
+            </button>
+          </div>
+        </div>
+
+        {/* ── Main area ── */}
+        {!selectedSession
+          ? <BridgeSetupPage user={user} onDownload={handleDownloadScript}/>
+          : <BridgeSessionView key={selectedSession.id} session={selectedSession} token={token}/>
+        }
+      </div>
+
+      {showNewModal && (
+        <NewSessionModal
+          connections={connections}
+          onClose={()=>setShowNewModal(false)}
+          onCreated={handleSessionCreated}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── 扫描增强 ScanEnhanceApp ────────────────────────────────────
+// 所有算法运行在浏览器端 Web Worker 中，零服务器 CPU 占用
+
+const SCAN_OPS = [
+  { key:'curve_flatten',       label:'曲面平整化', desc:'逐列采样边缘+多项式拟合，重映射展平书页弯曲 [浏览器]', icon:'scan', params:[
+    {name:'n_strips', label:'拟合精度', type:'range', min:10, max:80, step:5, default:40,
+     hint:'值越大多项式次数越高，跟随曲线越精确'}
+  ]},
+  { key:'perspective_correct', label:'透视校正', desc:'检测文档四角，单应矩阵校正梯形失真 [浏览器]', icon:'scan', params:[] },
+  { key:'deskew',              label:'自动纠偏', desc:'投影剖面打分法检测并旋转校正倾斜角 [浏览器]', icon:'triangle', params:[] },
+  { key:'remove_shadow',       label:'去除阴影', desc:'形态膨胀+背景估计，归一化消除光照不均 [浏览器]', icon:'sun', params:[] },
+  { key:'denoise',             label:'智能降噪', desc:'可分离盒式滤波近似高斯降噪 [浏览器]', icon:'spark', params:[
+    {name:'strength', label:'强度', type:'range', min:1, max:30, step:1, default:10}
+  ]},
+  { key:'binarize',            label:'文档二值化', desc:'Otsu / 自适应均值 / Sauvola 三种方法可选 [浏览器]', icon:'adjust', params:[
+    {name:'method', label:'算法', type:'select',
+     options:[{v:'adaptive',label:'自适应均值（推荐）'},{v:'otsu',label:'Otsu 全局'},{v:'sauvola_approx',label:'Sauvola 局部'}],
+     default:'adaptive'},
+    {name:'block_size', label:'局部块大小', type:'range', min:5, max:51, step:2, default:21},
+    {name:'C',          label:'偏移量 C', type:'range', min:0, max:30, step:1, default:10},
+  ]},
+  { key:'enhance_contrast',    label:'对比度增强', desc:'CLAHE 自适应直方图均衡，含裁剪防过曝 [浏览器]', icon:'adjust', params:[
+    {name:'clip_limit', label:'裁剪上限', type:'range', min:0.5, max:10, step:0.5, default:2.5},
+    {name:'tile_size',  label:'分块数量', type:'range', min:2,   max:16, step:1,   default:8},
+  ]},
+  { key:'sharpen',             label:'图像锐化', desc:'非锐化掩蔽（Unsharp Mask）使文字边缘更清晰 [浏览器]', icon:'target', params:[
+    {name:'amount', label:'锐化量', type:'range', min:0.1, max:3, step:0.1, default:1.0}
+  ]},
+  { key:'whiten_background',   label:'背景漂白', desc:'将亮度超过阈值的像素强制置白 [浏览器]', icon:'grid', params:[
+    {name:'threshold', label:'阈值', type:'range', min:100, max:250, step:5, default:200}
+  ]},
+  { key:'auto_crop',           label:'自动裁剪', desc:'扫描暗像素边界，裁剪到文档内容区域 [浏览器]', icon:'scan', params:[
+    {name:'padding', label:'边距px', type:'range', min:0, max:50, step:2, default:10}
+  ]},
+  { key:'brightness_contrast', label:'亮度/对比度', desc:'线性变换调整整体亮度与对比度 [浏览器]', icon:'sun', params:[
+    {name:'brightness', label:'亮度', type:'range', min:-100, max:100, step:5, default:0},
+    {name:'contrast',   label:'对比度', type:'range', min:0.2, max:3, step:0.1, default:1.0},
+  ]},
+  { key:'grayscale', label:'灰度化', desc:'BT.601 权重转换为灰度图像 [浏览器]', icon:'layers', params:[] },
+];
+
+// ── Web Worker 内联代码（所有算法在此） ───────────────────────
+const SCAN_WORKER_CODE = `'use strict';
+/* ─────────────────────────────────────────────────────────────
+   MineAI Scan Enhance — Browser-side Image Processing Worker
+   全部算法纯 JS 实现，运行在独立线程，不占用服务器 CPU
+   ───────────────────────────────────────────────────────────── */
+
+// ── 工具函数 ─────────────────────────────────────────────────
+function clamp8(v){return v<0?0:v>255?255:v}
+function toGrayPx(r,g,b){return(77*r+150*g+29*b)>>8}
+function toGrayArr(d,w,h){
+  const g=new Uint8Array(w*h);
+  for(let i=0;i<w*h;i++){const j=i*4;g[i]=toGrayPx(d[j],d[j+1],d[j+2]);}
+  return g;
+}
+function grayToRgba(g,w,h){
+  const o=new Uint8ClampedArray(w*h*4);
+  for(let i=0;i<w*h;i++){const j=i*4;o[j]=o[j+1]=o[j+2]=g[i];o[j+3]=255;}
+  return o;
+}
+function exCh(d,w,h,c){const o=new Uint8Array(w*h);for(let i=0;i<w*h;i++)o[i]=d[i*4+c];return o;}
+function mergeCh(R,G,B,w,h){
+  const o=new Uint8ClampedArray(w*h*4);
+  for(let i=0;i<w*h;i++){o[i*4]=R[i];o[i*4+1]=G[i];o[i*4+2]=B[i];o[i*4+3]=255;}
+  return o;
+}
+
+// ── 可分离盒式模糊（O(W*H)） ──────────────────────────────────
+function boxBlur(g,w,h,r){
+  if(r<=0)return new Uint8Array(g);
+  const t=new Float32Array(w*h),o=new Uint8Array(w*h),inv=1/(2*r+1);
+  for(let y=0;y<h;y++){
+    let s=g[y*w]*r;
+    for(let x=0;x<=r;x++)s+=g[y*w+Math.min(x,w-1)];
+    for(let x=0;x<w;x++){
+      t[y*w+x]=s*inv;
+      s+=g[y*w+Math.min(x+r+1,w-1)];
+      s-=g[y*w+Math.max(x-r,0)];
+    }
+  }
+  for(let x=0;x<w;x++){
+    let s=t[x]*r;
+    for(let y=0;y<=r;y++)s+=t[Math.min(y,h-1)*w+x];
+    for(let y=0;y<h;y++){
+      o[y*w+x]=s*inv;
+      s+=t[Math.min(y+r+1,h-1)*w+x];
+      s-=t[Math.max(y-r,0)*w+x];
+    }
+  }
+  return o;
+}
+function boxBlurRgba(d,w,h,r){return mergeCh(boxBlur(exCh(d,w,h,0),w,h,r),boxBlur(exCh(d,w,h,1),w,h,r),boxBlur(exCh(d,w,h,2),w,h,r),w,h);}
+
+// 最大值膨胀
+function maxFilt(g,w,h,r){
+  const t=new Uint8Array(w*h),o=new Uint8Array(w*h);
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++){let m=0;for(let dx=-r;dx<=r;dx++){const nx=Math.max(0,Math.min(w-1,x+dx));if(g[y*w+nx]>m)m=g[y*w+nx];}t[y*w+x]=m;}
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++){let m=0;for(let dy=-r;dy<=r;dy++){const ny=Math.max(0,Math.min(h-1,y+dy));if(t[ny*w+x]>m)m=t[ny*w+x];}o[y*w+x]=m;}
+  return o;
+}
+
+// 近邻下采样
+function downsample(d,w,h,sw,sh){
+  const o=new Uint8ClampedArray(sw*sh*4),sx=w/sw,sy=h/sh;
+  for(let y=0;y<sh;y++)for(let x=0;x<sw;x++){
+    const si=(Math.floor(y*sy)*w+Math.floor(x*sx))*4,di=(y*sw+x)*4;
+    o[di]=d[si];o[di+1]=d[si+1];o[di+2]=d[si+2];o[di+3]=255;
+  }
+  return o;
+}
+
+// 双线性采样（超出边界返回白色）
+function bsamp(d,w,h,sx,sy){
+  const x0=Math.floor(sx),y0=Math.floor(sy);
+  if(x0<0||y0<0||x0>=w-1||y0>=h-1)return[255,255,255];
+  const fx=sx-x0,fy=sy-y0,r=[];
+  for(let c=0;c<3;c++){
+    const v00=d[(y0*w+x0)*4+c],v10=d[(y0*w+x0+1)*4+c];
+    const v01=d[((y0+1)*w+x0)*4+c],v11=d[((y0+1)*w+x0+1)*4+c];
+    r.push(v00*(1-fx)*(1-fy)+v10*fx*(1-fy)+v01*(1-fx)*fy+v11*fx*fy);
+  }
+  return r;
+}
+
+// ── Otsu 全局阈值 ─────────────────────────────────────────────
+function otsu(g,w,h){
+  const hist=new Int32Array(256);for(let i=0;i<w*h;i++)hist[g[i]]++;
+  const N=w*h;let s=0;for(let i=0;i<256;i++)s+=i*hist[i];
+  let sB=0,wB=0,best=0,T=128;
+  for(let t=0;t<256;t++){wB+=hist[t];if(!wB)continue;const wF=N-wB;if(!wF)break;sB+=t*hist[t];const v=wB*wF*(sB/wB-(s-sB)/wF)**2;if(v>best){best=v;T=t;}}
+  return T;
+}
+
+// ── 积分图 ────────────────────────────────────────────────────
+function buildII(g,w,h){
+  const ii=new Float64Array((w+1)*(h+1));
+  for(let y=1;y<=h;y++)for(let x=1;x<=w;x++){const v=g[(y-1)*w+(x-1)];ii[y*(w+1)+x]=v+ii[(y-1)*(w+1)+x]+ii[y*(w+1)+(x-1)]-ii[(y-1)*(w+1)+(x-1)];}
+  return ii;
+}
+function buildII2(g,w,h){
+  const ii=new Float64Array((w+1)*(h+1));
+  for(let y=1;y<=h;y++)for(let x=1;x<=w;x++){const v=g[(y-1)*w+(x-1)];ii[y*(w+1)+x]=v*v+ii[(y-1)*(w+1)+x]+ii[y*(w+1)+(x-1)]-ii[(y-1)*(w+1)+(x-1)];}
+  return ii;
+}
+function iiRect(ii,w,x1,y1,x2,y2){const W=w+1;return ii[(y2+1)*W+(x2+1)]-ii[y1*W+(x2+1)]-ii[(y2+1)*W+x1]+ii[y1*W+x1];}
+
+// ── 多项式最小二乘拟合 ────────────────────────────────────────
+function polySmooth(xs,ys,deg,xMin,xMax,totalW){
+  if(xs.length<2)return new Float32Array(totalW).fill(ys[0]||0);
+  const d=Math.min(deg,xs.length-1)+1,xR=xMax-xMin||1;
+  const xn=xs.map(x=>2*(x-xMin)/xR-1);
+  const ATA=Array.from({length:d},()=>new Float64Array(d)),ATy=new Float64Array(d);
+  for(let i=0;i<xs.length;i++){
+    const row=[];let xi=1;for(let j=0;j<d;j++){row.push(xi);xi*=xn[i];}
+    for(let j=0;j<d;j++){ATy[j]+=row[j]*ys[i];for(let k=0;k<d;k++)ATA[j][k]+=row[j]*row[k];}
+  }
+  const mat=ATA.map((r,i)=>[...Array.from(r),ATy[i]]);
+  for(let c=0;c<d;c++){
+    let piv=c;for(let r=c+1;r<d;r++)if(Math.abs(mat[r][c])>Math.abs(mat[piv][c]))piv=r;
+    [mat[c],mat[piv]]=[mat[piv],mat[c]];
+    if(Math.abs(mat[c][c])<1e-12)continue;
+    const p=mat[c][c];for(let j=c;j<=d;j++)mat[c][j]/=p;
+    for(let r=0;r<d;r++){if(r===c)continue;const f=mat[r][c];for(let j=c;j<=d;j++)mat[r][j]-=f*mat[c][j];}
+  }
+  const co=mat.map(r=>r[d]);
+  const res=new Float32Array(totalW);
+  for(let x=0;x<totalW;x++){const xnv=2*(x-xMin)/xR-1;let v=0,xi=1;for(let j=0;j<d;j++){v+=co[j]*xi;xi*=xnv;}res[x]=v;}
+  return res;
+}
+
+// ── 高斯消元（8x9 增广矩阵） ──────────────────────────────────
+function gauss8(A){
+  const n=8,M=A.map(r=>[...r]);
+  for(let c=0;c<n;c++){
+    let piv=c;for(let r=c+1;r<n;r++)if(Math.abs(M[r][c])>Math.abs(M[piv][c]))piv=r;
+    [M[c],M[piv]]=[M[piv],M[c]];
+    if(Math.abs(M[c][c])<1e-10)return null;
+    const p=M[c][c];for(let j=c;j<=n;j++)M[c][j]/=p;
+    for(let r=0;r<n;r++){if(r===c)continue;const f=M[r][c];for(let j=c;j<=n;j++)M[r][j]-=f*M[c][j];}
+  }
+  return M.map(r=>r[n]);
+}
+function inv3x3(m){
+  const[a,b,c,d,e,f,g,h,k]=m,dt=a*(e*k-f*h)-b*(d*k-f*g)+c*(d*h-e*g);
+  if(Math.abs(dt)<1e-10)return null;
+  return[(e*k-f*h)/dt,(c*h-b*k)/dt,(b*f-c*e)/dt,(f*g-d*k)/dt,(a*k-c*g)/dt,(c*d-a*f)/dt,(d*h-e*g)/dt,(b*g-a*h)/dt,(a*e-b*d)/dt];
+}
+// DLT 单应矩阵（4 对点）
+function homography4(src,dst){
+  const A=[];
+  for(let i=0;i<4;i++){const[x,y]=src[i],[xp,yp]=dst[i];A.push([x,y,1,0,0,0,-x*xp,-y*xp,xp]);A.push([0,0,0,x,y,1,-x*yp,-y*yp,yp]);}
+  const h=gauss8(A.map(r=>[...r.slice(0,8),r[8]]));
+  if(!h)return null;
+  return[h[0],h[1],h[2],h[3],h[4],h[5],h[6],h[7],1];
+}
+
+// Sobel 边缘强度
+function sobel(g,w,h){
+  const e=new Uint8Array(w*h);
+  for(let y=1;y<h-1;y++)for(let x=1;x<w-1;x++){
+    const gx=-g[(y-1)*w+x-1]+g[(y-1)*w+x+1]-2*g[y*w+x-1]+2*g[y*w+x+1]-g[(y+1)*w+x-1]+g[(y+1)*w+x+1];
+    const gy=-g[(y-1)*w+x-1]-2*g[(y-1)*w+x]-g[(y-1)*w+x+1]+g[(y+1)*w+x-1]+2*g[(y+1)*w+x]+g[(y+1)*w+x+1];
+    e[y*w+x]=Math.min(255,Math.sqrt(gx*gx+gy*gy)|0);
+  }
+  return e;
+}
+
+// ══════════════════════════════════════════════════════════════
+//  OpenCV.js 主线程加载（用于网格透视变换）
+//  延迟加载，队列机制支持并发请求
+// ══════════════════════════════════════════════════════════════
+let cvReady = false;
+let cvError = null;
+let cvQueue = [];
+
+function loadOpenCVMain() {
+  if (cvReady) return Promise.resolve(window.cv);
+  if (cvError) return Promise.reject(cvError);
+
+  return new Promise((resolve, reject) => {
+    cvQueue.push({ resolve, reject });
+
+    if (cvQueue.length === 1) {
+      // 首次加载
+      const script = document.createElement('script');
+      script.src = OPENCV_CDN_URLS[0];
+      script.onload = () => {
+        cvReady = true;
+        cvQueue.forEach(q => q.resolve(window.cv));
+        cvQueue = [];
+      };
+      script.onerror = () => {
+        // 尝试备用 CDN
+        if (OPENCV_CDN_URLS.length > 1) {
+          script.src = OPENCV_CDN_URLS[1];
+        } else {
+          cvError = 'OpenCV.js 加载失败';
+          cvQueue.forEach(q => q.reject(cvError));
+          cvQueue = [];
+        }
+      };
+      document.head.appendChild(script);
+    }
+  });
+}
+
+// ── 旋转图像（双线性插值） ─────────────────────────────────────
+function rotateImg(d,w,h,angleDeg){
+  const rad=angleDeg*Math.PI/180,cos=Math.cos(rad),sin=Math.sin(rad),cx=w/2,cy=h/2;
+  const o=new Uint8ClampedArray(w*h*4);for(let i=3;i<o.length;i+=4)o[i]=255;
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+    const dx=x-cx,dy=y-cy,sx=cos*dx+sin*dy+cx,sy=-sin*dx+cos*dy+cy;
+    const rgb=bsamp(d,w,h,sx,sy),di=(y*w+x)*4;
+    o[di]=rgb[0];o[di+1]=rgb[1];o[di+2]=rgb[2];o[di+3]=255;
+  }
+  return{data:o,w,h};
+}
+
+// ══════════════════════════════════════════════════════════════
+//  图像处理操作
+// ══════════════════════════════════════════════════════════════
+
+function op_grayscale(d,w,h){
+  const o=new Uint8ClampedArray(d);
+  for(let i=0;i<w*h;i++){const j=i*4,g=toGrayPx(d[j],d[j+1],d[j+2]);o[j]=o[j+1]=o[j+2]=g;}
+  return{data:o,w,h};
+}
+
+function op_brightness_contrast(d,w,h,{brightness=0,contrast=1}){
+  const o=new Uint8ClampedArray(d.length);
+  for(let i=0;i<d.length;i+=4){o[i]=clamp8(d[i]*contrast+brightness);o[i+1]=clamp8(d[i+1]*contrast+brightness);o[i+2]=clamp8(d[i+2]*contrast+brightness);o[i+3]=255;}
+  return{data:o,w,h};
+}
+
+function op_denoise(d,w,h,{strength=10}){
+  // 强度 1-30，映射到半径 1-8
+  const r = Math.max(1, Math.round(strength * 0.25));
+  return{data:boxBlurRgba(d,w,h,r),w,h};
+}
+
+function op_sharpen(d,w,h,{amount=1}){
+  const bl=boxBlurRgba(d,w,h,2),o=new Uint8ClampedArray(d.length);
+  for(let i=0;i<d.length;i+=4){o[i]=clamp8(d[i]*(1+amount)-bl[i]*amount);o[i+1]=clamp8(d[i+1]*(1+amount)-bl[i+1]*amount);o[i+2]=clamp8(d[i+2]*(1+amount)-bl[i+2]*amount);o[i+3]=255;}
+  return{data:o,w,h};
+}
+
+function op_whiten_background(d,w,h,{threshold=200}){
+  const o=new Uint8ClampedArray(d);
+  for(let i=0;i<w*h;i++){const j=i*4;if(toGrayPx(d[j],d[j+1],d[j+2])>threshold){o[j]=o[j+1]=o[j+2]=255;}}
+  return{data:o,w,h};
+}
+
+function op_binarize(d,w,h,{method='adaptive',block_size=21,C=10}){
+  const gray=toGrayArr(d,w,h),bw=new Uint8Array(w*h);
+  if(method==='otsu'){
+    const t=otsu(gray,w,h);for(let i=0;i<w*h;i++)bw[i]=gray[i]>t?255:0;
+  } else {
+    const bs=block_size%2===1?block_size:block_size+1,half=(bs-1)>>1;
+    const ii=buildII(gray,w,h),ii2=method==='sauvola_approx'?buildII2(gray,w,h):null;
+    const k=0.3,R=128;
+    for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+      const y1=Math.max(0,y-half),y2=Math.min(h-1,y+half),x1=Math.max(0,x-half),x2=Math.min(w-1,x+half);
+      const cnt=(y2-y1+1)*(x2-x1+1),s=iiRect(ii,w,x1,y1,x2,y2),mean=s/cnt;
+      let thr;
+      if(method==='sauvola_approx'){const s2=iiRect(ii2,w,x1,y1,x2,y2);thr=mean*(1+k*(Math.sqrt(Math.max(0,s2/cnt-mean*mean))/R-1));}
+      else{thr=mean-C;}
+      bw[y*w+x]=gray[y*w+x]>thr?255:0;
+    }
+  }
+  return{data:grayToRgba(bw,w,h),w,h};
+}
+
+// CLAHE 自适应直方图均衡化
+function op_enhance_contrast(d,w,h,{clip_limit=2.5,tile_size=8}){
+  const gray=toGrayArr(d,w,h),tgX=tile_size,tgY=tile_size;
+  const tw=Math.ceil(w/tgX),th=Math.ceil(h/tgY);
+  const luts=[];
+  for(let ty=0;ty<tgY;ty++){
+    luts[ty]=[];
+    for(let tx=0;tx<tgX;tx++){
+      const x0=tx*tw,x1=Math.min((tx+1)*tw,w),y0=ty*th,y1=Math.min((ty+1)*th,h);
+      const hist=new Int32Array(256);let n=0;
+      for(let y=y0;y<y1;y++)for(let x=x0;x<x1;x++){hist[gray[y*w+x]]++;n++;}
+      const clip=Math.max(1,Math.floor(clip_limit*n/256));let ex=0;
+      for(let i=0;i<256;i++){if(hist[i]>clip){ex+=hist[i]-clip;hist[i]=clip;}}
+      const add=Math.floor(ex/256);for(let i=0;i<256;i++)hist[i]+=add;for(let i=0;i<ex%256;i++)hist[i]++;
+      const lut=new Uint8Array(256);let cdf=0;
+      for(let i=0;i<256;i++){cdf+=hist[i];lut[i]=Math.min(255,Math.round(cdf*255/n));}
+      luts[ty].push(lut);
+    }
+  }
+  const res=new Uint8Array(w*h);
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+    const v=gray[y*w+x],fx=(x+0.5)/tw-0.5,fy=(y+0.5)/th-0.5;
+    const tx0=Math.max(0,Math.min(tgX-1,Math.floor(fx))),tx1=Math.min(tgX-1,tx0+1);
+    const ty0=Math.max(0,Math.min(tgY-1,Math.floor(fy))),ty1=Math.min(tgY-1,ty0+1);
+    const dx=Math.max(0,Math.min(1,fx-tx0)),dy=Math.max(0,Math.min(1,fy-ty0));
+    res[y*w+x]=Math.round(luts[ty0][tx0][v]*(1-dx)*(1-dy)+luts[ty0][tx1][v]*dx*(1-dy)+luts[ty1][tx0][v]*(1-dx)*dy+luts[ty1][tx1][v]*dx*dy);
+  }
+  return{data:grayToRgba(res,w,h),w,h};
+}
+
+// 形态学去阴影：膨胀 → 背景估计 → 归一化
+function op_remove_shadow(d,w,h){
+  const chs=[exCh(d,w,h,0),exCh(d,w,h,1),exCh(d,w,h,2)].map(ch=>{
+    const dil=maxFilt(ch,w,h,3),bg=boxBlur(dil,w,h,10);
+    const diff=new Uint8Array(w*h);let mn=255,mx=0;
+    for(let i=0;i<w*h;i++){diff[i]=255-Math.abs(ch[i]-bg[i]);if(diff[i]<mn)mn=diff[i];if(diff[i]>mx)mx=diff[i];}
+    const rng=mx-mn||1,norm=new Uint8Array(w*h);
+    for(let i=0;i<w*h;i++)norm[i]=Math.round((diff[i]-mn)*255/rng);
+    return norm;
+  });
+  return{data:mergeCh(chs[0],chs[1],chs[2],w,h),w,h};
+}
+
+// 自动裁剪到内容区域
+function op_auto_crop(d,w,h,{padding=10}){
+  const gray=toGrayArr(d,w,h);let x0=w,y0=h,x1=0,y1=0;
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++){if(gray[y*w+x]<240){if(x<x0)x0=x;if(x>x1)x1=x;if(y<y0)y0=y;if(y>y1)y1=y;}}
+  if(x1<=x0||y1<=y0)return{data:d,w,h};
+  x0=Math.max(0,x0-padding);y0=Math.max(0,y0-padding);x1=Math.min(w-1,x1+padding);y1=Math.min(h-1,y1+padding);
+  const nw=x1-x0+1,nh=y1-y0+1,o=new Uint8ClampedArray(nw*nh*4);
+  for(let y=0;y<nh;y++)for(let x=0;x<nw;x++){const si=((y+y0)*w+(x+x0))*4,di=(y*nw+x)*4;o[di]=d[si];o[di+1]=d[si+1];o[di+2]=d[si+2];o[di+3]=255;}
+  return{data:o,w:nw,h:nh};
+}
+
+// 投影剖面法纠偏
+function op_deskew(d,w,h){
+  self.postMessage({status:'progress',msg:'纠偏：检测文字行角度…'});
+  const sc=Math.min(1,600/Math.max(w,h)),sw=Math.round(w*sc),sh=Math.round(h*sc);
+  const sd=downsample(d,w,h,sw,sh),gray=toGrayArr(sd,sw,sh);
+  const t=otsu(gray,sw,sh),bin=new Uint8Array(sw*sh);
+  for(let i=0;i<sw*sh;i++)bin[i]=gray[i]<t?1:0;
+  let bestA=0,bestS=-1;
+  const cx=sw/2,cy=sh/2;
+  for(let a=-15;a<=15;a+=0.5){
+    const rad=a*Math.PI/180,cos=Math.cos(rad),sin=Math.sin(rad);
+    const rows=new Int32Array(sh*2);
+    for(let y=0;y<sh;y++)for(let x=0;x<sw;x++){
+      if(!bin[y*sw+x])continue;
+      const r=Math.round((y-cy)*cos-(x-cx)*sin+cy+sh/2);
+      if(r>=0&&r<sh*2)rows[r]++;
+    }
+    let s=0,s2=0;for(let i=0;i<sh*2;i++){s+=rows[i];s2+=rows[i]*rows[i];}
+    const sc2=s2/(sh*2)-(s/(sh*2))**2;
+    if(sc2>bestS){bestS=sc2;bestA=a;}
+  }
+  if(Math.abs(bestA)<0.3)return{data:d,w,h};
+  self.postMessage({status:'progress',msg:'纠偏：旋转 '+bestA.toFixed(1)+'°…'});
+  return rotateImg(d,w,h,-bestA);
+}
+
+// 单应矩阵透视校正
+function op_perspective_correct(d,w,h){
+  self.postMessage({status:'progress',msg:'透视校正：检测文档边缘…'});
+  const sc=Math.min(1,800/Math.max(w,h)),sw=Math.round(w*sc),sh=Math.round(h*sc);
+  const sd=downsample(d,w,h,sw,sh),gray=toGrayArr(sd,sw,sh);
+  const edges=sobel(gray,sw,sh),thr=60,step=3;
+  const cands=[];
+  for(let y=0;y<sh;y+=step)for(let x=0;x<sw;x+=step)if(edges[y*sw+x]>thr)cands.push([x,y]);
+  if(cands.length<20)return{data:d,w,h};
+  // 找距4个角最近的边缘点
+  const corners=[[0,0],[sw-1,0],[sw-1,sh-1],[0,sh-1]];
+  const found=corners.map(([cx,cy])=>{
+    let best=null,bd=Infinity;
+    for(const[px,py]of cands){const dd=(px-cx)**2+(py-cy)**2;if(dd<bd){bd=dd;best=[px/sc,py/sc];}}
+    return best;
+  });
+  if(found.some(p=>!p))return{data:d,w,h};
+  const[tl,tr,br,bl]=found;
+  const mw=Math.max(Math.hypot(br[0]-bl[0],br[1]-bl[1]),Math.hypot(tr[0]-tl[0],tr[1]-tl[1]))|0;
+  const mh=Math.max(Math.hypot(tr[0]-br[0],tr[1]-br[1]),Math.hypot(tl[0]-bl[0],tl[1]-bl[1]))|0;
+  if(mw<50||mh<50)return{data:d,w,h};
+  const H=homography4(found,[[0,0],[mw-1,0],[mw-1,mh-1],[0,mh-1]]);
+  if(!H)return{data:d,w,h};
+  const Hi=inv3x3(H);if(!Hi)return{data:d,w,h};
+  self.postMessage({status:'progress',msg:'透视校正：重映射中…'});
+  const o=new Uint8ClampedArray(mw*mh*4);for(let i=3;i<o.length;i+=4)o[i]=255;
+  for(let y=0;y<mh;y++)for(let x=0;x<mw;x++){
+    const de=Hi[6]*x+Hi[7]*y+Hi[8];
+    const sx=(Hi[0]*x+Hi[1]*y+Hi[2])/de,sy=(Hi[3]*x+Hi[4]*y+Hi[5])/de;
+    const rgb=bsamp(d,w,h,sx,sy),di=(y*mw+x)*4;
+    o[di]=rgb[0];o[di+1]=rgb[1];o[di+2]=rgb[2];o[di+3]=255;
+  }
+  return{data:o,w:mw,h:mh};
+}
+
+// ══════════════════════════════════════════════════════════════
+//  曲面平整化 — 逐列边缘采样 + 多项式拟合 + 垂直重映射
+//  核心算法：
+//    1. Otsu 二值化找文字区域
+//    2. 每列扫描首尾暗像素 → topY[x], botY[x]
+//    3. 线性插值填补缺失列
+//    4. 多项式最小二乘拟合 → topSmooth, botSmooth（消除噪声）
+//    5. 逐输出像素：srcY = topSmooth[x] + ty*(botSmooth[x]-topSmooth[x])
+//    6. 双线性插值采样，生成统一高度的平面图像
+// ══════════════════════════════════════════════════════════════
+function op_curve_flatten(d,w,h,{n_strips=40}){
+  self.postMessage({status:'progress',msg:'曲面平整：扫描页面边缘…'});
+  const gray=toGrayArr(d,w,h),thr=otsu(gray,w,h);
+  const mg=Math.floor(h*0.03);
+  const topY=new Float32Array(w).fill(-1),botY=new Float32Array(w).fill(-1);
+
+  // 逐列找首/尾暗像素
+  for(let x=0;x<w;x++){
+    let top=-1,bot=-1;
+    for(let y=mg;y<h-mg;y++){if(gray[y*w+x]<thr){if(top<0)top=y;bot=y;}}
+    if(top>=0&&bot>top&&(bot-top)>h*0.07){topY[x]=top;botY[x]=bot;}
+  }
+
+  // 确定有效范围
+  let xMin=w,xMax=0;
+  for(let x=0;x<w;x++){if(topY[x]>=0){if(x<xMin)xMin=x;if(x>xMax)xMax=x;}}
+  if(xMax-xMin<w*0.15)return{data:d,w,h};
+
+  // 线性插值填补缺失列
+  let lv=-1;
+  for(let x=xMin;x<=xMax;x++){
+    if(topY[x]>=0){
+      if(lv>=0&&x-lv>1){for(let xi=lv+1;xi<x;xi++){const t=(xi-lv)/(x-lv);topY[xi]=topY[lv]*(1-t)+topY[x]*t;botY[xi]=botY[lv]*(1-t)+botY[x]*t;}}
+      lv=x;
+    }
+  }
+
+  // 收集有效样本
+  const xs=[],tops=[],bots=[];
+  for(let x=xMin;x<=xMax;x++){if(topY[x]>=0){xs.push(x);tops.push(topY[x]);bots.push(botY[x]);}}
+  if(xs.length<4)return{data:d,w,h};
+
+  // 多项式次数随拟合精度参数变化
+  const deg=n_strips<=20?2:n_strips<=40?3:n_strips<=60?4:5;
+  self.postMessage({status:'progress',msg:'曲面平整：多项式拟合（次数='+deg+'）…'});
+  const topS=polySmooth(xs,tops,deg,xMin,xMax,w);
+  const botS=polySmooth(xs,bots,deg,xMin,xMax,w);
+
+  // 中值目标高度
+  const hts=[];
+  for(let x=xMin;x<=xMax;x++){const hv=botS[x]-topS[x];if(hv>10)hts.push(hv);}
+  if(hts.length===0)return{data:d,w,h};
+  hts.sort((a,b)=>a-b);
+  const tgtH=Math.round(hts[hts.length>>1]);
+  const outW=xMax-xMin,outH=tgtH;
+
+  self.postMessage({status:'progress',msg:'曲面平整：逐像素重映射展平…'});
+  const o=new Uint8ClampedArray(outW*outH*4);for(let i=3;i<o.length;i+=4)o[i]=255;
+
+  for(let y=0;y<outH;y++){
+    const ty=outH>1?y/(outH-1):0;
+    for(let x=0;x<outW;x++){
+      const sx=x+xMin,srcTop=topS[sx],srcBot=botS[sx];
+      const srcY=srcTop+ty*(srcBot-srcTop);
+      const rgb=bsamp(d,w,h,sx,srcY),di=(y*outW+x)*4;
+      o[di]=rgb[0];o[di+1]=rgb[1];o[di+2]=rgb[2];o[di+3]=255;
+    }
+  }
+  return{data:o,w:outW,h:outH};
+}
+
+// ── 处理流水线 ────────────────────────────────────────────────
+const PIPELINE=['remove_shadow','curve_flatten','perspective_correct','deskew',
+                'auto_crop','denoise','binarize','enhance_contrast',
+                'whiten_background','sharpen','brightness_contrast','grayscale'];
+
+function processImage(imgData,enabledOps,opParams){
+  let{data,width:w,height:h}=imgData;
+  data=new Uint8ClampedArray(data);
+  for(const op of PIPELINE){
+    if(!enabledOps[op])continue;
+    const p=opParams[op]||{};
+    let r;
+    if     (op==='grayscale')          r=op_grayscale(data,w,h);
+    else if(op==='brightness_contrast')r=op_brightness_contrast(data,w,h,p);
+    else if(op==='denoise')            r=op_denoise(data,w,h,p);
+    else if(op==='sharpen')            r=op_sharpen(data,w,h,p);
+    else if(op==='whiten_background')  r=op_whiten_background(data,w,h,p);
+    else if(op==='binarize')           r=op_binarize(data,w,h,p);
+    else if(op==='enhance_contrast')   r=op_enhance_contrast(data,w,h,p);
+    else if(op==='remove_shadow')      r=op_remove_shadow(data,w,h);
+    else if(op==='auto_crop')          r=op_auto_crop(data,w,h,p);
+    else if(op==='deskew')             r=op_deskew(data,w,h);
+    else if(op==='perspective_correct')r=op_perspective_correct(data,w,h);
+    else if(op==='curve_flatten')      r=op_curve_flatten(data,w,h,p);
+    else continue;
+    data=r.data;w=r.w;h=r.h;
+  }
+  return{data,w,h};
+}
+
+self.onmessage=function(e){
+  const{imageData,enabledOps,opParams}=e.data;
+  try{
+    const r=processImage(imageData,enabledOps,opParams);
+    self.postMessage({status:'ok',data:r.data,width:r.w,height:r.h},[r.data.buffer]);
+  }catch(err){
+    self.postMessage({status:'error',error:err.message||String(err)});
+  }
+};
+`;
+
+function createScanWorker(){
+  const blob=new Blob([SCAN_WORKER_CODE],{type:'application/javascript'});
+  const url=URL.createObjectURL(blob);
+  const w=new Worker(url);
+  // URL can be revoked immediately after Worker picks it up
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+  return w;
+}
+
+// PDF.js 动态加载
+const PDFJS_CDN='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+const PDFJS_WORKER='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+async function loadPdfjsLib(){
+  if(window.pdfjsLib)return window.pdfjsLib;
+  return new Promise((resolve,reject)=>{
+    const s=document.createElement('script');s.src=PDFJS_CDN;
+    s.onload=()=>{window.pdfjsLib.GlobalWorkerOptions.workerSrc=PDFJS_WORKER;resolve(window.pdfjsLib);};
+    s.onerror=reject;document.head.appendChild(s);
+  });
+}
+{% endverbatim %}
