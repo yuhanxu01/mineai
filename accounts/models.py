@@ -183,7 +183,7 @@ class SiteConfig(models.Model):
     # 网站品牌
     site_title = models.CharField(
         max_length=100,
-        default='应用平台',
+        default='MineAI',
         verbose_name='网站标题',
         help_text='显示在浏览器标签页、导航栏和登录页的网站名称',
     )
@@ -196,7 +196,7 @@ class SiteConfig(models.Model):
     site_favicon = models.CharField(
         max_length=500,
         blank=True,
-        default='',
+        default='/static/favicon-mineai.svg',
         verbose_name='网站图标',
         help_text='浏览器标签页图标：填写图片URL（如 /static/favicon.ico）或直接填写 emoji（如 🚀）',
     )
@@ -216,6 +216,15 @@ class SiteConfig(models.Model):
     @classmethod
     def get(cls):
         obj, _ = cls.objects.get_or_create(pk=1)
+        updates = []
+        if (obj.site_title or '').strip() in ('', '应用平台'):
+            obj.site_title = 'MineAI'
+            updates.append('site_title')
+        if not (obj.site_favicon or '').strip():
+            obj.site_favicon = '/static/favicon-mineai.svg'
+            updates.append('site_favicon')
+        if updates:
+            obj.save(update_fields=updates)
         return obj
 
     def __str__(self):

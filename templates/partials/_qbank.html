@@ -151,7 +151,7 @@ function QuestionBankApp({user, onLogout, onUpdateUser}) {
         <div style={{padding:'10px 14px', borderTop:'1px solid var(--border)'}}>
           <div style={{fontSize:11, color:'var(--fg3)', marginBottom:6}}>{user?.email || '访客'}</div>
           <div style={{display:'flex', gap:6}}>
-            <button onClick={() => window.location.hash='#/'} style={{flex:1,background:'var(--bg3)',color:'var(--fg2)',padding:'5px 0',borderRadius:'var(--r)',fontSize:11}}>← 平台首页</button>
+            <button onClick={() => window.location.hash='#/'} style={{flex:1,background:'var(--bg3)',color:'var(--fg2)',padding:'5px 0',borderRadius:'var(--r)',fontSize:11}}>← MineAI 首页</button>
             <button onClick={onLogout} style={{flex:1,background:'var(--bg3)',color:'var(--fg2)',padding:'5px 0',borderRadius:'var(--r)',fontSize:11}}>退出</button>
           </div>
         </div>

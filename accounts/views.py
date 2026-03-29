@@ -92,7 +92,7 @@ class SendCodeView(APIView):
         cfg = SiteConfig.get()
         try:
             send_mail(
-                subject='【应用平台】邮箱验证码',
+                subject='【MineAI】邮箱验证码',
                 message=(
                     f'您好！\n\n'
                     f'您的注册验证码为：{code}\n\n'
@@ -194,7 +194,7 @@ class ForgotPasswordView(APIView):
 
         try:
             send_mail(
-                subject='【应用平台】密码重置',
+                subject='【MineAI】密码重置',
                 message=(
                     f'您好！\n\n'
                     f'请点击以下链接重置您的密码（30 分钟内有效）：\n\n'

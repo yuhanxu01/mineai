@@ -912,7 +912,7 @@ function MemoryForgeApp({user, onLogout, onUpdateUser}) {
   if (cfg && !cfg.configured) return (
     <>
       <div style={{position:'fixed',top:14,left:14,zIndex:999}}>
-        <button className="btn btn-s btn-sm" onClick={() => { window.location.hash = '#/'; }}>← 返回平台</button>
+        <button className="btn btn-s btn-sm" onClick={() => { window.location.hash = '#/'; }}>← 返回 MineAI</button>
       </div>
       <Setup
         onDone={() => { F(`${API}/core/config/`).then(setCfg); }}
@@ -928,7 +928,7 @@ function MemoryForgeApp({user, onLogout, onUpdateUser}) {
     <div className="app">
       <div className={`sb-ov${sbOpen?' open':''}`} onClick={()=>setSbOpen(false)}/>
       <div className={`sb${sbOpen?' open':''}`}>
-        <div className="sb-back" onClick={() => { window.location.hash = '#/'; }}>← 返回平台</div>
+        <div className="sb-back" onClick={() => { window.location.hash = '#/'; }}>← 返回 MineAI</div>
         <div className="sb-hd"><h1>记忆熔炉</h1><p>无限记忆·长篇创作</p></div>
         <div className="sb-nav">
           <div className="ns"><div className="ns-t">导航</div>
@@ -1248,7 +1248,10 @@ function AuthScreen({onAuth, siteConfig}) {
   return (
     <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100vh',background:'var(--bg)'}}>
       <div style={{textAlign:'center',maxWidth:400,width:'100%',padding:'0 24px'}}>
-        <h1 style={{fontFamily:'var(--serif)',fontSize:34,color:'var(--gold2)',marginBottom:4,letterSpacing:2}}>{siteConfig?.site_title || '应用平台'}</h1>
+        <h1 style={{fontFamily:'var(--serif)',fontSize:34,color:'var(--gold2)',marginBottom:4,letterSpacing:2,display:'inline-flex',alignItems:'center',gap:10}}>
+          <img src="/static/favicon-mineai.svg" alt="MineAI" style={{width:36,height:36,display:'inline-block'}} />
+          {siteConfig?.site_title || 'MineAI'}
+        </h1>
         <p style={{color:'var(--fg3)',marginBottom:28,fontSize:12,letterSpacing:2}}>{siteConfig?.site_subtitle || '多功能应用集成工作台'}</p>
         <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:12,padding:28}}>
           {tab !== 'forgot' && (
@@ -1389,7 +1392,10 @@ function ResetPasswordScreen({siteConfig}) {
   return (
     <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100vh',background:'var(--bg)'}}>
       <div style={{textAlign:'center',maxWidth:400,width:'100%',padding:'0 24px'}}>
-        <h1 style={{fontFamily:'var(--serif)',fontSize:34,color:'var(--gold2)',marginBottom:4,letterSpacing:2}}>{siteConfig?.site_title || '应用平台'}</h1>
+        <h1 style={{fontFamily:'var(--serif)',fontSize:34,color:'var(--gold2)',marginBottom:4,letterSpacing:2,display:'inline-flex',alignItems:'center',gap:10}}>
+          <img src="/static/favicon-mineai.svg" alt="MineAI" style={{width:36,height:36,display:'inline-block'}} />
+          {siteConfig?.site_title || 'MineAI'}
+        </h1>
         <p style={{color:'var(--fg3)',marginBottom:28,fontSize:12,letterSpacing:2}}>重置密码</p>
         <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:12,padding:28}}>
           {!token ? (
@@ -2849,7 +2855,10 @@ function PlatformHome({user, onLogout, siteConfig}) {
   return (
     <div className="dash-wrap">
       <nav className="dash-nav">
-        <div className="dash-logo"><Icon name="spark" size={14} /> {siteConfig?.site_title || '应用平台'}</div>
+        <div className="dash-logo">
+          <img src="/static/favicon-mineai.svg" alt="MineAI" style={{width:16,height:16,display:'inline-block'}} />
+          {siteConfig?.site_title || 'MineAI'}
+        </div>
         <div className="dash-sw">
           <div className="dash-sw-ic"><Icon name="search" size={14} /></div>
           <input
@@ -3068,8 +3077,8 @@ function Root() {
       .then(r => r.json())
       .then(cfg => {
         setSiteConfig(cfg);
-        if (cfg.site_title) document.title = cfg.site_title;
-        if (cfg.site_favicon) applyFavicon(cfg.site_favicon);
+        document.title = cfg.site_title || 'MineAI';
+        applyFavicon(cfg.site_favicon || '/static/favicon-mineai.svg');
       })
       .catch(() => {});
   }, []);
@@ -3243,7 +3252,7 @@ function OCRStudioApp({user, onLogout, onUpdateUser}) {
   return (
     <div className="app">
       <div className={`sb${sbOpen?' open':''}`}>
-        <div className="sb-back" onClick={() => { window.location.hash = '#/'; }}>← 返回平台</div>
+        <div className="sb-back" onClick={() => { window.location.hash = '#/'; }}>← 返回 MineAI</div>
         <div className="sb-hd">
           <h1>OCR 工作室</h1>
           <p>文档识别 · 文字提取</p>
@@ -4779,7 +4788,7 @@ function PaperLabApp({user, onLogout, onUpdateUser}) {
     <div className="app">
       <div className={`sb-ov${sbOpen?' open':''}`} onClick={() => setSbOpen(false)} />
       <div className={`sb${sbOpen?' open':''}`}>
-        <div className="sb-back" onClick={() => window.location.hash='#/'}>← 返回平台</div>
+        <div className="sb-back" onClick={() => window.location.hash='#/'}>← 返回 MineAI</div>
         <div className="sb-hd"><h1>学术研究站</h1><p>零幻觉·精确引用·深度探索</p></div>
         <div className="sb-nav">
           {NAV_GROUPS.map(grp => (
@@ -6045,7 +6054,7 @@ function KGApp({user, onLogout, onUpdateUser}) {
             <button onClick={() => {window.location.hash='#/';}}
               style={{flex:1,background:'var(--bg3)',color:'var(--fg2)',
                 padding:'5px 0',borderRadius:'var(--r)',fontSize:11}}>
-              ← 平台首页
+              ← MineAI 首页
             </button>
             <button onClick={onLogout}
               style={{flex:1,background:'var(--bg3)',color:'var(--fg2)',
@@ -6656,7 +6665,7 @@ function CodeAgentApp({user, onLogout, onUpdateUser}) {
             </div>
           </div>
           <div style={{padding:'10px 8px',borderTop:'1px solid var(--border)'}}>
-            <button className="btn btn-s" style={{width:'100%',fontSize:12}} onClick={()=>window.location.hash='#/'}>← 返回平台</button>
+            <button className="btn btn-s" style={{width:'100%',fontSize:12}} onClick={()=>window.location.hash='#/'}>← 返回 MineAI</button>
           </div>
         </div>
         <div className="main">
@@ -6845,7 +6854,7 @@ function CodeAgentApp({user, onLogout, onUpdateUser}) {
 
         <div style={{padding:'8px 10px',borderTop:'1px solid var(--border)'}}>
           <button className="btn btn-s" style={{width:'100%',fontSize:11}}
-            onClick={()=>window.location.hash='#/'}>← 返回平台</button>
+            onClick={()=>window.location.hash='#/'}>← 返回 MineAI</button>
         </div>
       </div>
       <div className="sb-ov" onClick={()=>setSbOpen(false)} style={{display:sbOpen?'block':'none'}}/>
@@ -10967,7 +10976,7 @@ function QuestionBankApp({user, onLogout, onUpdateUser}) {
         <div style={{padding:'10px 14px', borderTop:'1px solid var(--border)'}}>
           <div style={{fontSize:11, color:'var(--fg3)', marginBottom:6}}>{user?.email || '访客'}</div>
           <div style={{display:'flex', gap:6}}>
-            <button onClick={() => window.location.hash='#/'} style={{flex:1,background:'var(--bg3)',color:'var(--fg2)',padding:'5px 0',borderRadius:'var(--r)',fontSize:11}}>← 平台首页</button>
+            <button onClick={() => window.location.hash='#/'} style={{flex:1,background:'var(--bg3)',color:'var(--fg2)',padding:'5px 0',borderRadius:'var(--r)',fontSize:11}}>← MineAI 首页</button>
             <button onClick={onLogout} style={{flex:1,background:'var(--bg3)',color:'var(--fg2)',padding:'5px 0',borderRadius:'var(--r)',fontSize:11}}>退出</button>
           </div>
         </div>
@@ -13449,7 +13458,7 @@ function ChatApp({user, onLogout, onUpdateUser}) {
     <div className="dash-wrap">
       <nav className="dash-nav">
         <div style={{display:'flex',alignItems:'center',gap:12}}>
-          <button className="btn btn-s" onClick={() => window.location.hash='#/'} style={{padding:6}} title="返回平台首页"><Icon name="home" size={16} /></button>
+          <button className="btn btn-s" onClick={() => window.location.hash='#/'} style={{padding:6}} title="返回 MineAI 首页"><Icon name="home" size={16} /></button>
           <div className="dash-logo"><Icon name="chat" size={16} /> MineAI Chat</div>
         </div>
         <div className="dash-sw" style={{visibility:'hidden'}}></div>

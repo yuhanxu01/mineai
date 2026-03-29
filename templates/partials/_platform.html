@@ -131,6 +131,7 @@ function FeatureNavMap({onNavigate}) {
 
 function PlatformHome({user, onLogout, siteConfig}) {
   const [apps, setApps] = useState([]);
+  const [pluginApps, setPluginApps] = useState([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
   const [aiRec, setAiRec] = useState('');
@@ -168,9 +169,19 @@ function PlatformHome({user, onLogout, siteConfig}) {
       document.documentElement.style.setProperty('--gold', accent);
       document.documentElement.style.setProperty('--gold2', accent);
     }
-    F(`${API}/platform/apps/`)
-      .then(data => { setApps(data); setLoading(false); })
-      .catch(() => setLoading(false));
+    Promise.all([
+      F(`${API}/platform/apps/`).catch(() => []),
+      fetch(`${API}/plugin/plugins/`).then(r=>r.json()).then(d=>d.plugins||[]).catch(()=>[]),
+    ]).then(([hubApps, plugins]) => {
+      setApps(hubApps);
+      setPluginApps(plugins.map(p => ({
+        ...p,
+        slug: `plugin_${p.slug}`,
+        _isPlugin: true,
+        _pluginSlug: p.slug,
+      })));
+      setLoading(false);
+    });
   }, []);
 
   // Close menu on outside click
@@ -185,8 +196,11 @@ function PlatformHome({user, onLogout, siteConfig}) {
 
   const allApps = useMemo(() => {
     const slugs = new Set(apps.map(a => a.slug));
-    return [...apps, ...STATIC_APPS.filter(a => !slugs.has(a.slug))];
-  }, [apps]);
+    const base = [...apps, ...STATIC_APPS.filter(a => !slugs.has(a.slug))];
+    // Append approved user plugins (prefixed slugs won't collide with builtin slugs)
+    const pluginSlugs = new Set(pluginApps.map(p => p.slug));
+    return [...base.filter(a => !pluginSlugs.has(a.slug)), ...pluginApps];
+  }, [apps, pluginApps]);
 
   const filteredApps = useMemo(() => {
     if (!query.trim()) return allApps;
@@ -305,7 +319,10 @@ function PlatformHome({user, onLogout, siteConfig}) {
   return (
     <div className="dash-wrap">
       <nav className="dash-nav">
-        <div className="dash-logo"><Icon name="spark" size={14} /> {siteConfig?.site_title || '应用平台'}</div>
+        <div className="dash-logo">
+          <img src="/static/favicon-mineai.svg" alt="MineAI" style={{width:16,height:16,display:'inline-block'}} />
+          {siteConfig?.site_title || 'MineAI'}
+        </div>
         <div className="dash-sw">
           <div className="dash-sw-ic"><Icon name="search" size={14} /></div>
           <input
@@ -430,6 +447,7 @@ function PlatformHome({user, onLogout, siteConfig}) {
                     onClick={() => goApp(app)}
                   >
                     {pinned && <span className="ac2-pinmark"><Icon name="pin" size={11} /></span>}
+                    {app._isPlugin && <span style={{position:'absolute',top:6,left:8,fontSize:9,padding:'1px 5px',borderRadius:8,background:hexToRgba('#c9a86c',0.15),color:'var(--gold)',border:'1px solid var(--gold-dim)',pointerEvents:'none'}}>插件</span>}
                     {/* 3-dot menu */}
                     <div className="app-menu-wrap" onClick={e => e.stopPropagation()}>
                       <button className="app-menu-btn"
@@ -524,8 +542,8 @@ function Root() {
       .then(r => r.json())
       .then(cfg => {
         setSiteConfig(cfg);
-        if (cfg.site_title) document.title = cfg.site_title;
-        if (cfg.site_favicon) applyFavicon(cfg.site_favicon);
+        document.title = cfg.site_title || 'MineAI';
+        applyFavicon(cfg.site_favicon || '/static/favicon-mineai.svg');
       })
       .catch(() => {});
   }, []);
@@ -656,6 +674,11 @@ function Root() {
 
   if (route === '#/profile') {
     return <UserPanelApp user={user} onLogout={logout} onUpdateUser={setUser} siteConfig={siteConfig} />;
+  }
+
+  if (route.startsWith('#/app/plugin_')) {
+    const pluginSlug = route.slice('#/app/plugin_'.length);
+    return <PluginRunnerApp pluginSlug={pluginSlug} />;
   }
 
   return <PlatformHome user={user} onLogout={logout} siteConfig={siteConfig} />;

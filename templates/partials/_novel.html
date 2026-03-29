@@ -161,6 +161,9 @@ function UserPanelApp({user, onLogout, onUpdateUser, siteConfig}) {
               <div className={`tab${tab==='cloud'?' on':''}`} onClick={() => setTab('cloud')}>
                 <span style={{display:'inline-flex',alignItems:'center',gap:5}}><Icon name="cloud-drive" size={13}/> 我的云盘</span>
               </div>
+              <div className={`tab${tab==='plugins'?' on':''}`} onClick={() => setTab('plugins')}>
+                <span style={{display:'inline-flex',alignItems:'center',gap:5}}><Icon name="plug" size={13}/> 我的插件</span>
+              </div>
             </div>
 
             {tab === 'profile' && (
@@ -317,6 +320,10 @@ function UserPanelApp({user, onLogout, onUpdateUser, siteConfig}) {
                 ))}
               </div>
             )}
+
+            {tab === 'plugins' && (
+              <MyPluginList />
+            )}
           </>
         )}
       </div>
@@ -358,7 +365,7 @@ function MemoryForgeApp({user, onLogout, onUpdateUser}) {
   if (cfg && !cfg.configured) return (
     <>
       <div style={{position:'fixed',top:14,left:14,zIndex:999}}>
-        <button className="btn btn-s btn-sm" onClick={() => { window.location.hash = '#/'; }}>← 返回平台</button>
+        <button className="btn btn-s btn-sm" onClick={() => { window.location.hash = '#/'; }}>← 返回 MineAI</button>
       </div>
       <Setup
         onDone={() => { F(`${API}/core/config/`).then(setCfg); }}
@@ -374,7 +381,7 @@ function MemoryForgeApp({user, onLogout, onUpdateUser}) {
     <div className="app">
       <div className={`sb-ov${sbOpen?' open':''}`} onClick={()=>setSbOpen(false)}/>
       <div className={`sb${sbOpen?' open':''}`}>
-        <div className="sb-back" onClick={() => { window.location.hash = '#/'; }}>← 返回平台</div>
+        <div className="sb-back" onClick={() => { window.location.hash = '#/'; }}>← 返回 MineAI</div>
         <div className="sb-hd"><h1>记忆熔炉</h1><p>无限记忆·长篇创作</p></div>
         <div className="sb-nav">
           <div className="ns"><div className="ns-t">导航</div>
@@ -694,7 +701,10 @@ function AuthScreen({onAuth, siteConfig}) {
   return (
     <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100vh',background:'var(--bg)'}}>
       <div style={{textAlign:'center',maxWidth:400,width:'100%',padding:'0 24px'}}>
-        <h1 style={{fontFamily:'var(--serif)',fontSize:34,color:'var(--gold2)',marginBottom:4,letterSpacing:2}}>{siteConfig?.site_title || '应用平台'}</h1>
+        <h1 style={{fontFamily:'var(--serif)',fontSize:34,color:'var(--gold2)',marginBottom:4,letterSpacing:2,display:'inline-flex',alignItems:'center',gap:10}}>
+          <img src="/static/favicon-mineai.svg" alt="MineAI" style={{width:36,height:36,display:'inline-block'}} />
+          {siteConfig?.site_title || 'MineAI'}
+        </h1>
         <p style={{color:'var(--fg3)',marginBottom:28,fontSize:12,letterSpacing:2}}>{siteConfig?.site_subtitle || '多功能应用集成工作台'}</p>
         <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:12,padding:28}}>
           {tab !== 'forgot' && (
@@ -835,7 +845,10 @@ function ResetPasswordScreen({siteConfig}) {
   return (
     <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100vh',background:'var(--bg)'}}>
       <div style={{textAlign:'center',maxWidth:400,width:'100%',padding:'0 24px'}}>
-        <h1 style={{fontFamily:'var(--serif)',fontSize:34,color:'var(--gold2)',marginBottom:4,letterSpacing:2}}>{siteConfig?.site_title || '应用平台'}</h1>
+        <h1 style={{fontFamily:'var(--serif)',fontSize:34,color:'var(--gold2)',marginBottom:4,letterSpacing:2,display:'inline-flex',alignItems:'center',gap:10}}>
+          <img src="/static/favicon-mineai.svg" alt="MineAI" style={{width:36,height:36,display:'inline-block'}} />
+          {siteConfig?.site_title || 'MineAI'}
+        </h1>
         <p style={{color:'var(--fg3)',marginBottom:28,fontSize:12,letterSpacing:2}}>重置密码</p>
         <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:12,padding:28}}>
           {!token ? (

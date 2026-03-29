@@ -1,0 +1,412 @@
+{% verbatim %}
+function LanTransferApp({user, onLogout, onUpdateUser}) {
+  const [roomCodeInput, setRoomCodeInput] = useState('');
+  const [roomCode, setRoomCode] = useState('');
+  const [peerId, setPeerId] = useState('');
+  const [isHost, setIsHost] = useState(false);
+  const [roomText, setRoomText] = useState('未加入房间');
+  const [sendText, setSendText] = useState('发送状态：等待连接');
+  const [recvText, setRecvText] = useState('接收状态：等待连接');
+  const [sendPct, setSendPct] = useState(0);
+  const [recvPct, setRecvPct] = useState(0);
+  const [dirText, setDirText] = useState('未选择目录，接收将回退浏览器下载模式（不适合超大文件）。');
+  const [channelOpen, setChannelOpen] = useState(false);
+  const [working, setWorking] = useState(false);
+
+  const sinceIdRef = useRef(0);
+  const pollTimerRef = useRef(null);
+  const roomTimerRef = useRef(null);
+  const offerStartedRef = useRef(false);
+  const remotePeerIdRef = useRef('');
+  const pendingCandidatesRef = useRef([]);
+  const pcRef = useRef(null);
+  const channelRef = useRef(null);
+  const dirHandleRef = useRef(null);
+  const recvCtxRef = useRef(null);
+  const fileInputRef = useRef(null);
+
+  const apiBase = '/lan-transfer/api';
+
+  useEffect(() => {
+    return () => {
+      if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+      if (roomTimerRef.current) clearInterval(roomTimerRef.current);
+      if (pcRef.current) pcRef.current.close();
+    };
+  }, []);
+
+  const apiPost = async (path, data) => {
+    const body = new URLSearchParams(data);
+    const resp = await fetch(`${apiBase}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+      body,
+    });
+    const json = await resp.json();
+    if (!resp.ok || !json.ok) throw new Error(json.error || `请求失败: ${resp.status}`);
+    return json;
+  };
+
+  const apiGet = async (path, params) => {
+    const qs = new URLSearchParams(params);
+    const resp = await fetch(`${apiBase}${path}?${qs.toString()}`);
+    const json = await resp.json();
+    if (!resp.ok || !json.ok) throw new Error(json.error || `请求失败: ${resp.status}`);
+    return json;
+  };
+
+  const sendSignal = async (kind, payload) => {
+    await apiPost('/signal/', {
+      room_code: roomCode,
+      peer_id: peerId,
+      target_peer_id: remotePeerIdRef.current || '',
+      kind,
+      payload: JSON.stringify(payload),
+    });
+  };
+
+  const flushPendingCandidates = async () => {
+    const pc = pcRef.current;
+    if (!pc || !pc.remoteDescription) return;
+    for (const c of pendingCandidatesRef.current) {
+      await pc.addIceCandidate(c);
+    }
+    pendingCandidatesRef.current = [];
+  };
+
+  const onReceiveMeta = async (meta) => {
+    setRecvPct(0);
+    const ctx = {
+      name: meta.name || `recv-${Date.now()}`,
+      size: Number(meta.size || 0),
+      mime: meta.mime || 'application/octet-stream',
+      received: 0,
+      chunks: [],
+      writable: null,
+    };
+
+    if (dirHandleRef.current) {
+      try {
+        const handle = await dirHandleRef.current.getFileHandle(ctx.name, { create: true });
+        ctx.writable = await handle.createWritable();
+        setRecvText(`接收中：${ctx.name}（目录直写）`);
+      } catch (err) {
+        setRecvText(`目录写入失败，回退下载模式：${err.message}`);
+      }
+    } else {
+      setRecvText(`接收中：${ctx.name}`);
+    }
+
+    recvCtxRef.current = ctx;
+  };
+
+  const onReceiveChunk = async (data) => {
+    const ctx = recvCtxRef.current;
+    if (!ctx) return;
+    let chunk = data;
+    if (data instanceof Blob) chunk = await data.arrayBuffer();
+
+    if (ctx.writable) await ctx.writable.write(chunk);
+    else ctx.chunks.push(chunk);
+
+    const bytes = chunk.byteLength || 0;
+    ctx.received += bytes;
+    if (ctx.size > 0) setRecvPct(Math.min(100, (ctx.received / ctx.size) * 100));
+  };
+
+  const onReceiveEnd = async () => {
+    const ctx = recvCtxRef.current;
+    if (!ctx) return;
+
+    if (ctx.writable) {
+      await ctx.writable.close();
+      setRecvText(`接收完成：${ctx.name}（已写入目录）`);
+    } else {
+      const blob = new Blob(ctx.chunks, { type: ctx.mime });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = ctx.name;
+      a.click();
+      URL.revokeObjectURL(url);
+      setRecvText(`接收完成：${ctx.name}（浏览器下载）`);
+    }
+
+    setRecvPct(100);
+    recvCtxRef.current = null;
+  };
+
+  const bindChannel = (channel) => {
+    channelRef.current = channel;
+    channel.binaryType = 'arraybuffer';
+    channel.bufferedAmountLowThreshold = 2 * 1024 * 1024;
+
+    channel.onopen = () => {
+      setChannelOpen(true);
+      setSendText('发送状态：通道已连接，可发送');
+      setRecvText('接收状态：通道已连接，可接收');
+    };
+
+    channel.onclose = () => {
+      setChannelOpen(false);
+      setSendText('发送状态：连接已关闭');
+      setRecvText('接收状态：连接已关闭');
+    };
+
+    channel.onerror = () => setSendText('发送状态：通道异常');
+
+    channel.onmessage = async (event) => {
+      if (typeof event.data === 'string') {
+        let msg = null;
+        try { msg = JSON.parse(event.data); } catch (_) { return; }
+        if (msg.type === 'meta') await onReceiveMeta(msg);
+        if (msg.type === 'eof') await onReceiveEnd();
+        return;
+      }
+      await onReceiveChunk(event.data);
+    };
+  };
+
+  const ensurePeerConnection = () => {
+    if (pcRef.current) return pcRef.current;
+
+    const pc = new RTCPeerConnection({
+      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+      iceCandidatePoolSize: 8,
+    });
+
+    pc.onicecandidate = async (event) => {
+      if (!event.candidate) return;
+      try { await sendSignal('candidate', event.candidate); } catch (_) {}
+    };
+
+    pc.ondatachannel = (ev) => bindChannel(ev.channel);
+
+    pc.onconnectionstatechange = () => {
+      const st = pc.connectionState;
+      if (st === 'connected') setRoomText(`房间 ${roomCode} 已建立 P2P 连接`);
+      if (st === 'failed' || st === 'disconnected') setRoomText(`连接状态：${st}，请确认双方在同一局域网`);
+    };
+
+    pcRef.current = pc;
+    return pc;
+  };
+
+  const handleSignal = async (msg) => {
+    const pc = ensurePeerConnection();
+    if (msg.kind === 'offer') {
+      await pc.setRemoteDescription(new RTCSessionDescription(msg.payload));
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      await sendSignal('answer', answer);
+      await flushPendingCandidates();
+      return;
+    }
+    if (msg.kind === 'answer') {
+      await pc.setRemoteDescription(new RTCSessionDescription(msg.payload));
+      await flushPendingCandidates();
+      return;
+    }
+    if (msg.kind === 'candidate') {
+      const c = new RTCIceCandidate(msg.payload);
+      if (!pc.remoteDescription) pendingCandidatesRef.current.push(c);
+      else await pc.addIceCandidate(c);
+    }
+  };
+
+  const sendOffer = async () => {
+    const pc = ensurePeerConnection();
+    if (!channelRef.current) bindChannel(pc.createDataChannel('file', { ordered: true }));
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    await sendSignal('offer', offer);
+  };
+
+  const startPolling = () => {
+    if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+    pollTimerRef.current = setInterval(async () => {
+      if (!roomCode || !peerId) return;
+      try {
+        const json = await apiGet('/poll/', { room_code: roomCode, peer_id: peerId, since_id: sinceIdRef.current });
+        sinceIdRef.current = json.since_id;
+        for (const msg of json.messages) {
+          remotePeerIdRef.current = msg.sender_peer_id;
+          await handleSignal(msg);
+        }
+      } catch (e) {
+        setRoomText(`信令异常：${e.message}`);
+      }
+    }, 900);
+  };
+
+  const startRoomWatcher = (hostFlag) => {
+    if (roomTimerRef.current) clearInterval(roomTimerRef.current);
+    roomTimerRef.current = setInterval(async () => {
+      if (!roomCode || !peerId) return;
+      try {
+        const info = await apiGet('/room-info/', { room_code: roomCode, peer_id: peerId });
+        setRoomText(`房间 ${info.room_code}，在线 ${info.peer_count}/2，${info.is_ready ? '可传输' : '等待对端加入'}`);
+        if (hostFlag && info.is_ready && !offerStartedRef.current) {
+          offerStartedRef.current = true;
+          await sendOffer();
+        }
+      } catch (e) {
+        setRoomText(`房间异常：${e.message}`);
+      }
+    }, 1500);
+  };
+
+  const afterJoin = (info, hostFlag) => {
+    setRoomCode(info.room_code);
+    setPeerId(info.peer_id);
+    setIsHost(hostFlag);
+    sinceIdRef.current = 0;
+    offerStartedRef.current = false;
+    remotePeerIdRef.current = '';
+    setSendPct(0); setRecvPct(0);
+    setRoomText(`房间 ${info.room_code}，本机 ID ${info.peer_id.slice(0,8)}...`);
+    ensurePeerConnection();
+    startPolling();
+    startRoomWatcher(hostFlag);
+  };
+
+  const createRoom = async () => {
+    setWorking(true);
+    try {
+      const info = await apiPost('/create-room/', {});
+      afterJoin(info, true);
+    } catch (e) {
+      setRoomText(`创建失败：${e.message}`);
+    }
+    setWorking(false);
+  };
+
+  const joinRoom = async () => {
+    const code = roomCodeInput.trim().toUpperCase();
+    if (!code) return setRoomText('请先输入房间码');
+    setWorking(true);
+    try {
+      const info = await apiPost('/join-room/', { room_code: code });
+      afterJoin(info, false);
+    } catch (e) {
+      setRoomText(`加入失败：${e.message}`);
+    }
+    setWorking(false);
+  };
+
+  const pickDir = async () => {
+    if (!window.showDirectoryPicker) return setDirText('当前浏览器不支持目录选择，建议 Chrome/Edge 最新版。');
+    try {
+      const dir = await window.showDirectoryPicker({ mode: 'readwrite' });
+      dirHandleRef.current = dir;
+      setDirText('已选择目录，接收将直接写入磁盘。');
+    } catch (e) {
+      setDirText(`目录选择失败：${e.message}`);
+    }
+  };
+
+  const waitBufferedLow = async (channel, maxBuffered = 8 * 1024 * 1024) => {
+    if (channel.bufferedAmount < maxBuffered) return;
+    await new Promise((resolve) => {
+      const fn = () => {
+        channel.removeEventListener('bufferedamountlow', fn);
+        resolve();
+      };
+      channel.addEventListener('bufferedamountlow', fn);
+    });
+  };
+
+  const sendFile = async () => {
+    const file = fileInputRef.current?.files?.[0];
+    const channel = channelRef.current;
+    if (!file) return setSendText('发送状态：请先选择文件');
+    if (!channel || channel.readyState !== 'open') return setSendText('发送状态：通道未连接');
+
+    setWorking(true);
+    setSendPct(0);
+    setSendText(`发送中：${file.name}`);
+
+    try {
+      channel.send(JSON.stringify({
+        type: 'meta', name: file.name, size: file.size, mime: file.type || 'application/octet-stream', ts: Date.now(),
+      }));
+
+      let sent = 0;
+      const reader = file.stream().getReader();
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        await waitBufferedLow(channel);
+        channel.send(value.buffer);
+        sent += value.byteLength;
+        setSendPct(Math.min(100, (sent / file.size) * 100));
+      }
+
+      channel.send(JSON.stringify({ type: 'eof' }));
+      setSendPct(100);
+      setSendText(`发送完成：${file.name}`);
+    } catch (e) {
+      setSendText(`发送失败：${e.message}`);
+    }
+
+    setWorking(false);
+  };
+
+  return (
+    <div className="dash-wrap">
+      <nav className="dash-nav">
+        <div style={{display:'flex',alignItems:'center',gap:12}}>
+          <button className="btn btn-s" onClick={() => window.location.hash='#/'} style={{padding:6}} title="返回 MineAI 首页"><Icon name="home" size={16} /></button>
+          <div className="dash-logo"><Icon name="send" size={16} /> 局域网大文件直传</div>
+        </div>
+        <div className="dash-sw" style={{visibility:'hidden'}}></div>
+        <div className="dash-right">
+          <span style={{fontSize:12,color:'var(--fg3)'}}>{displayName(user)}</span>
+          <button className="btn btn-s btn-sm" onClick={onLogout}>退出</button>
+        </div>
+      </nav>
+
+      <div className="dash-main" style={{display:'grid',gridTemplateColumns:'1fr',gap:14,padding:16,maxWidth:980,margin:'0 auto',width:'100%'}}>
+        <div className="card">
+          <h3 style={{display:'flex',alignItems:'center',gap:8}}><Icon name="cloud-drive" size={16} /> P2P 传输说明</h3>
+          <div style={{fontSize:12,color:'var(--fg2)',lineHeight:1.8}}>
+            文件数据通过 WebRTC DataChannel 在两端浏览器之间直传，服务器仅中转 offer/answer/candidate 信令，不承载文件流量。
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="row" style={{display:'flex',gap:10,flexWrap:'wrap',alignItems:'center'}}>
+            <button className="btn btn-p" onClick={createRoom} disabled={working}>创建房间</button>
+            <input value={roomCodeInput} onChange={e=>setRoomCodeInput(e.target.value)} placeholder="输入房间码后加入" maxLength={8} style={{minWidth:220}} />
+            <button className="btn btn-s" onClick={joinRoom} disabled={working}>加入房间</button>
+            <span className="tag">角色：{isHost ? '创建方' : '加入方'}</span>
+          </div>
+          <div style={{ marginTop: 10, fontSize: 12, color: 'var(--fg2)' }}>{roomText}</div>
+        </div>
+
+        <div className="card">
+          <div style={{display:'flex',gap:10,flexWrap:'wrap',alignItems:'center',marginBottom:10}}>
+            <button className="btn btn-s" onClick={pickDir} disabled={!roomCode}>准备接收目录（推荐）</button>
+            <span style={{fontSize:12,color:'var(--fg3)'}}>{dirText}</span>
+          </div>
+
+          <div style={{display:'flex',gap:10,flexWrap:'wrap',alignItems:'center',marginBottom:10}}>
+            <input ref={fileInputRef} type="file" disabled={!channelOpen || working} />
+            <button className="btn btn-p" onClick={sendFile} disabled={!channelOpen || working}>发送文件</button>
+          </div>
+
+          <div style={{fontSize:12,color:'var(--fg2)',marginBottom:6}}>{sendText}</div>
+          <div style={{height:8,background:'var(--bg3)',borderRadius:999,overflow:'hidden',marginBottom:14}}>
+            <div style={{width:`${sendPct}%`,height:'100%',background:'var(--gold)'}}></div>
+          </div>
+
+          <div style={{fontSize:12,color:'var(--fg2)',marginBottom:6}}>{recvText}</div>
+          <div style={{height:8,background:'var(--bg3)',borderRadius:999,overflow:'hidden'}}>
+            <div style={{width:`${recvPct}%`,height:'100%',background:'var(--cyan)'}}></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+{% endverbatim %}
