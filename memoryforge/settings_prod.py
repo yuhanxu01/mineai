@@ -14,6 +14,10 @@ ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', '').split(',')
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
+SECURE_SSL_REDIRECT = True
+SECURE_HSTS_SECONDS = int(os.environ.get('SECURE_HSTS_SECONDS', 31536000))
+SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+SECURE_HSTS_PRELOAD = True
 
 # ── CORS（只允许自己的域名）──────────────────────────────────
 CORS_ALLOW_ALL_ORIGINS = False
@@ -35,6 +39,8 @@ DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 SITE_URL = os.environ.get('SITE_URL', 'https://your-domain.com')
 
 # ── 日志 ──────────────────────────────────────────────────────
+os.makedirs(BASE_DIR / 'logs', exist_ok=True)  # noqa: F405
+
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,

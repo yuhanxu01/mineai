@@ -7,3 +7,4 @@ requests>=2.31
 numpy>=1.26
 opencv-python-headless>=4.8
 gunicorn>=21.2
+redis>=5.0

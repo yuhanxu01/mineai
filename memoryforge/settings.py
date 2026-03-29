@@ -33,6 +33,8 @@ INSTALLED_APPS = [
     'doc_reader',
     'chat',
     'banished',
+    'plugin',
+    'lan_transfer',
 ]
 
 MEDIA_URL = '/media/'
@@ -45,8 +47,10 @@ MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
+    'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
+    'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'core.middleware.UserContextMiddleware',
 ]
 
@@ -112,3 +116,10 @@ SITE_URL = os.environ.get('SITE_URL', 'http://localhost:8000')
 CODE_AGENT_SERVER_UPLOAD_MAX_FILES = int(os.environ.get('CA_MAX_FILES', 100))
 CODE_AGENT_SERVER_UPLOAD_MAX_TOTAL_MB = int(os.environ.get('CA_MAX_TOTAL_MB', 50))
 CODE_AGENT_SERVER_UPLOAD_MAX_FILE_KB = int(os.environ.get('CA_MAX_FILE_KB', 1024))
+
+# Redis 配置（用于 OCR 任务队列）
+REDIS_HOST = os.environ.get('REDIS_HOST', 'localhost')
+REDIS_PORT = int(os.environ.get('REDIS_PORT', 6379))
+REDIS_DB = int(os.environ.get('REDIS_DB', 0))
+REDIS_CHANNEL = os.environ.get('REDIS_CHANNEL', 'ocr_tasks')
+OCR_WORKER_TOKEN = os.environ.get('OCR_WORKER_TOKEN', '')
