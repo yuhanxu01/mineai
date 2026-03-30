@@ -348,6 +348,12 @@ function PlatformHome({user, onLogout, siteConfig}) {
               {user.is_guest
                 ? <button className="btn btn-p btn-sm" onClick={() => { window.location.hash = '#/login'; }}>登录</button>
                 : <>
+                    {user.is_staff && (
+                      <button className="btn btn-s btn-sm" onClick={() => { window.location.hash = '#/admin'; }}
+                        style={{display:'inline-flex',alignItems:'center',gap:4,color:'var(--gold)',borderColor:'var(--gold)'}}>
+                        <Icon name="settings" size={13}/> 后台
+                      </button>
+                    )}
                     <button className="btn btn-s btn-sm" onClick={() => { window.location.hash = '#/profile'; }}
                       style={{display:'inline-flex',alignItems:'center',gap:4}}>
                       <Icon name="user" size={13}/> 个人中心
@@ -628,60 +634,51 @@ function Root() {
     return <ResetPasswordScreen siteConfig={siteConfig} />;
   }
 
+  let pageContent;
   if (route === '#/app/memoryforge') {
-    return <MemoryForgeApp user={user} onLogout={logout} onUpdateUser={setUser} />;
-  }
-  
-  if (route === '#/app/ocr_studio') {
-    return <OCRStudioApp user={user} onLogout={logout} onUpdateUser={setUser} />;
-  }
-
-  if (route === '#/app/paper_lab') {
-    return <PaperLabApp user={user} onLogout={logout} onUpdateUser={setUser} />;
-  }
-
-  if (route === '#/app/knowledge_graph') {
-    return <KGApp user={user} onLogout={logout} onUpdateUser={setUser} />;
-  }
-
-  if (route === '#/app/code_agent') {
-    return <CodeAgentApp user={user} onLogout={logout} onUpdateUser={setUser} />;
-  }
-
-  if (route === '#/app/claude_bridge') {
-    return <ClaudeBridgeApp user={user} onLogout={logout} onUpdateUser={setUser} />;
-  }
-
-  if (route === '#/app/scan_enhance') {
-    return <ScanEnhanceApp user={user} onLogout={logout} onUpdateUser={setUser} />;
-  }
-
-  if (route === '#/app/question_bank') {
-    return <QuestionBankApp user={user} onLogout={logout} onUpdateUser={setUser} />;
-  }
-
-  if (route === '#/app/doc_reader') {
-    return <DocReaderApp user={user} onLogout={logout} onUpdateUser={setUser} />;
-  }
-
-  if (route === '#/app/banished') {
-    return <BanishedApp user={user} onLogout={logout} onUpdateUser={setUser} />;
-  }
-
-  if (route === '#/app/chat') {
-    return <ChatApp user={user} onLogout={logout} onUpdateUser={setUser} />;
-  }
-
-  if (route === '#/profile') {
-    return <UserPanelApp user={user} onLogout={logout} onUpdateUser={setUser} siteConfig={siteConfig} />;
-  }
-
-  if (route.startsWith('#/app/plugin_')) {
+    pageContent = <MemoryForgeApp user={user} onLogout={logout} onUpdateUser={setUser} />;
+  } else if (route === '#/app/ocr_studio') {
+    pageContent = <OCRStudioApp user={user} onLogout={logout} onUpdateUser={setUser} />;
+  } else if (route === '#/app/paper_lab') {
+    pageContent = <PaperLabApp user={user} onLogout={logout} onUpdateUser={setUser} />;
+  } else if (route === '#/app/knowledge_graph') {
+    pageContent = <KGApp user={user} onLogout={logout} onUpdateUser={setUser} />;
+  } else if (route === '#/app/code_agent') {
+    pageContent = <CodeAgentApp user={user} onLogout={logout} onUpdateUser={setUser} />;
+  } else if (route === '#/app/claude_bridge') {
+    pageContent = <ClaudeBridgeApp user={user} onLogout={logout} onUpdateUser={setUser} />;
+  } else if (route === '#/app/scan_enhance') {
+    pageContent = <ScanEnhanceApp user={user} onLogout={logout} onUpdateUser={setUser} />;
+  } else if (route === '#/app/question_bank') {
+    pageContent = <QuestionBankApp user={user} onLogout={logout} onUpdateUser={setUser} />;
+  } else if (route === '#/app/doc_reader') {
+    pageContent = <DocReaderApp user={user} onLogout={logout} onUpdateUser={setUser} />;
+  } else if (route === '#/app/banished') {
+    pageContent = <BanishedApp user={user} onLogout={logout} onUpdateUser={setUser} />;
+  } else if (route === '#/app/chat') {
+    pageContent = <ChatApp user={user} onLogout={logout} onUpdateUser={setUser} />;
+  } else if (route === '#/profile') {
+    pageContent = <UserPanelApp user={user} onLogout={logout} onUpdateUser={setUser} siteConfig={siteConfig} />;
+  } else if (route === '#/admin') {
+    if (!user?.is_staff) {
+      window.setTimeout(() => { window.location.hash = '#/'; }, 0);
+      pageContent = null;
+    } else {
+      pageContent = <AdminPanelApp user={user} onLogout={logout} />;
+    }
+  } else if (route.startsWith('#/app/plugin_')) {
     const pluginSlug = route.slice('#/app/plugin_'.length);
-    return <PluginRunnerApp pluginSlug={pluginSlug} />;
+    pageContent = <PluginRunnerApp pluginSlug={pluginSlug} />;
+  } else {
+    pageContent = <PlatformHome user={user} onLogout={logout} siteConfig={siteConfig} />;
   }
 
-  return <PlatformHome user={user} onLogout={logout} siteConfig={siteConfig} />;
+  return (
+    <>
+      {pageContent}
+      <DonateWidget />
+    </>
+  );
 }
 
 {% endverbatim %}
