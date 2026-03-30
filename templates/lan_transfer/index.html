@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>局域网大文件直传</title>
+  <style>
+    :root {
+      --bg: #f5f7fb;
+      --card: #ffffff;
+      --line: #dde4f0;
+      --ink: #1e2a3b;
+      --muted: #627084;
+      --brand: #0a7cff;
+      --ok: #0f9d58;
+      --danger: #d93025;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+      color: var(--ink);
+      background: radial-gradient(circle at 10% 0%, #e7f0ff, var(--bg) 42%);
+    }
+    .wrap { max-width: 860px; margin: 0 auto; padding: 24px 16px 40px; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 18px;
+      margin-bottom: 14px;
+      box-shadow: 0 10px 30px rgba(18, 48, 91, 0.06);
+    }
+    h1 { margin: 0 0 12px; font-size: 24px; }
+    .muted { color: var(--muted); }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    input[type="text"] {
+      height: 38px;
+      padding: 0 10px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      min-width: 220px;
+      font-size: 14px;
+    }
+    button {
+      height: 38px;
+      border: 0;
+      border-radius: 10px;
+      background: var(--brand);
+      color: #fff;
+      padding: 0 14px;
+      font-size: 14px;
+      cursor: pointer;
+      transition: transform .12s ease, opacity .2s ease;
+    }
+    button.secondary { background: #5e6c84; }
+    button:disabled { opacity: .45; cursor: not-allowed; }
+    button:hover:not(:disabled) { transform: translateY(-1px); }
+    .status {
+      font-size: 13px;
+      padding: 10px;
+      border-radius: 10px;
+      background: #f0f4fb;
+      border: 1px solid var(--line);
+    }
+    .ok { color: var(--ok); }
+    .danger { color: var(--danger); }
+    progress { width: 100%; height: 16px; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .label { font-size: 13px; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>局域网大文件直传</h1>
+      <div class="muted">服务器仅做信令协调，文件数据走浏览器点对点连接（WebRTC），不会经过你的服务器带宽。</div>
+    </div>
+
+    <div class="card">
+      <div class="row" style="margin-bottom:10px;">
+        <button id="btnCreate">创建房间</button>
+        <input id="joinCode" type="text" maxlength="8" placeholder="输入房间码后加入" />
+        <button id="btnJoin" class="secondary">加入房间</button>
+      </div>
+      <div id="roomInfo" class="status">未加入房间</div>
+    </div>
+
+    <div class="card">
+      <div class="row" style="margin-bottom:8px;">
+        <button id="btnPickDir" class="secondary" disabled>准备接收目录（推荐）</button>
+        <span id="dirState" class="label">未选择目录，接收端将退回内存缓存模式（不适合超大文件）。</span>
+      </div>
+      <div class="row" style="margin-bottom:10px;">
+        <input id="fileInput" type="file" disabled />
+        <button id="btnSend" disabled>发送文件</button>
+      </div>
+      <div class="label" id="sendState">发送状态：等待连接</div>
+      <progress id="sendProgress" value="0" max="100"></progress>
+      <div class="label" id="recvState" style="margin-top:10px;">接收状态：等待连接</div>
+      <progress id="recvProgress" value="0" max="100"></progress>
+    </div>
+  </div>
+
+<script>
+(() => {
+  const apiBase = '/lan-transfer/api';
+  const state = {
+    roomCode: '',
+    peerId: '',
+    isHost: false,
+    sinceId: 0,
+    pollingTimer: null,
+    roomTimer: null,
+    offerStarted: false,
+    remotePeerId: '',
+    pc: null,
+    channel: null,
+    pendingCandidates: [],
+    savingDirHandle: null,
+    recvCtx: null,
+  };
+
+  const $ = (id) => document.getElementById(id);
+
+  const roomInfo = $('roomInfo');
+  const joinCode = $('joinCode');
+  const btnCreate = $('btnCreate');
+  const btnJoin = $('btnJoin');
+  const btnPickDir = $('btnPickDir');
+  const dirState = $('dirState');
+  const fileInput = $('fileInput');
+  const btnSend = $('btnSend');
+  const sendState = $('sendState');
+  const sendProgress = $('sendProgress');
+  const recvState = $('recvState');
+  const recvProgress = $('recvProgress');
+
+  const setStatus = (el, text, ok = null) => {
+    el.textContent = text;
+    el.classList.remove('ok', 'danger');
+    if (ok === true) el.classList.add('ok');
+    if (ok === false) el.classList.add('danger');
+  };
+
+  async function apiPost(path, data) {
+    const body = new URLSearchParams(data);
+    const resp = await fetch(`${apiBase}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+      body,
+    });
+    const json = await resp.json();
+    if (!resp.ok || !json.ok) {
+      throw new Error(json.error || `请求失败: ${resp.status}`);
+    }
+    return json;
+  }
+
+  async function apiGet(path, params) {
+    const qs = new URLSearchParams(params);
+    const resp = await fetch(`${apiBase}${path}?${qs.toString()}`);
+    const json = await resp.json();
+    if (!resp.ok || !json.ok) {
+      throw new Error(json.error || `请求失败: ${resp.status}`);
+    }
+    return json;
+  }
+
+  async function createRoom() {
+    const json = await apiPost('/create-room/', {});
+    state.roomCode = json.room_code;
+    state.peerId = json.peer_id;
+    state.isHost = true;
+    onJoinedRoom();
+  }
+
+  async function joinRoom() {
+    const code = joinCode.value.trim().toUpperCase();
+    if (!code) {
+      throw new Error('请先输入房间码');
+    }
+    const json = await apiPost('/join-room/', { room_code: code });
+    state.roomCode = json.room_code;
+    state.peerId = json.peer_id;
+    state.isHost = false;
+    onJoinedRoom();
+  }
+
+  function onJoinedRoom() {
+    roomInfo.innerHTML = `房间 <span class="mono">${state.roomCode}</span>，本机ID <span class="mono">${state.peerId.slice(0, 8)}...</span>。正在等待对端...`;
+    setStatus(sendState, '发送状态：等待 DataChannel 打开');
+    setStatus(recvState, '接收状态：等待 DataChannel 打开');
+    btnPickDir.disabled = false;
+    startPolling();
+    startRoomWatcher();
+    ensurePeerConnection();
+  }
+
+  function startPolling() {
+    if (state.pollingTimer) clearInterval(state.pollingTimer);
+    state.pollingTimer = setInterval(async () => {
+      if (!state.roomCode || !state.peerId) return;
+      try {
+        const json = await apiGet('/poll/', {
+          room_code: state.roomCode,
+          peer_id: state.peerId,
+          since_id: state.sinceId,
+        });
+        state.sinceId = json.since_id;
+        for (const msg of json.messages) {
+          state.remotePeerId = msg.sender_peer_id;
+          await handleSignal(msg);
+        }
+      } catch (err) {
+        setStatus(roomInfo, `信令轮询异常：${err.message}`, false);
+      }
+    }, 900);
+  }
+
+  function startRoomWatcher() {
+    if (state.roomTimer) clearInterval(state.roomTimer);
+    state.roomTimer = setInterval(async () => {
+      if (!state.roomCode || !state.peerId) return;
+      try {
+        const info = await apiGet('/room-info/', {
+          room_code: state.roomCode,
+          peer_id: state.peerId,
+        });
+        roomInfo.innerHTML = `房间 <span class="mono">${info.room_code}</span>，在线人数 ${info.peer_count}/2，${info.is_ready ? '<span class="ok">可开始传输</span>' : '等待对端加入'}。`;
+        if (state.isHost && info.is_ready && !state.offerStarted) {
+          state.offerStarted = true;
+          await sendOffer();
+        }
+      } catch (err) {
+        setStatus(roomInfo, `房间状态异常：${err.message}`, false);
+      }
+    }, 1500);
+  }
+
+  function ensurePeerConnection() {
+    if (state.pc) return state.pc;
+    const pc = new RTCPeerConnection({
+      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+      iceCandidatePoolSize: 8,
+    });
+
+    pc.onicecandidate = async (event) => {
+      if (!event.candidate) return;
+      try {
+        await sendSignal('candidate', event.candidate);
+      } catch (err) {
+        console.warn('candidate 发送失败', err);
+      }
+    };
+
+    pc.onconnectionstatechange = () => {
+      const st = pc.connectionState;
+      if (st === 'connected') {
+        setStatus(roomInfo, `房间 ${state.roomCode} 已建立 P2P 连接`, true);
+      } else if (st === 'failed' || st === 'disconnected') {
+        setStatus(roomInfo, `P2P 连接状态：${st}。请确保双方在同一局域网并允许浏览器网络权限。`, false);
+      }
+    };
+
+    pc.ondatachannel = (ev) => {
+      bindDataChannel(ev.channel);
+    };
+
+    state.pc = pc;
+    return pc;
+  }
+
+  function bindDataChannel(channel) {
+    state.channel = channel;
+    channel.binaryType = 'arraybuffer';
+    channel.bufferedAmountLowThreshold = 2 * 1024 * 1024;
+
+    channel.onopen = () => {
+      fileInput.disabled = false;
+      btnSend.disabled = false;
+      setStatus(sendState, '发送状态：DataChannel 已打开，可发送文件', true);
+      setStatus(recvState, '接收状态：已就绪，可接收文件', true);
+    };
+
+    channel.onclose = () => {
+      fileInput.disabled = true;
+      btnSend.disabled = true;
+      setStatus(sendState, '发送状态：连接已关闭', false);
+      setStatus(recvState, '接收状态：连接已关闭', false);
+    };
+
+    channel.onerror = (e) => {
+      setStatus(sendState, `发送通道错误：${e.message || '未知错误'}`, false);
+    };
+
+    channel.onmessage = async (event) => {
+      if (typeof event.data === 'string') {
+        let msg;
+        try {
+          msg = JSON.parse(event.data);
+        } catch {
+          return;
+        }
+        if (msg.type === 'meta') {
+          await onReceiveMeta(msg);
+        }
+        if (msg.type === 'eof') {
+          await onReceiveEnd();
+        }
+        return;
+      }
+
+      await onReceiveChunk(event.data);
+    };
+  }
+
+  async function sendSignal(kind, payload) {
+    return apiPost('/signal/', {
+      room_code: state.roomCode,
+      peer_id: state.peerId,
+      target_peer_id: state.remotePeerId || '',
+      kind,
+      payload: JSON.stringify(payload),
+    });
+  }
+
+  async function sendOffer() {
+    const pc = ensurePeerConnection();
+    if (!state.channel) {
+      const ch = pc.createDataChannel('file', { ordered: true });
+      bindDataChannel(ch);
+    }
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    await sendSignal('offer', offer);
+  }
+
+  async function handleSignal(msg) {
+    const pc = ensurePeerConnection();
+    if (msg.kind === 'offer') {
+      await pc.setRemoteDescription(new RTCSessionDescription(msg.payload));
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      await sendSignal('answer', answer);
+      await flushPendingCandidates();
+      return;
+    }
+    if (msg.kind === 'answer') {
+      await pc.setRemoteDescription(new RTCSessionDescription(msg.payload));
+      await flushPendingCandidates();
+      return;
+    }
+    if (msg.kind === 'candidate') {
+      const c = new RTCIceCandidate(msg.payload);
+      if (!pc.remoteDescription) {
+        state.pendingCandidates.push(c);
+      } else {
+        await pc.addIceCandidate(c);
+      }
+    }
+  }
+
+  async function flushPendingCandidates() {
+    const pc = state.pc;
+    if (!pc || !pc.remoteDescription) return;
+    for (const c of state.pendingCandidates) {
+      await pc.addIceCandidate(c);
+    }
+    state.pendingCandidates = [];
+  }
+
+  async function waitBufferedLow(channel, maxBuffered = 8 * 1024 * 1024) {
+    if (channel.bufferedAmount < maxBuffered) return;
+    await new Promise((resolve) => {
+      const fn = () => {
+        channel.removeEventListener('bufferedamountlow', fn);
+        resolve();
+      };
+      channel.addEventListener('bufferedamountlow', fn);
+    });
+  }
+
+  async function sendFile() {
+    const file = fileInput.files && fileInput.files[0];
+    if (!file) {
+      throw new Error('请先选择文件');
+    }
+    if (!state.channel || state.channel.readyState !== 'open') {
+      throw new Error('DataChannel 尚未连接');
+    }
+
+    const channel = state.channel;
+    sendProgress.value = 0;
+    setStatus(sendState, `发送中：${file.name} (${formatBytes(file.size)})`);
+
+    channel.send(JSON.stringify({
+      type: 'meta',
+      name: file.name,
+      size: file.size,
+      mime: file.type || 'application/octet-stream',
+      ts: Date.now(),
+    }));
+
+    let sent = 0;
+    const reader = file.stream().getReader();
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      await waitBufferedLow(channel);
+      channel.send(value.buffer);
+      sent += value.byteLength;
+      sendProgress.value = Math.min(100, (sent / file.size) * 100);
+      setStatus(sendState, `发送中：${file.name} ${Math.floor(sendProgress.value)}%`);
+    }
+
+    channel.send(JSON.stringify({ type: 'eof' }));
+    sendProgress.value = 100;
+    setStatus(sendState, `发送完成：${file.name}`, true);
+  }
+
+  async function onReceiveMeta(meta) {
+    recvProgress.value = 0;
+    const ctx = {
+      name: meta.name || `recv-${Date.now()}`,
+      size: Number(meta.size || 0),
+      mime: meta.mime || 'application/octet-stream',
+      received: 0,
+      chunks: [],
+      writable: null,
+      handle: null,
+    };
+
+    if (state.savingDirHandle) {
+      try {
+        const handle = await state.savingDirHandle.getFileHandle(ctx.name, { create: true });
+        ctx.handle = handle;
+        ctx.writable = await handle.createWritable();
+        setStatus(recvState, `接收中：${ctx.name}（目录直写模式）`);
+      } catch (err) {
+        setStatus(recvState, `目录写入失败，回退内存模式：${err.message}`, false);
+      }
+    }
+
+    state.recvCtx = ctx;
+  }
+
+  async function onReceiveChunk(data) {
+    const ctx = state.recvCtx;
+    if (!ctx) return;
+
+    let chunk = data;
+    if (data instanceof Blob) {
+      chunk = await data.arrayBuffer();
+    }
+
+    if (ctx.writable) {
+      await ctx.writable.write(chunk);
+    } else {
+      ctx.chunks.push(chunk);
+    }
+
+    const bytes = chunk.byteLength || chunk.size || 0;
+    ctx.received += bytes;
+    if (ctx.size > 0) {
+      recvProgress.value = Math.min(100, (ctx.received / ctx.size) * 100);
+    }
+    setStatus(recvState, `接收中：${ctx.name} ${Math.floor(recvProgress.value)}%`);
+  }
+
+  async function onReceiveEnd() {
+    const ctx = state.recvCtx;
+    if (!ctx) return;
+
+    if (ctx.writable) {
+      await ctx.writable.close();
+      setStatus(recvState, `接收完成：${ctx.name}（已写入所选目录）`, true);
+    } else {
+      const blob = new Blob(ctx.chunks, { type: ctx.mime });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = ctx.name;
+      a.click();
+      URL.revokeObjectURL(url);
+      setStatus(recvState, `接收完成：${ctx.name}（浏览器下载模式）`, true);
+    }
+    recvProgress.value = 100;
+    state.recvCtx = null;
+  }
+
+  async function pickDirectory() {
+    if (!window.showDirectoryPicker) {
+      throw new Error('当前浏览器不支持目录选择（建议 Chrome/Edge 最新版）');
+    }
+    const dir = await window.showDirectoryPicker({ mode: 'readwrite' });
+    state.savingDirHandle = dir;
+    dirState.textContent = '已选择目录：后续接收会直接写入磁盘，适合超大文件。';
+  }
+
+  function formatBytes(bytes) {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+  }
+
+  btnCreate.addEventListener('click', async () => {
+    try {
+      await createRoom();
+    } catch (err) {
+      setStatus(roomInfo, err.message, false);
+    }
+  });
+
+  btnJoin.addEventListener('click', async () => {
+    try {
+      await joinRoom();
+    } catch (err) {
+      setStatus(roomInfo, err.message, false);
+    }
+  });
+
+  btnSend.addEventListener('click', async () => {
+    try {
+      await sendFile();
+    } catch (err) {
+      setStatus(sendState, `发送失败：${err.message}`, false);
+    }
+  });
+
+  btnPickDir.addEventListener('click', async () => {
+    try {
+      await pickDirectory();
+    } catch (err) {
+      dirState.textContent = `目录准备失败：${err.message}`;
+      dirState.classList.add('danger');
+    }
+  });
+})();
+</script>
+</body>
+</html>
