@@ -1,29 +1,43 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.utils.html import format_html
-from accounts.models import User, TokenUsage, SiteConfig, VerificationCode, CloudFile
+from django.http import HttpResponseRedirect
+from django import forms
+from accounts.models import User, TokenUsage, SiteConfig, VerificationCode, CloudFile, DonationRecord
+
+
+class AddPointsForm(forms.Form):
+    delta = forms.FloatField(label='增减积分', help_text='正数=增加，负数=扣减')
 
 
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
-    list_display = ('email', 'is_active', 'is_staff', 'created_at')
-    list_filter = ('is_active', 'is_staff')
+    list_display = ('email', 'points_display', 'is_active', 'is_staff', 'created_at')
+    list_filter = ('is_active', 'is_staff', 'is_guest')
     search_fields = ('email',)
     ordering = ('-created_at',)
     fieldsets = (
         (None, {'fields': ('email', 'password')}),
         ('权限', {'fields': ('is_active', 'is_staff', 'is_superuser')}),
+        ('积分', {'fields': ('points',), 'description': '1积分=2万输出Token / 1积分=5万输入Token'}),
     )
     add_fieldsets = (
         (None, {'fields': ('email', 'password1', 'password2')}),
     )
     filter_horizontal = ()
 
+    def points_display(self, obj):
+        color = '#c9a86c' if obj.points > 0 else '#888'
+        return format_html('<span style="color:{};font-weight:600">{:.2f}</span>', color, obj.points)
+    points_display.short_description = '积分'
+    points_display.admin_order_field = 'points'
+
 
 @admin.register(TokenUsage)
 class TokenUsageAdmin(admin.ModelAdmin):
     list_display = ('user', 'prompt_count', 'input_tokens', 'output_tokens', 'total_tokens', 'updated_at')
     readonly_fields = ('user', 'prompt_count', 'input_tokens', 'output_tokens', 'total_tokens', 'updated_at')
+    search_fields = ('user__email',)
 
     def has_add_permission(self, request):
         return False
@@ -110,6 +124,52 @@ class VerificationCodeAdmin(admin.ModelAdmin):
             return format_html('<span style="color:#686460">⌛ 已过期</span>')
         return format_html('<span style="color:#c9a86c">● 有效</span>')
     status_badge.short_description = '状态'
+
+
+@admin.register(DonationRecord)
+class DonationRecordAdmin(admin.ModelAdmin):
+    list_display = ('user_email', 'amount_points', 'note', 'status_badge', 'created_at', 'approve_action')
+    list_filter = ('status',)
+    search_fields = ('user__email', 'note')
+    ordering = ('-created_at',)
+    readonly_fields = ('user', 'amount_points', 'note', 'created_at', 'reviewed_at')
+    actions = ['approve_selected', 'reject_selected']
+
+    def user_email(self, obj):
+        return obj.user.email
+    user_email.short_description = '用户邮箱'
+
+    def status_badge(self, obj):
+        color = {'pending': '#c9a86c', 'approved': '#5eb87a', 'rejected': '#c45a5a'}.get(obj.status, '#888')
+        return format_html('<span style="color:{};font-weight:600">{}</span>', color, obj.get_status_display())
+    status_badge.short_description = '状态'
+
+    def approve_action(self, obj):
+        if obj.status == 'pending':
+            return format_html(
+                '<a href="/admin/accounts/donationrecord/{}/change/" style="color:#c9a86c">审核</a>', obj.pk
+            )
+        return '—'
+    approve_action.short_description = '操作'
+
+    @admin.action(description='批准选中的赞赏申请')
+    def approve_selected(self, request, queryset):
+        from django.utils import timezone
+        count = 0
+        for record in queryset.filter(status='pending').select_related('user'):
+            record.status = 'approved'
+            record.reviewed_at = timezone.now()
+            record.save(update_fields=['status', 'reviewed_at'])
+            record.user.points = record.user.points + record.amount_points
+            record.user.save(update_fields=['points'])
+            count += 1
+        self.message_user(request, f'已批准 {count} 条赞赏，积分已发放')
+
+    @admin.action(description='拒绝选中的赞赏申请')
+    def reject_selected(self, request, queryset):
+        from django.utils import timezone
+        count = queryset.filter(status='pending').update(status='rejected', reviewed_at=timezone.now())
+        self.message_user(request, f'已拒绝 {count} 条赞赏申请')
 
 
 @admin.register(CloudFile)

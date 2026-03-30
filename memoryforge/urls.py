@@ -22,6 +22,8 @@ urlpatterns = [
     path('api/reader/', include('doc_reader.urls')),
     path('api/chat/', include('chat.urls')),
     path('api/banished/', include('banished.urls')),
+    path('api/plugin/', include('plugin.urls')),
+    path('lan-transfer/', include('lan_transfer.urls')),
     path('share/', TemplateView.as_view(template_name='share_index.html')),
     path('dashboard/', include('dashboard.urls', namespace='dashboard')),
     path('', TemplateView.as_view(template_name='index.html')),

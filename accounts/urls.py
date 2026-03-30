@@ -4,6 +4,8 @@ from accounts.views import (
     RegisterView, LoginView, LogoutView, MeView, SendCodeView, UserAPIKeyView,
     ForgotPasswordView, ResetPasswordView, GuestLoginView, SiteConfigPublicView,
     CloudListUploadView, CloudFileDetailView, CloudFileDownloadView,
+    AdminUserListView, AdminUserPointsView,
+    DonationClaimView, AdminDonationListView, AdminDonationReviewView,
 )
 
 urlpatterns = [
@@ -21,4 +23,11 @@ urlpatterns = [
     path('cloud/', csrf_exempt(CloudListUploadView.as_view())),
     path('cloud/<int:pk>/', csrf_exempt(CloudFileDetailView.as_view())),
     path('cloud/<int:pk>/download/', csrf_exempt(CloudFileDownloadView.as_view())),
+    # Admin
+    path('admin/users/', csrf_exempt(AdminUserListView.as_view())),
+    path('admin/users/<int:pk>/points/', csrf_exempt(AdminUserPointsView.as_view())),
+    # Donation
+    path('donate/claim/', csrf_exempt(DonationClaimView.as_view())),
+    path('admin/donations/', csrf_exempt(AdminDonationListView.as_view())),
+    path('admin/donations/<int:pk>/review/', csrf_exempt(AdminDonationReviewView.as_view())),
 ]

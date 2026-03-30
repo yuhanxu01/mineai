@@ -64,6 +64,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     is_guest = models.BooleanField(default=False, verbose_name='是否访客')
     created_at = models.DateTimeField(auto_now_add=True)
     user_api_key = models.CharField(max_length=512, blank=True, default='', verbose_name='用户自定义API密钥')
+    points = models.FloatField(default=0.0, verbose_name='积分', help_text='1积分=2万输出Token，1积分=5万输入Token')
 
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = []
@@ -124,21 +125,40 @@ class TokenUsage(models.Model):
             daily_input_tokens=models.F('daily_input_tokens') + usage_data.get('prompt_tokens', 0),
             daily_output_tokens=models.F('daily_output_tokens') + usage_data.get('completion_tokens', 0),
         )
+        # 有积分时按比例扣除：1积分=2万输出Token，1积分=5万输入Token
+        out_tokens = usage_data.get('completion_tokens', 0)
+        in_tokens = usage_data.get('prompt_tokens', 0)
+        points_cost = out_tokens / 20000.0 + in_tokens / 50000.0
+        if points_cost > 0:
+            User.objects.filter(pk=user_id, points__gt=0).update(
+                points=models.Case(
+                    models.When(points__gte=points_cost, then=models.F('points') - points_cost),
+                    default=models.Value(0.0),
+                    output_field=models.FloatField(),
+                )
+            )
 
     @classmethod
     def check_quota(cls, user_id):
         """检查免费用户今日配额。返回 (ok: bool, error_msg: str)。"""
+        # 有积分的用户绕过每日限额
+        try:
+            user = User.objects.get(pk=user_id)
+            if user.points > 0:
+                return True, ''
+        except User.DoesNotExist:
+            pass
         cfg = SiteConfig.get()
         today = date.today()
         obj, _ = cls.objects.get_or_create(user_id=user_id)
         if obj.daily_date != today:
             return True, ''
         if obj.daily_prompt_count >= cfg.free_daily_prompt_count:
-            return False, f'今日提交次数已达上限（{cfg.free_daily_prompt_count} 次），请明日再试'
+            return False, f'今日提交次数已达上限（{cfg.free_daily_prompt_count} 次），请明日再试或充值积分'
         if obj.daily_input_tokens >= cfg.free_daily_input_tokens:
-            return False, f'今日输入Token已达上限（{cfg.free_daily_input_tokens:,}），请明日再试'
+            return False, f'今日输入Token已达上限（{cfg.free_daily_input_tokens:,}），请明日再试或充值积分'
         if obj.daily_output_tokens >= cfg.free_daily_output_tokens:
-            return False, f'今日输出Token已达上限（{cfg.free_daily_output_tokens:,}），请明日再试'
+            return False, f'今日输出Token已达上限（{cfg.free_daily_output_tokens:,}），请明日再试或充值积分'
         return True, ''
 
 
@@ -289,6 +309,33 @@ class VerificationCode(models.Model):
             obj.save(update_fields=['is_used'])
             return True
         return False
+
+
+DONATION_STATUS_CHOICES = [
+    ('pending', '待审核'),
+    ('approved', '已批准'),
+    ('rejected', '已拒绝'),
+]
+
+
+class DonationRecord(models.Model):
+    """用户赞赏记录（用户提交，管理员审核后发放积分）"""
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='donations', verbose_name='用户')
+    amount_points = models.FloatField(default=10.0, verbose_name='积分数量')
+    note = models.CharField(max_length=200, blank=True, default='', verbose_name='备注（邮箱）',
+                            help_text='用户填写的赞赏备注，通常是登录邮箱')
+    status = models.CharField(max_length=10, choices=DONATION_STATUS_CHOICES, default='pending', verbose_name='状态')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='提交时间')
+    reviewed_at = models.DateTimeField(null=True, blank=True, verbose_name='审核时间')
+    reviewer_note = models.CharField(max_length=200, blank=True, default='', verbose_name='审核备注')
+
+    class Meta:
+        verbose_name = '赞赏记录'
+        verbose_name_plural = '赞赏记录'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.user.email} - {self.amount_points}积分 ({self.get_status_display()})'
 
 
 class PasswordResetToken(models.Model):
