@@ -13,10 +13,13 @@ from rest_framework.response import Response
 from rest_framework.authtoken.models import Token
 from rest_framework.permissions import AllowAny, IsAuthenticated
 
+import json
+from django.utils import timezone
 from accounts.models import (
     User, VerificationCode, SiteConfig, PasswordResetToken,
     CloudFile, ALLOWED_EXTENSIONS, ALLOWED_MIME_PREFIXES,
     EXT_TO_TYPE, sha256_of_file, CLOUD_QUOTA_BYTES,
+    DonationRecord,
 )
 
 
@@ -261,6 +264,8 @@ class MeView(APIView):
             'is_staff': request.user.is_staff,
             'has_own_key': has_own_key,
             'joined': request.user.created_at.strftime('%Y-%m-%d') if request.user.created_at else None,
+            'points': round(request.user.points, 4) if not is_guest else 0,
+            'pending_donations': DonationRecord.objects.filter(user=request.user, status='pending').count() if not is_guest else 0,
             'usage': {
                 'prompt_count': usage.prompt_count if usage else 0,
                 'input_tokens': usage.input_tokens if usage else 0,
@@ -410,3 +415,178 @@ class CloudFileDownloadView(APIView):
             filename=obj.name,
         )
         return response
+
+
+# ─── Admin: User Management ──────────────────────────────────────
+
+@method_decorator(csrf_exempt, name='dispatch')
+class AdminUserListView(APIView):
+    """GET /api/auth/admin/users/?q=email — 管理员搜索用户（仅 staff）"""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if not request.user.is_staff:
+            return Response({'error': '无权限'}, status=403)
+        q = request.query_params.get('q', '').strip()
+        qs = User.objects.filter(is_guest=False).order_by('-created_at')
+        if q:
+            qs = qs.filter(email__icontains=q)
+        qs = qs[:50]
+        data = []
+        for u in qs:
+            usage = getattr(u, 'token_usage', None)
+            data.append({
+                'id': u.id,
+                'email': u.email,
+                'is_staff': u.is_staff,
+                'is_active': u.is_active,
+                'joined': u.created_at.strftime('%Y-%m-%d') if u.created_at else None,
+                'points': round(u.points, 4),
+                'total_tokens': usage.total_tokens if usage else 0,
+                'has_own_key': bool(u.user_api_key),
+            })
+        return Response({'users': data, 'count': len(data)})
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class AdminUserPointsView(APIView):
+    """POST /api/auth/admin/users/<pk>/points/ — 管理员为用户充值积分（仅 staff）"""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        if not request.user.is_staff:
+            return Response({'error': '无权限'}, status=403)
+        try:
+            target = User.objects.get(pk=pk)
+        except User.DoesNotExist:
+            return Response({'error': '用户不存在'}, status=404)
+        delta = request.data.get('delta')
+        try:
+            delta = float(delta)
+        except (TypeError, ValueError):
+            return Response({'error': 'delta 必须为数字'}, status=400)
+        target.points = max(0.0, target.points + delta)
+        target.save(update_fields=['points'])
+        return Response({
+            'ok': True,
+            'email': target.email,
+            'points': round(target.points, 4),
+            'delta': delta,
+        })
+
+
+# ─── Donation Claim & Review ─────────────────────────────────────
+
+@method_decorator(csrf_exempt, name='dispatch')
+class DonationClaimView(APIView):
+    """POST /api/auth/donate/claim/ — 用户提交赞赏申请（已登录用户）"""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        if request.user.is_guest:
+            return Response({'error': '请先登录'}, status=403)
+        note = request.data.get('note', '').strip()[:200]
+        # 检查是否有太多待审核的记录（防刷）
+        pending_count = DonationRecord.objects.filter(user=request.user, status='pending').count()
+        if pending_count >= 5:
+            return Response({'error': '您已有 5 条待审核记录，请等待管理员处理后再提交'}, status=429)
+        # 解析金额：note 格式为 "邮箱 | 金额: 6元"
+        amount_points = 10.0  # 默认值
+        try:
+            import re
+            match = re.search(r'金额[:\s]*([\d.]+)\s*元', note)
+            if match:
+                amount_cny = float(match.group(1))
+                # 1元 = 10积分
+                amount_points = round(amount_cny * 10, 2)
+        except:
+            pass  # 解析失败时使用默认值
+        
+        record = DonationRecord.objects.create(
+            user=request.user,
+            amount_points=amount_points,
+            note=note,
+            status='pending',
+        )
+        return Response({
+            'ok': True,
+            'id': record.id,
+            'amount_points': record.amount_points,
+            'status': record.status,
+            'created_at': record.created_at.strftime('%Y-%m-%d %H:%M'),
+        }, status=201)
+
+    def get(self, request):
+        """GET: 查看自己的赞赏记录"""
+        if request.user.is_guest:
+            return Response({'records': []})
+        records = DonationRecord.objects.filter(user=request.user).order_by('-created_at')[:20]
+        data = [{
+            'id': r.id,
+            'amount_points': r.amount_points,
+            'note': r.note,
+            'status': r.status,
+            'status_display': r.get_status_display(),
+            'created_at': r.created_at.strftime('%Y-%m-%d %H:%M'),
+            'reviewed_at': r.reviewed_at.strftime('%Y-%m-%d %H:%M') if r.reviewed_at else None,
+            'reviewer_note': r.reviewer_note,
+        } for r in records]
+        return Response({'records': data})
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class AdminDonationListView(APIView):
+    """GET /api/auth/admin/donations/ — 管理员查看赞赏记录"""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if not request.user.is_staff:
+            return Response({'error': '无权限'}, status=403)
+        status_filter = request.query_params.get('status', 'pending')
+        qs = DonationRecord.objects.select_related('user').filter(status=status_filter).order_by('-created_at')[:100]
+        data = [{
+            'id': r.id,
+            'user_id': r.user_id,
+            'email': r.user.email,
+            'amount_points': r.amount_points,
+            'note': r.note,
+            'status': r.status,
+            'status_display': r.get_status_display(),
+            'created_at': r.created_at.strftime('%Y-%m-%d %H:%M'),
+        } for r in qs]
+        pending_count = DonationRecord.objects.filter(status='pending').count()
+        return Response({'records': data, 'pending_count': pending_count})
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class AdminDonationReviewView(APIView):
+    """POST /api/auth/admin/donations/<pk>/review/ — 管理员审批赞赏"""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        if not request.user.is_staff:
+            return Response({'error': '无权限'}, status=403)
+        try:
+            record = DonationRecord.objects.select_related('user').get(pk=pk)
+        except DonationRecord.DoesNotExist:
+            return Response({'error': '记录不存在'}, status=404)
+        if record.status != 'pending':
+            return Response({'error': '该记录已处理'}, status=400)
+        action = request.data.get('action')  # 'approve' | 'reject'
+        if action not in ('approve', 'reject'):
+            return Response({'error': 'action 必须为 approve 或 reject'}, status=400)
+        reviewer_note = request.data.get('reviewer_note', '').strip()[:200]
+        record.status = 'approved' if action == 'approve' else 'rejected'
+        record.reviewed_at = timezone.now()
+        record.reviewer_note = reviewer_note
+        record.save(update_fields=['status', 'reviewed_at', 'reviewer_note'])
+        if action == 'approve':
+            user = record.user
+            user.points = user.points + record.amount_points
+            user.save(update_fields=['points'])
+        return Response({
+            'ok': True,
+            'status': record.status,
+            'user_email': record.user.email,
+            'points_granted': record.amount_points if action == 'approve' else 0,
+        })
