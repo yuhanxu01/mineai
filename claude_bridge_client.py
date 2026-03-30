@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """
-Claude Bridge Client
+Claude Bridge Client v2
 
-Connects your local Claude Code instance to the MineAI platform so you can
-control and monitor Claude Code sessions from any browser.
+Connects your local Claude Code instance to the MineAI platform.
+Uses priority queue: higher-priority tasks are dispatched first.
 
 Usage:
-    python claude_bridge.py [--token TOKEN] [--url URL] [--name NAME]
+    python3 claude_bridge_client.py [--token TOKEN] [--url URL] [--name NAME]
 
 Requirements:
     pip install requests
-    Claude Code CLI installed: npm install -g @anthropic-ai/claude-code
+    Claude Code CLI: npm install -g @anthropic-ai/claude-code
 """
 
 import argparse
@@ -30,15 +30,15 @@ except ImportError:
     sys.exit(1)
 
 # ── Injected at download time by the platform ──────────────────
-PLATFORM_URL = '__PLATFORM_URL__'
-USER_TOKEN   = '__USER_TOKEN__'
-BRIDGE_VERSION = '1.0.0'
-CONFIG_PATH = os.path.expanduser('~/.claude_bridge_config.json')
+PLATFORM_URL   = '__PLATFORM_URL__'
+USER_TOKEN     = '__USER_TOKEN__'
+BRIDGE_VERSION = '2.0.0'
+CONFIG_PATH    = os.path.expanduser('~/.claude_bridge_config.json')
 
 # ── Runtime state ───────────────────────────────────────────────
 _connection_id: str = ''
-_active_procs: dict = {}   # session_id -> subprocess.Popen
-_cancel_flags: dict = {}   # session_id -> bool
+_active_procs: dict = {}   # session_id → subprocess.Popen
+_cancel_flags: dict = {}   # session_id → bool
 
 
 # ─────────────────────────────────────────────────────────────
@@ -46,9 +46,9 @@ _cancel_flags: dict = {}   # session_id -> bool
 # ─────────────────────────────────────────────────────────────
 
 def _log(msg: str, level: str = 'INFO'):
-    ts = datetime.now().strftime('%H:%M:%S')
-    icons = {'INFO': '[i]', 'OK': '[ok]', 'WARN': '[!]', 'ERROR': '[x]', 'CLAUDE': '[cc]'}
-    print(f"  [{ts}] {icons.get(level, '·')} {msg}", flush=True)
+    ts    = datetime.now().strftime('%H:%M:%S')
+    icons = {'INFO': '·', 'OK': '✓', 'WARN': '!', 'ERROR': '✗', 'CLAUDE': '◆', 'QUEUE': '⬆'}
+    print(f"  [{ts}] {icons.get(level,'·')} {msg}", flush=True)
 
 
 def _api(method: str, path: str, **kwargs):
@@ -66,12 +66,15 @@ def _post_message(session_id: str, msg_type: str, content: dict, direction: str 
         _log(f"Failed to post message: {e}", 'WARN')
 
 
-def _update_status(session_id: str, status: str, model_info: dict = None, claude_sid: str = None):
+def _update_status(session_id: str, status: str, model_info: dict = None,
+                   claude_sid: str = None, result_text: str = None):
     payload: dict = {'status': status}
     if model_info:
         payload['model_info'] = model_info
     if claude_sid:
         payload['claude_session_id'] = claude_sid
+    if result_text is not None:
+        payload['result_text'] = result_text
     try:
         _api('POST', f'session/{session_id}/status/', json=payload)
     except Exception as e:
@@ -111,7 +114,8 @@ def _register() -> bool:
             json.dump(cfg, f)
     except Exception:
         pass
-    _log(f"Connected  (id: {_connection_id[:8]}...)", 'OK')
+    _log(f"Connected  id={_connection_id[:8]}…  "
+         f"default priority=P{data.get('default_priority', 5)}", 'OK')
     return True
 
 
@@ -132,21 +136,21 @@ def _build_cmd(prompt: str, permission_mode: str, resume_id: str = '') -> list:
 
 def _process_stream(proc, session_id: str) -> tuple:
     """Read stream-json lines from proc.stdout and relay to platform.
-    Returns (claude_session_id, model_info, final_status)."""
-    claude_sid = ''
+    Returns (claude_session_id, model_info, final_status, result_text)."""
+    claude_sid   = ''
     model_info: dict = {}
     final_status = 'completed'
+    result_text  = ''
 
     for raw_line in proc.stdout:
         if _cancel_flags.get(session_id):
             proc.terminate()
             _update_status(session_id, 'cancelled')
-            return claude_sid, model_info, 'cancelled'
+            return claude_sid, model_info, 'cancelled', result_text
 
         line = raw_line.strip()
         if not line:
             continue
-
         try:
             evt = json.loads(line)
         except json.JSONDecodeError:
@@ -168,7 +172,7 @@ def _process_stream(proc, session_id: str) -> tuple:
                 'tools': model_info.get('tools', []),
                 'permission_mode': evt.get('permissionMode', ''),
             })
-            _log(f"Session initialised  model={model_info.get('model','?')}", 'CLAUDE')
+            _log(f"Session init  model={model_info.get('model','?')}", 'CLAUDE')
 
         elif etype == 'assistant':
             msg = evt.get('message', {})
@@ -178,7 +182,7 @@ def _process_stream(proc, session_id: str) -> tuple:
                     text = block.get('text', '')
                     if text:
                         _post_message(session_id, 'text', {'text': text})
-                        _log(f"{text[:80]}{'…' if len(text) > 80 else ''}", 'CLAUDE')
+                        _log(f"{text[:80]}{'…' if len(text)>80 else ''}", 'CLAUDE')
                 elif btype == 'tool_use':
                     tool_name  = block.get('name', '')
                     tool_input = block.get('input', {})
@@ -188,7 +192,7 @@ def _process_stream(proc, session_id: str) -> tuple:
                         'tool_input': tool_input,
                         'tool_use_id': tool_id,
                     })
-                    _log(f"Tool call: {tool_name}", 'INFO')
+                    _log(f"Tool → {tool_name}", 'INFO')
 
         elif etype == 'user':
             for block in evt.get('message', {}).get('content', []):
@@ -206,20 +210,23 @@ def _process_stream(proc, session_id: str) -> tuple:
 
         elif etype == 'result':
             is_error = evt.get('is_error', False)
-            cost = evt.get('total_cost_usd', 0) or 0
-            model_info['total_cost_usd'] = cost
-            model_info['total_input_tokens']  = evt.get('usage', {}).get('input_tokens', 0)
-            model_info['total_output_tokens'] = evt.get('usage', {}).get('output_tokens', 0)
+            cost     = evt.get('total_cost_usd', 0) or 0
+            usage    = evt.get('usage', {})
+            result_text = evt.get('result', '')
+            model_info.update({
+                'total_cost_usd':    cost,
+                'total_input_tokens':  usage.get('input_tokens', 0),
+                'total_output_tokens': usage.get('output_tokens', 0),
+            })
             final_status = 'error' if is_error else 'completed'
             _post_message(session_id, 'result', {
-                'text': evt.get('result', ''),
+                'text': result_text,
                 'is_error': is_error,
                 'cost_usd': cost,
                 'claude_session_id': claude_sid,
             })
             _log(f"{'Failed' if is_error else 'Done'}  cost=${cost:.4f}", 'OK' if not is_error else 'ERROR')
 
-    # Read any stderr
     try:
         err = proc.stderr.read()
         if err and proc.returncode not in (0, None):
@@ -229,13 +236,13 @@ def _process_stream(proc, session_id: str) -> tuple:
         pass
 
     proc.wait()
-    return claude_sid, model_info, final_status
+    return claude_sid, model_info, final_status, result_text
 
 
-def _run_session(session_id: str, working_dir: str, prompt: str, permission_mode: str):
-    _log(f"Starting session {session_id[:8]}…  dir={working_dir}", 'INFO')
+def _run_session(session_id: str, working_dir: str, prompt: str,
+                 permission_mode: str, priority: int = 5):
+    _log(f"[P{priority}] Starting {session_id[:8]}…  dir={working_dir}", 'QUEUE')
     _cancel_flags[session_id] = False
-    _update_status(session_id, 'running')
 
     wd = os.path.expanduser(working_dir)
     if not os.path.isdir(wd):
@@ -244,19 +251,19 @@ def _run_session(session_id: str, working_dir: str, prompt: str, permission_mode
         return
 
     cmd = _build_cmd(prompt, permission_mode)
-
     try:
         proc = subprocess.Popen(
             cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             cwd=wd, text=True, bufsize=1,
         )
         _active_procs[session_id] = proc
-        claude_sid, model_info, final_status = _process_stream(proc, session_id)
-        _update_status(session_id, final_status, model_info, claude_sid)
+        claude_sid, model_info, final_status, result_text = _process_stream(proc, session_id)
+        _update_status(session_id, final_status, model_info, claude_sid, result_text)
+        _log(f"[P{priority}] Finished {session_id[:8]}  status={final_status}", 'OK')
 
     except FileNotFoundError:
         msg = ("'claude' command not found.\n"
-               "Install Claude Code CLI:  npm install -g @anthropic-ai/claude-code")
+               "Install: npm install -g @anthropic-ai/claude-code")
         _post_message(session_id, 'error', {'text': msg})
         _update_status(session_id, 'error')
         _log(msg, 'ERROR')
@@ -270,8 +277,8 @@ def _run_session(session_id: str, working_dir: str, prompt: str, permission_mode
 
 
 def _run_followup(session_id: str, message: str, claude_sid: str, permission_mode: str):
-    """Continue an existing Claude Code session with a follow-up message."""
-    _log(f"Follow-up for session {session_id[:8]}…", 'INFO')
+    """Continue an existing session with a follow-up message."""
+    _log(f"Follow-up for {session_id[:8]}…", 'INFO')
     _update_status(session_id, 'running')
 
     cmd = _build_cmd(message, permission_mode, resume_id=claude_sid)
@@ -281,8 +288,8 @@ def _run_followup(session_id: str, message: str, claude_sid: str, permission_mod
             text=True, bufsize=1,
         )
         _active_procs[session_id] = proc
-        new_sid, model_info, final_status = _process_stream(proc, session_id)
-        _update_status(session_id, final_status, model_info, new_sid or claude_sid)
+        new_sid, model_info, final_status, result_text = _process_stream(proc, session_id)
+        _update_status(session_id, final_status, model_info, new_sid or claude_sid, result_text)
     except Exception as e:
         _post_message(session_id, 'error', {'text': str(e)})
         _update_status(session_id, 'error')
@@ -300,23 +307,26 @@ def _handle_command(cmd: dict):
     data  = cmd.get('data', {})
 
     if ctype == 'start_session':
+        priority = data.get('priority', 5)
         t = threading.Thread(
             target=_run_session,
-            args=(sid, data.get('working_dir', '~'), data.get('prompt', ''),
-                  data.get('permission_mode', 'default')),
+            args=(sid,
+                  data.get('working_dir', '~'),
+                  data.get('prompt', ''),
+                  data.get('permission_mode', 'default'),
+                  priority),
             daemon=True,
         )
         t.start()
-        _log(f"Dispatched new session {sid[:8]}…", 'OK')
+        _log(f"[P{priority}] Dispatched {sid[:8]}…", 'OK')
 
     elif ctype == 'send_message':
-        # Fetch the session to get claude_session_id
         try:
             resp = _api('GET', f"sessions/{sid}/")
             if resp.ok:
                 s = resp.json()
                 claude_sid = s.get('claude_session_id', '')
-                pmode = s.get('permission_mode', 'default')
+                pmode      = s.get('permission_mode', 'default')
                 if claude_sid:
                     t = threading.Thread(
                         target=_run_followup,
@@ -334,37 +344,40 @@ def _handle_command(cmd: dict):
         proc = _active_procs.get(sid)
         if proc:
             proc.terminate()
-        _log(f"Session cancelled: {sid[:8]}…", 'WARN')
+        _log(f"Cancelled {sid[:8]}…", 'WARN')
 
 
 # ─────────────────────────────────────────────────────────────
-# Poll loop
+# Priority queue poll loop (v2)
 # ─────────────────────────────────────────────────────────────
 
-def _poll_loop():
-    _log("Polling for commands every 2s…  Press Ctrl+C to stop.", 'INFO')
+def _queue_loop():
+    _log("Priority queue polling every 2s…  Ctrl+C to stop.", 'INFO')
     print()
     consecutive_errors = 0
 
     while True:
         try:
-            resp = _api('GET', f'poll/{_connection_id}/')
+            resp = _api('GET', f'queue/{_connection_id}/')
             if resp.ok:
                 consecutive_errors = 0
-                for cmd in resp.json().get('commands', []):
+                cmds = resp.json().get('commands', [])
+                if cmds:
+                    _log(f"Got {len(cmds)} command(s) from queue", 'INFO')
+                for cmd in cmds:
                     _handle_command(cmd)
             elif resp.status_code == 401:
                 _log("Authentication failed — check your token.", 'ERROR')
                 sys.exit(1)
             else:
-                _log(f"Poll returned {resp.status_code}", 'WARN')
+                _log(f"Queue returned {resp.status_code}", 'WARN')
         except requests.exceptions.ConnectionError:
             consecutive_errors += 1
-            _log(f"Connection lost (attempt {consecutive_errors})… retrying in 5s", 'WARN')
+            _log(f"Connection lost ({consecutive_errors}) — retry in 5s", 'WARN')
             time.sleep(5)
             continue
         except Exception as e:
-            _log(f"Poll error: {e}", 'WARN')
+            _log(f"Queue error: {e}", 'WARN')
 
         time.sleep(2)
 
@@ -374,10 +387,10 @@ def _poll_loop():
 # ─────────────────────────────────────────────────────────────
 
 def main():
-    parser = argparse.ArgumentParser(description='Claude Bridge Client')
-    parser.add_argument('--token', default=USER_TOKEN,    help='Platform auth token')
-    parser.add_argument('--url',   default=PLATFORM_URL,  help='Platform base URL')
-    parser.add_argument('--name',  default=None,          help='Connection display name')
+    parser = argparse.ArgumentParser(description='Claude Bridge Client v2')
+    parser.add_argument('--token', default=USER_TOKEN,   help='Platform auth token')
+    parser.add_argument('--url',   default=PLATFORM_URL, help='Platform base URL')
+    parser.add_argument('--name',  default=None,         help='Connection display name')
     args = parser.parse_args()
 
     global USER_TOKEN, PLATFORM_URL
@@ -386,18 +399,18 @@ def main():
 
     print()
     print('  ╔══════════════════════════════════════════════╗')
-    print('  ║   Claude Bridge  v' + BRIDGE_VERSION + '                       ║')
+    print('  ║   Claude Bridge Client  v' + BRIDGE_VERSION + '              ║')
     print('  ║   Local Claude Code → MineAI Platform        ║')
+    print('  ║   Priority Queue · Webhook · Statistics       ║')
     print('  ╚══════════════════════════════════════════════╝')
     print()
 
     if USER_TOKEN in ('__USER_TOKEN__', ''):
         print('  Error: token not set.')
-        print('  Download a pre-configured script from the platform, or run:')
-        print('    python claude_bridge.py --token YOUR_TOKEN')
+        print('  Download pre-configured script from the platform, or:')
+        print('    python3 claude_bridge_client.py --token YOUR_TOKEN')
         sys.exit(1)
 
-    # Verify claude CLI
     try:
         r = subprocess.run(['claude', '--version'], capture_output=True, text=True, timeout=5)
         _log(f"Claude Code: {r.stdout.strip() or r.stderr.strip()}", 'OK')
@@ -414,14 +427,10 @@ def main():
         sys.exit(1)
 
     try:
-        _poll_loop()
+        _queue_loop()
     except KeyboardInterrupt:
         print()
         _log("Disconnecting…", 'INFO')
-        try:
-            _api('POST', f'heartbeat/{_connection_id}/', json={})
-        except Exception:
-            pass
         _log("Goodbye!", 'OK')
         print()
 

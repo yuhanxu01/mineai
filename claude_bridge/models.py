@@ -11,7 +11,11 @@ class BridgeConnection(models.Model):
     status = models.CharField(max_length=20, default='offline')  # online, offline
     last_heartbeat = models.DateTimeField(null=True, blank=True)
     os_info = models.CharField(max_length=200, blank=True)
-    bridge_version = models.CharField(max_length=50, default='1.0')
+    bridge_version = models.CharField(max_length=50, default='2.0')
+    # Per-connection task defaults
+    default_webhook_url = models.URLField(blank=True, default='')
+    default_permission_mode = models.CharField(max_length=20, default='default')
+    default_priority = models.IntegerField(default=5)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -22,7 +26,7 @@ class BridgeConnection(models.Model):
 
 
 class BridgeSession(models.Model):
-    """A Claude Code session running locally via the bridge."""
+    """A Claude Code task (formerly session) in the priority queue."""
     PERMISSION_CHOICES = [
         ('full_auto', 'Full Auto (dangerously-skip-permissions)'),
         ('read_only', 'Read Only'),
@@ -34,27 +38,41 @@ class BridgeSession(models.Model):
     claude_session_id = models.CharField(max_length=200, blank=True)
     working_dir = models.CharField(max_length=1000)
     initial_prompt = models.TextField()
-    status = models.CharField(max_length=20, default='pending')
-    # pending | running | waiting | completed | error | cancelled
+    status = models.CharField(max_length=20, default='queued')
+    # queued | pending | running | waiting | completed | error | cancelled
     permission_mode = models.CharField(max_length=20, default='default', choices=PERMISSION_CHOICES)
+
+    # Priority queue: 1 (lowest) → 10 (highest / critical)
+    priority = models.IntegerField(default=5)
+
+    # Webhook: POST when task reaches terminal state
+    webhook_url = models.URLField(blank=True, default='')
+    webhook_sent = models.BooleanField(default=False)
+
+    # Per-task stats (populated from result event)
     model_info = models.JSONField(default=dict)
+    result_text = models.TextField(blank=True, default='')
+    input_tokens = models.IntegerField(default=0)
+    output_tokens = models.IntegerField(default=0)
+    cost_usd = models.FloatField(default=0.0)
+    duration_seconds = models.FloatField(null=True, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
+    started_at = models.DateTimeField(null=True, blank=True)
     ended_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ['-created_at']
 
     def __str__(self):
-        return f"Session {self.session_id} [{self.status}]"
+        return f"Task {self.session_id} [P{self.priority}] [{self.status}]"
 
 
 class BridgeMessage(models.Model):
-    """A single event/message in a bridge session."""
+    """A single event/message in a bridge task."""
     session = models.ForeignKey(BridgeSession, on_delete=models.CASCADE, related_name='messages')
     direction = models.CharField(max_length=20)  # from_claude | from_user | system
     msg_type = models.CharField(max_length=30)
-    # system_init | text | tool_use | tool_result | permission_request
-    # permission_response | user_input | result | error | status_update
     content = models.JSONField()
     seq = models.IntegerField(default=0)
     timestamp = models.DateTimeField(auto_now_add=True)
@@ -64,7 +82,7 @@ class BridgeMessage(models.Model):
 
 
 class PendingPermission(models.Model):
-    """A permission request waiting for the user to approve/deny."""
+    """A tool permission request waiting for user approval."""
     session = models.ForeignKey(BridgeSession, on_delete=models.CASCADE, related_name='permissions')
     permission_id = models.UUIDField(default=uuid.uuid4, unique=True)
     tool_name = models.CharField(max_length=100)
@@ -79,10 +97,11 @@ class PendingPermission(models.Model):
 
 
 class PendingCommand(models.Model):
-    """A command queued for the bridge client to pick up via polling."""
+    """Urgent commands queued for the bridge client: send_message | cancel_session.
+    (start_session is now handled directly via the priority queue endpoint.)"""
     connection = models.ForeignKey(BridgeConnection, on_delete=models.CASCADE, related_name='pending_commands')
     session = models.ForeignKey(BridgeSession, on_delete=models.SET_NULL, null=True, blank=True, related_name='commands')
-    cmd_type = models.CharField(max_length=30)  # start_session | send_message | cancel_session
+    cmd_type = models.CharField(max_length=30)  # send_message | cancel_session | start_session (legacy)
     data = models.JSONField()
     status = models.CharField(max_length=20, default='pending')  # pending | delivered
     created_at = models.DateTimeField(auto_now_add=True)

@@ -1,7 +1,9 @@
 {% verbatim %}
-// ── Claude Bridge App ────────────────────────────────────────
+// ── Claude Bridge App v2 ─────────────────────────────────────
 
-// Tool metadata: icon text + color for each Claude Code tool
+const BRIDGE_API = `${API}/bridge`;
+
+// Tool metadata
 const TOOL_META = {
   Read:     {icon:'book',     label:'Read',      color:'var(--blue)'},
   Write:    {icon:'pen',      label:'Write',     color:'var(--gold)'},
@@ -20,6 +22,19 @@ function toolMeta(name) {
   return TOOL_META[name] || {icon:'settings', label: name || 'Tool', color:'var(--fg3)'};
 }
 
+// ── Priority badge (P1-P10) ──
+function PriorityBadge({priority, size='sm'}) {
+  const p = priority || 5;
+  const color = p >= 10 ? 'var(--red)' : p >= 7 ? 'var(--blue)' : p >= 4 ? 'var(--gold)' : 'var(--fg3)';
+  const bg    = p >= 10 ? 'rgba(196,90,90,.18)' : p >= 7 ? 'rgba(90,140,196,.18)' : p >= 4 ? 'rgba(201,168,108,.18)' : 'rgba(255,255,255,.07)';
+  const fs    = size === 'lg' ? 12 : 10;
+  return (
+    <span style={{fontSize:fs,padding:'2px 6px',borderRadius:6,background:bg,color,fontWeight:700,fontFamily:'var(--mono)',letterSpacing:.3}}>
+      P{p}
+    </span>
+  );
+}
+
 // ── Permission mode badge ──
 function PermBadge({mode}) {
   const cfg = {
@@ -33,7 +48,7 @@ function PermBadge({mode}) {
 // ── Status dot ──
 function StatusDot({status, style={}}) {
   const c = {
-    online:'var(--green)', pending:'var(--gold)', running:'var(--blue)',
+    online:'var(--green)', queued:'var(--fg3)', pending:'var(--gold)', running:'var(--blue)',
     waiting:'var(--orange)', completed:'var(--green)', error:'var(--red)',
     cancelled:'var(--fg3)', offline:'var(--fg3)',
   }[status] || 'var(--fg3)';
@@ -318,43 +333,64 @@ function BridgeMessageItem({msg, onRespond}) {
   return null;
 }
 
-// ── New Session Modal ──
-function NewSessionModal({connections, onClose, onCreated}) {
-  const [connId, setConnId]   = React.useState(connections.find(c=>c.status==='online')?.id || '');
-  const [dir, setDir]         = React.useState('~');
-  const [prompt, setPrompt]   = React.useState('');
-  const [pmode, setPmode]     = React.useState('default');
-  const [loading, setLoading] = React.useState(false);
-  const [err, setErr]         = React.useState('');
+// ── New Task Modal ──
+function NewTaskModal({connections, onClose, onCreated}) {
+  const onlineConns = connections.filter(c => c.status === 'online');
+  const defConn = onlineConns[0] || connections[0] || null;
+  const [connId, setConnId]     = React.useState(defConn?.id || '');
+  const [dir, setDir]           = React.useState('~');
+  const [prompt, setPrompt]     = React.useState('');
+  const [pmode, setPmode]       = React.useState('default');
+  const [priority, setPriority] = React.useState(5);
+  const [webhook, setWebhook]   = React.useState('');
+  const [loading, setLoading]   = React.useState(false);
+  const [err, setErr]           = React.useState('');
+
+  // Auto-fill defaults when connection changes
+  React.useEffect(() => {
+    const c = connections.find(c => c.id === connId);
+    if (c) {
+      setPriority(c.default_priority || 5);
+      setPmode(c.default_permission_mode || 'default');
+      setWebhook(c.default_webhook_url || '');
+    }
+  }, [connId]);
 
   const start = async () => {
-    if (!connId)   return setErr('请选择一个在线的桥接连接');
+    if (!connId)       return setErr('请选择一个在线的桥接连接');
     if (!prompt.trim()) return setErr('请输入任务描述');
     setLoading(true); setErr('');
     try {
-      const res = await P(`${API}/bridge/connections/${connId}/sessions/`, {working_dir: dir, prompt, permission_mode: pmode});
-      onCreated(connId, res.session_id);
+      const res = await P(`${BRIDGE_API}/tasks/`, {
+        connection_id: connId,
+        working_dir: dir,
+        prompt,
+        permission_mode: pmode,
+        priority,
+        webhook_url: webhook,
+      });
+      onCreated(res.session_id);
       onClose();
     } catch(e) { setErr(e.message); }
     setLoading(false);
   };
 
-  const onlineConns = connections.filter(c => c.status === 'online');
+  const priorityColor = priority >= 10 ? 'var(--red)' : priority >= 7 ? 'var(--blue)' : priority >= 4 ? 'var(--gold)' : 'var(--fg3)';
 
   return (
     <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.55)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center'}}
       onClick={e=>e.target===e.currentTarget&&onClose()}>
-      <div style={{background:'var(--bg2)',border:'1px solid var(--border2)',borderRadius:14,padding:'28px 32px',width:'min(540px,95vw)',boxShadow:'0 20px 60px rgba(0,0,0,.5)'}}>
+      <div style={{background:'var(--bg2)',border:'1px solid var(--border2)',borderRadius:14,padding:'28px 32px',width:'min(560px,95vw)',boxShadow:'0 20px 60px rgba(0,0,0,.5)',maxHeight:'90vh',overflowY:'auto'}}>
         <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:22}}>
           <span style={{display:'inline-flex',alignItems:'center'}}><Icon name="bolt" size={18} /></span>
-          <h2 style={{fontSize:17,fontFamily:'var(--serif)',margin:0}}>新建 Claude Code 会话</h2>
+          <h2 style={{fontSize:17,fontFamily:'var(--serif)',margin:0}}>新建任务</h2>
         </div>
 
         <div className="fg" style={{marginBottom:14}}>
           <label>桥接客户端</label>
           {onlineConns.length === 0
-            ? <div style={{padding:'8px 12px',borderRadius:6,background:'var(--bg3)',color:'var(--fg3)',fontSize:12,display:'inline-flex',alignItems:'center',gap:6}}>
-                <Icon name="alert" size={12} /> 暂无在线连接，请先启动 claude_bridge.py
+            ? <div style={{padding:'8px 12px',borderRadius:6,background:'var(--bg3)',color:'var(--fg3)',fontSize:12,display:'flex',alignItems:'center',gap:6}}>
+                <Icon name="alert" size={12} /> 暂无在线连接
               </div>
             : <select value={connId} onChange={e=>setConnId(e.target.value)}>
                 {onlineConns.map(c => <option key={c.id} value={c.id}>{c.name} ({c.os_info})</option>)}
@@ -367,20 +403,44 @@ function NewSessionModal({connections, onClose, onCreated}) {
           <input value={dir} onChange={e=>setDir(e.target.value)} placeholder="~/projects/myapp" style={{fontFamily:'var(--mono)',fontSize:12}}/>
         </div>
 
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:14}}>
+          <div className="fg">
+            <label>权限模式</label>
+            <select value={pmode} onChange={e=>setPmode(e.target.value)}>
+              <option value="default">默认</option>
+              <option value="full_auto">全自动（慎用）</option>
+              <option value="read_only">只读</option>
+            </select>
+          </div>
+          <div className="fg">
+            <label style={{display:'flex',alignItems:'center',gap:6}}>
+              优先级
+              <span style={{fontSize:11,color:priorityColor,fontWeight:700,fontFamily:'var(--mono)'}}>P{priority}</span>
+            </label>
+            <div style={{display:'flex',alignItems:'center',gap:8}}>
+              <input type="range" min={1} max={10} value={priority} onChange={e=>setPriority(Number(e.target.value))}
+                style={{flex:1,accentColor:priorityColor}}/>
+              <span style={{fontSize:11,color:'var(--fg3)',minWidth:28,textAlign:'right'}}>{priority}/10</span>
+            </div>
+            <div style={{fontSize:10,color:'var(--fg3)',marginTop:3}}>
+              {priority>=10?'紧急':priority>=7?'高':priority>=4?'中':'低'}优先级
+            </div>
+          </div>
+        </div>
+
         <div className="fg" style={{marginBottom:14}}>
-          <label>权限模式</label>
-          <select value={pmode} onChange={e=>setPmode(e.target.value)}>
-            <option value="default">默认 — Claude Code 标准权限</option>
-            <option value="full_auto">全自动 — 跳过所有权限确认（慎用）</option>
-            <option value="read_only">只读 — 仅允许 Read / Glob / Grep</option>
-          </select>
+          <label>任务描述 / 初始提示词</label>
+          <textarea value={prompt} onChange={e=>setPrompt(e.target.value)} rows={4}
+            placeholder="描述你希望 Claude Code 完成的任务…"
+            style={{resize:'vertical',fontSize:13,lineHeight:1.6}}/>
         </div>
 
         <div className="fg" style={{marginBottom:18}}>
-          <label>任务描述 / 初始提示词</label>
-          <textarea value={prompt} onChange={e=>setPrompt(e.target.value)} rows={4}
-            placeholder="描述你希望 Claude Code 完成的任务，例如：分析 src/ 目录下的代码架构，找出潜在性能问题并给出优化建议…"
-            style={{resize:'vertical',fontSize:13,lineHeight:1.6}}/>
+          <label style={{display:'flex',alignItems:'center',gap:6}}>
+            Webhook URL <span style={{fontSize:10,color:'var(--fg3)',fontWeight:400}}>(可选，任务完成时 POST 通知)</span>
+          </label>
+          <input value={webhook} onChange={e=>setWebhook(e.target.value)}
+            placeholder="https://your-server.com/webhook" style={{fontFamily:'var(--mono)',fontSize:12}}/>
         </div>
 
         {err && <div style={{color:'var(--red)',fontSize:12,marginBottom:12}}>{err}</div>}
@@ -388,7 +448,7 @@ function NewSessionModal({connections, onClose, onCreated}) {
         <div style={{display:'flex',gap:10,justifyContent:'flex-end'}}>
           <button className="btn btn-s" onClick={onClose}>取消</button>
           <button className="btn btn-p" onClick={start} disabled={loading || onlineConns.length===0}>
-            {loading ? '启动中…' : '▶ 启动会话'}
+            {loading ? '创建中…' : `▶ 创建任务 (P${priority})`}
           </button>
         </div>
       </div>
@@ -396,158 +456,31 @@ function NewSessionModal({connections, onClose, onCreated}) {
   );
 }
 
-// ── Setup Instructions Page ──
-function BridgeSetupPage({user, onDownload}) {
-  const [showManual, setShowManual] = React.useState(false);
-  const token = localStorage.getItem('mf_token') || 'YOUR_TOKEN_HERE';
-  const origin = window.location.origin;
-  const installCmd = `curl -sSL ${origin}/api/bridge/install/?token=${token} | bash`;
-
-  const copyCmd = () => {
-    navigator.clipboard.writeText(installCmd);
-    showAlert('已复制到剪贴板', '复制成功');
-  };
-
-  return (
-    <div style={{flex:1,overflowY:'auto',display:'flex',alignItems:'flex-start',justifyContent:'center',padding:'40px 20px'}}>
-      <div style={{maxWidth:600,width:'100%'}}>
-        <div style={{textAlign:'center',marginBottom:36}}>
-          <div style={{marginBottom:12}}><Icon name="bolt" size={48} /></div>
-          <h1 style={{fontFamily:'var(--serif)',fontSize:26,marginBottom:8}}>Claude Bridge</h1>
-          <p style={{color:'var(--fg3)',fontSize:14,lineHeight:1.7}}>
-            将您本地的 Claude Code 连接到平台，在任何地方可视化监控和控制 AI 编码会话
-          </p>
-        </div>
-
-        <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12,marginBottom:32}}>
-          {[
-            {icon:'link',title:'安全连接',desc:'Token 认证，数据经由平台中转'},
-            {icon:'eye',title:'全程可视',desc:'工具调用、文件 Diff、权限请求实时呈现'},
-            {icon:'globe',title:'远程控制',desc:'在任何设备上发消息、审批权限'},
-          ].map(f => (
-            <div key={f.title} style={{border:'1px solid var(--border)',borderRadius:10,padding:'16px',textAlign:'center'}}>
-              <div style={{marginBottom:8}}><Icon name={f.icon} size={22} /></div>
-              <div style={{fontSize:12,fontWeight:700,marginBottom:4}}>{f.title}</div>
-              <div style={{fontSize:11,color:'var(--fg3)',lineHeight:1.5}}>{f.desc}</div>
-            </div>
-          ))}
-        </div>
-
-        <div style={{border:'1px solid var(--border2)',borderRadius:12,overflow:'hidden',marginBottom:20}}>
-          <div style={{padding:'14px 20px',background:'var(--bg3)',borderBottom:'1px solid var(--border)',display:'flex',alignItems:'center',gap:10,justifyContent:'space-between'}}>
-            <div style={{display:'flex',alignItems:'center',gap:10}}>
-              <span style={{display:'inline-flex',alignItems:'center'}}><Icon name="rocket" size={16} /></span>
-              <span style={{fontWeight:700,fontSize:14}}>一键安装</span>
-            </div>
-          </div>
-          <div style={{padding:'24px'}}>
-            <p style={{fontSize:13,color:'var(--fg2)',marginBottom:16}}>在您的服务器或本地终端执行以下命令，即可自动完成所有配置并启动服务：</p>
-            
-            <div style={{position:'relative',marginBottom:20}}>
-              <pre style={{
-                background:'var(--bg)',padding:'16px 50px 16px 16px',borderRadius:8,
-                fontFamily:'var(--mono)',fontSize:12,color:'var(--gold2)',
-                border:'1px solid var(--border2)',overflowX:'auto',whiteSpace:'pre-wrap',wordBreak:'break-all'
-              }}>
-                {installCmd}
-              </pre>
-              <button 
-                onClick={copyCmd}
-                style={{
-                  position:'absolute',right:12,top:12,background:'var(--bg4)',color:'var(--fg2)',
-                  padding:'6px',borderRadius:6,border:'1px solid var(--border2)',cursor:'pointer'
-                }}
-                title="复制代码"
-              >
-                <Icon name="clipboard" size={14} />
-              </button>
-            </div>
-
-            <div style={{background:'rgba(201,168,108,0.05)',border:'1px solid rgba(201,168,108,0.2)',borderRadius:8,padding:'12px 14px',display:'flex',gap:12}}>
-              <Icon name="alert" size={18} style={{color:'var(--gold)',flexShrink:0}} />
-              <div style={{fontSize:12,color:'var(--fg2)',lineHeight:1.6}}>
-                <strong>注意：</strong>安装脚本会自动检查 Python3 和 Node.js 环境，并尝试安装 <code>@anthropic-ai/claude-code</code>。安装完成后，会以 <code>systemd</code> (Linux) 或 <code>LaunchAgent</code> (macOS) 方式在后台运行。
-              </div>
-            </div>
-
-            <div style={{textAlign:'center',marginTop:24}}>
-              <button 
-                className="btn-s" 
-                style={{background:'none',border:'none',color:'var(--fg3)',fontSize:12,textDecoration:'underline'}}
-                onClick={() => setShowManual(!showManual)}
-              >
-                {showManual ? '隐藏手动安装步骤' : '需要手动安装？查看传统步骤'}
-              </button>
-            </div>
-
-            {showManual && (
-              <div style={{marginTop:24,paddingTop:24,borderTop:'1px dotted var(--border2)'}}>
-                {[
-                  {n:1, title:'下载桥接脚本', content:
-                    <div>
-                      <p style={{fontSize:12,color:'var(--fg2)',marginBottom:10}}>点击下载预配置版本（已内嵌您的 Token）</p>
-                      <button className="btn btn-p" style={{fontSize:12}} onClick={onDownload}>⬇ 下载 claude_bridge.py</button>
-                    </div>
-                  },
-                  {n:2, title:'安装依赖', content:
-                    <pre style={{background:'var(--bg)',padding:'10px 14px',borderRadius:6,fontFamily:'var(--mono)',fontSize:12,color:'var(--fg2)',margin:0}}>pip install requests</pre>
-                  },
-                  {n:3, title:'确保 Claude Code CLI 已安装', content:
-                    <pre style={{background:'var(--bg)',padding:'10px 14px',borderRadius:6,fontFamily:'var(--mono)',fontSize:12,color:'var(--fg2)',margin:0}}>npm install -g @anthropic-ai/claude-code{'\n'}claude --version  # 验证安装</pre>
-                  },
-                  {n:4, title:'运行桥接客户端', content:
-                    <pre style={{background:'var(--bg)',padding:'10px 14px',borderRadius:6,fontFamily:'var(--mono)',fontSize:12,color:'var(--fg2)',margin:0}}>python claude_bridge.py</pre>
-                  },
-                ].map(step => (
-                  <div key={step.n} style={{display:'flex',gap:14,marginBottom:20}}>
-                    <div style={{width:24,height:24,borderRadius:'50%',background:'var(--bg4)',color:'var(--fg3)',
-                      display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,flexShrink:0,border:'1px solid var(--border2)'}}>
-                      {step.n}
-                    </div>
-                    <div style={{flex:1}}>
-                      <div style={{fontSize:13,fontWeight:600,marginBottom:8}}>{step.title}</div>
-                      {step.content}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Session view (message feed + input) ──
-function BridgeSessionView({session, token}) {
-  const [messages, setMessages]   = React.useState([]);
-  const [status, setStatus]       = React.useState(session.status);
-  const [modelInfo, setModelInfo] = React.useState(session.model_info || {});
-  const [input, setInput]         = React.useState('');
-  const [sending, setSending]     = React.useState(false);
-  const [lastSeq, setLastSeq]     = React.useState(-1);
+// ── Task event feed ──
+function BridgeTaskView({task, token, onRefresh}) {
+  const [messages, setMessages] = React.useState(task.messages || []);
+  const [status, setStatus]     = React.useState(task.status);
+  const [costUsd, setCostUsd]   = React.useState(task.cost_usd || 0);
+  const [modelInfo, setModelInfo] = React.useState(task.model_info || {});
+  const [input, setInput]       = React.useState('');
+  const [sending, setSending]   = React.useState(false);
   const feedRef = React.useRef(null);
-  const abortRef = React.useRef(null);
 
   const scrollDown = () => {
     if (feedRef.current) feedRef.current.scrollTop = feedRef.current.scrollHeight;
   };
 
-  // Connect SSE stream
   React.useEffect(() => {
-    setMessages([]);
-    setStatus(session.status);
-    setModelInfo(session.model_info || {});
-    setLastSeq(-1);
+    setMessages(task.messages || []);
+    setStatus(task.status);
+    setCostUsd(task.cost_usd || 0);
+    setModelInfo(task.model_info || {});
 
     const ctrl = new AbortController();
-    abortRef.current = ctrl;
-
     (async () => {
       try {
         const resp = await fetch(
-          `${API}/bridge/sessions/${session.id}/stream/?since=-1`,
+          `${BRIDGE_API}/sessions/${task.id}/stream/?since=-1`,
           {headers: {'Authorization': `Token ${token}`}, signal: ctrl.signal}
         );
         if (!resp.ok) return;
@@ -565,104 +498,113 @@ function BridgeSessionView({session, token}) {
             try {
               const evt = JSON.parse(line.slice(6));
               if (evt.type === 'message') {
-                setMessages(prev => {
-                  if (prev.find(m => m.id === evt.id)) return prev;
-                  return [...prev, evt];
-                });
-                setLastSeq(evt.seq);
+                setMessages(prev => prev.find(m => m.id === evt.id) ? prev : [...prev, evt]);
                 setTimeout(scrollDown, 50);
               } else if (evt.type === 'status' || evt.type === 'session_info') {
                 setStatus(evt.status);
                 if (evt.model_info) setModelInfo(evt.model_info);
+                if (evt.cost_usd != null) setCostUsd(evt.cost_usd);
+              } else if (evt.type === 'done') {
+                setStatus(evt.status);
+                onRefresh && onRefresh();
               }
             } catch {}
           }
         }
-      } catch (e) {
+      } catch(e) {
         if (e.name !== 'AbortError') console.warn('SSE error', e);
       }
     })();
-
     return () => ctrl.abort();
-  }, [session.id]);
+  }, [task.id]);
 
   const respondPermission = async (permId, decision) => {
-    await P(`${API}/bridge/permissions/${permId}/respond/`, {decision});
+    await P(`${BRIDGE_API}/permissions/${permId}/respond/`, {decision});
   };
 
   const sendMessage = async () => {
     if (!input.trim()) return;
     setSending(true);
     try {
-      await P(`${API}/bridge/sessions/${session.id}/send/`, {message: input.trim()});
+      await P(`${BRIDGE_API}/sessions/${task.id}/send/`, {message: input.trim()});
       setInput('');
     } catch(e) { showAlert(e.message, '发送失败'); }
     setSending(false);
   };
 
-  const cancelSession = async () => {
-    const confirmed = await showConfirm('确认取消此会话？');
-    if (!confirmed) return;
-    try { await fetch(`${API}/bridge/sessions/${session.id}/`, {method:'DELETE', headers:{'Authorization':`Token ${token}`}}); }
-    catch {}
+  const cancelTask = async () => {
+    const ok = await showConfirm('确认取消此任务？');
+    if (!ok) return;
+    try {
+      await fetch(`${BRIDGE_API}/sessions/${task.id}/`, {method:'DELETE', headers:{'Authorization':`Token ${token}`}});
+      onRefresh && onRefresh();
+    } catch {}
   };
 
-  const isActive = ['pending','running','waiting'].includes(status);
-  const done     = ['completed','error','cancelled'].includes(status);
+  const isActive = ['queued','pending','running','waiting'].includes(status);
+  const isDone   = ['completed','error','cancelled'].includes(status);
 
-  const statusLabel = {
-    pending:'等待桥接…', running:'运行中', waiting:'等待权限',
-    completed:'已完成', error:'出错', cancelled:'已取消',
-  }[status] || status;
+  const statusCfg = {
+    queued:    {label:'排队中',  color:'var(--fg3)'},
+    pending:   {label:'等待桥接', color:'var(--gold)'},
+    running:   {label:'运行中',  color:'var(--blue)'},
+    waiting:   {label:'等待权限', color:'var(--orange)'},
+    completed: {label:'已完成',  color:'var(--green)'},
+    error:     {label:'出错',    color:'var(--red)'},
+    cancelled: {label:'已取消',  color:'var(--fg3)'},
+  }[status] || {label:status, color:'var(--fg3)'};
 
   return (
     <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>
-      {/* session top bar */}
-      <div style={{padding:'8px 16px',borderBottom:'1px solid var(--border)',background:'var(--bg2)',display:'flex',alignItems:'center',gap:10,flexShrink:0}}>
-        <StatusDot status={status}/>
-        <span style={{fontSize:12,color:'var(--fg2)',fontFamily:'var(--mono)',flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
-          {session.working_dir}
-        </span>
-        <PermBadge mode={session.permission_mode}/>
-        <span style={{fontSize:11,padding:'3px 8px',borderRadius:6,
-          background: status==='running'?'rgba(90,140,196,.2)':status==='completed'?'rgba(90,184,122,.2)':status==='error'?'rgba(196,90,90,.2)':'var(--bg3)',
-          color: status==='running'?'var(--blue)':status==='completed'?'var(--green)':status==='error'?'var(--red)':'var(--fg3)',
-          fontWeight:500}}>
-          {statusLabel}
-        </span>
-        {modelInfo.total_cost_usd > 0 &&
-          <span style={{fontSize:10,color:'var(--fg3)'}}>${modelInfo.total_cost_usd.toFixed(4)}</span>}
-        {isActive &&
-          <button className="btn btn-sm btn-d" style={{fontSize:11}} onClick={cancelSession}>取消</button>}
+      {/* task header */}
+      <div style={{padding:'10px 16px',borderBottom:'1px solid var(--border)',background:'var(--bg2)',flexShrink:0}}>
+        <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:6}}>
+          <StatusDot status={status}/>
+          <span style={{fontSize:12,fontWeight:600,color:statusCfg.color}}>{statusCfg.label}</span>
+          <PriorityBadge priority={task.priority} />
+          <PermBadge mode={task.permission_mode}/>
+          {costUsd > 0 && <span style={{fontSize:11,color:'var(--fg3)',marginLeft:'auto'}}>${costUsd.toFixed(4)}</span>}
+          {modelInfo.model && <span style={{fontSize:10,color:'var(--fg3)',fontFamily:'var(--mono)'}}>{modelInfo.model}</span>}
+          {isActive && <button className="btn btn-sm btn-d" style={{fontSize:11,marginLeft:'auto'}} onClick={cancelTask}>取消</button>}
+        </div>
+        <div style={{fontSize:11,color:'var(--fg3)',fontFamily:'var(--mono)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+          {task.working_dir}
+        </div>
+        {task.initial_prompt && (
+          <div style={{fontSize:12,color:'var(--fg2)',marginTop:6,lineHeight:1.5,whiteSpace:'pre-wrap',
+            display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',overflow:'hidden'}}>
+            {task.initial_prompt}
+          </div>
+        )}
       </div>
 
-      {/* initial prompt */}
-      {session.initial_prompt && (
-        <div style={{padding:'10px 16px',borderBottom:'1px solid var(--border)',background:'var(--bg3)',flexShrink:0}}>
-          <div style={{fontSize:10,color:'var(--fg3)',marginBottom:3}}>任务描述</div>
-          <div style={{fontSize:12,color:'var(--fg2)',lineHeight:1.6,whiteSpace:'pre-wrap'}}>{session.initial_prompt}</div>
-        </div>
-      )}
-
-      {/* message feed */}
+      {/* event feed */}
       <div ref={feedRef} style={{flex:1,overflowY:'auto',padding:'14px 16px'}}>
-        {messages.length === 0 && isActive && (
+        {messages.length === 0 && status === 'queued' && (
           <div style={{textAlign:'center',padding:'40px 20px',color:'var(--fg3)',fontSize:13}}>
-            <div style={{marginBottom:8,fontSize:24}}>◆</div>
-            <div>等待 Claude Code 响应中</div>
-            <div style={{fontSize:11,marginTop:6}}>桥接客户端正在处理…</div>
+            <div style={{fontSize:28,marginBottom:8}}>⏳</div>
+            <div style={{fontWeight:600,marginBottom:4}}>任务已加入队列</div>
+            <div style={{fontSize:11}}>等待桥接客户端拾取（优先级 P{task.priority}）</div>
+          </div>
+        )}
+        {messages.length === 0 && (status === 'pending' || status === 'running') && (
+          <div style={{textAlign:'center',padding:'40px 20px',color:'var(--fg3)',fontSize:13}}>
+            <div style={{fontSize:24,marginBottom:8}}>◆</div>
+            <div>等待 Claude Code 响应中…</div>
           </div>
         )}
         {messages.map((m,i) => (
           <BridgeMessageItem key={m.id||i} msg={m} onRespond={respondPermission}/>
         ))}
-        {isActive && <div style={{textAlign:'center',padding:'8px 0',color:'var(--fg3)',fontSize:11}}>
-          <span style={{animation:'blink 1s infinite'}}>▌</span>
-        </div>}
+        {isActive && messages.length > 0 && (
+          <div style={{textAlign:'center',padding:'6px 0',color:'var(--fg3)',fontSize:11}}>
+            <span style={{animation:'blink 1s infinite'}}>▌</span>
+          </div>
+        )}
       </div>
 
       {/* follow-up input */}
-      {!done && (
+      {!isDone && (
         <div style={{padding:'10px 12px',borderTop:'1px solid var(--border)',background:'var(--bg2)',display:'flex',gap:8,flexShrink:0}}>
           <textarea value={input} onChange={e=>setInput(e.target.value)} rows={2}
             placeholder="发送跟进消息给 Claude Code…"
@@ -677,172 +619,516 @@ function BridgeSessionView({session, token}) {
   );
 }
 
+// ── Stats panel ──
+function BridgeStatsView({token}) {
+  const [stats, setStats]   = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+
+  const load = async () => {
+    try {
+      const s = await F(`${BRIDGE_API}/stats/`);
+      setStats(s);
+    } catch {}
+    setLoading(false);
+  };
+
+  React.useEffect(() => { load(); const t = setInterval(load, 30000); return ()=>clearInterval(t); }, []);
+
+  if (loading) return <div style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',color:'var(--fg3)',fontSize:13}}>加载统计中…</div>;
+  if (!stats)  return <div style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',color:'var(--fg3)',fontSize:13}}>暂无数据</div>;
+
+  const ov = stats.overall || {};
+  const fmtTokens = n => n >= 1000000 ? `${(n/1000000).toFixed(1)}M` : n >= 1000 ? `${(n/1000).toFixed(1)}K` : String(n||0);
+
+  const StatCard = ({label, value, sub, color='var(--fg)'}) => (
+    <div style={{background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:10,padding:'14px 16px'}}>
+      <div style={{fontSize:11,color:'var(--fg3)',marginBottom:6}}>{label}</div>
+      <div style={{fontSize:22,fontWeight:700,color,fontFamily:'var(--mono)'}}>{value}</div>
+      {sub && <div style={{fontSize:10,color:'var(--fg3)',marginTop:3}}>{sub}</div>}
+    </div>
+  );
+
+  return (
+    <div style={{flex:1,overflowY:'auto',padding:'20px 24px'}}>
+      <div style={{fontSize:15,fontWeight:700,fontFamily:'var(--serif)',marginBottom:16}}>任务统计</div>
+
+      {/* overview cards */}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(150px,1fr))',gap:10,marginBottom:20}}>
+        <StatCard label="总任务数" value={ov.total||0} />
+        <StatCard label="进行中" value={ov.active||0} color="var(--blue)" />
+        <StatCard label="已完成" value={ov.completed||0} color="var(--green)" />
+        <StatCard label="失败" value={ov.failed||0} color="var(--red)" />
+        <StatCard label="已取消" value={ov.cancelled||0} color="var(--fg3)" />
+      </div>
+
+      {/* cost & tokens */}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(150px,1fr))',gap:10,marginBottom:24}}>
+        <StatCard label="总花费" value={`$${(ov.total_cost||0).toFixed(4)}`} color="var(--gold)" />
+        <StatCard label="输入 Tokens" value={fmtTokens(ov.total_input)} sub="input tokens" />
+        <StatCard label="输出 Tokens" value={fmtTokens(ov.total_output)} sub="output tokens" />
+      </div>
+
+      {/* per-connection breakdown */}
+      {stats.per_connection && stats.per_connection.length > 0 && (
+        <div style={{marginBottom:24}}>
+          <div style={{fontSize:12,fontWeight:600,color:'var(--fg2)',marginBottom:10}}>按连接统计</div>
+          <div style={{border:'1px solid var(--border)',borderRadius:10,overflow:'hidden'}}>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 60px 60px 60px 80px',padding:'8px 14px',
+              fontSize:10,color:'var(--fg3)',fontWeight:600,letterSpacing:.5,borderBottom:'1px solid var(--border)',background:'var(--bg3)'}}>
+              <span>连接</span><span style={{textAlign:'right'}}>总计</span><span style={{textAlign:'right'}}>完成</span>
+              <span style={{textAlign:'right'}}>失败</span><span style={{textAlign:'right'}}>花费</span>
+            </div>
+            {stats.per_connection.map(c => (
+              <div key={c.connection_id} style={{display:'grid',gridTemplateColumns:'1fr 60px 60px 60px 80px',
+                padding:'9px 14px',fontSize:12,borderBottom:'1px solid var(--border)',alignItems:'center'}}>
+                <div style={{display:'flex',alignItems:'center',gap:7}}>
+                  <StatusDot status={c.status}/>
+                  <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c.name}</span>
+                </div>
+                <span style={{textAlign:'right',color:'var(--fg2)'}}>{c.total||0}</span>
+                <span style={{textAlign:'right',color:'var(--green)'}}>{c.completed||0}</span>
+                <span style={{textAlign:'right',color:'var(--red)'}}>{c.failed||0}</span>
+                <span style={{textAlign:'right',color:'var(--gold)',fontFamily:'var(--mono)',fontSize:11}}>${(c.total_cost||0).toFixed(3)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* recent completed */}
+      {stats.recent_completed && stats.recent_completed.length > 0 && (
+        <div>
+          <div style={{fontSize:12,fontWeight:600,color:'var(--fg2)',marginBottom:10}}>最近完成</div>
+          {stats.recent_completed.map(t => (
+            <div key={t.id} style={{padding:'10px 14px',background:'var(--bg3)',borderRadius:8,marginBottom:6,
+              border:'1px solid var(--border)',display:'flex',alignItems:'flex-start',gap:12}}>
+              <span style={{color:'var(--green)',marginTop:1,flexShrink:0}}><Icon name="check" size={13}/></span>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:12,color:'var(--fg2)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{t.prompt}</div>
+                <div style={{fontSize:10,color:'var(--fg3)',marginTop:3}}>
+                  {t.ended_at?.slice(0,16).replace('T',' ')}
+                  {t.duration_seconds && ` · ${t.duration_seconds.toFixed(0)}s`}
+                </div>
+              </div>
+              {t.cost_usd > 0 && <span style={{fontSize:11,color:'var(--gold)',fontFamily:'var(--mono)',flexShrink:0}}>${t.cost_usd.toFixed(4)}</span>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Config panel ──
+function BridgeConfigView({connections, token, onRefresh}) {
+  const [selConn, setSelConn]   = React.useState(connections[0]?.id || '');
+  const [webhook, setWebhook]   = React.useState('');
+  const [pmode, setPmode]       = React.useState('default');
+  const [priority, setPriority] = React.useState(5);
+  const [name, setName]         = React.useState('');
+  const [saving, setSaving]     = React.useState(false);
+  const [testStatus, setTestStatus] = React.useState('');
+
+  React.useEffect(() => {
+    const c = connections.find(c => c.id === selConn);
+    if (c) {
+      setWebhook(c.default_webhook_url || '');
+      setPmode(c.default_permission_mode || 'default');
+      setPriority(c.default_priority || 5);
+      setName(c.name || '');
+    }
+  }, [selConn, connections]);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await fetch(`${BRIDGE_API}/connections/${selConn}/config/`, {
+        method: 'PATCH',
+        headers: {'Authorization':`Token ${token}`, 'Content-Type':'application/json'},
+        body: JSON.stringify({default_webhook_url: webhook, default_permission_mode: pmode, default_priority: priority, name}),
+      });
+      showAlert('保存成功', '配置已更新');
+      onRefresh && onRefresh();
+    } catch(e) { showAlert(e.message, '保存失败'); }
+    setSaving(false);
+  };
+
+  const testWebhook = async () => {
+    if (!webhook) return;
+    setTestStatus('sending');
+    try {
+      const resp = await fetch(webhook, {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({event:'test', from:'MineAI Bridge', timestamp: new Date().toISOString()}),
+      });
+      setTestStatus(resp.ok ? 'ok' : 'fail');
+    } catch { setTestStatus('fail'); }
+    setTimeout(() => setTestStatus(''), 3000);
+  };
+
+  if (connections.length === 0) {
+    return <div style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',color:'var(--fg3)',fontSize:13}}>暂无连接</div>;
+  }
+
+  return (
+    <div style={{flex:1,overflowY:'auto',padding:'20px 24px',maxWidth:560}}>
+      <div style={{fontSize:15,fontWeight:700,fontFamily:'var(--serif)',marginBottom:16}}>连接配置</div>
+
+      <div className="fg" style={{marginBottom:20}}>
+        <label>选择连接</label>
+        <select value={selConn} onChange={e=>setSelConn(e.target.value)}>
+          {connections.map(c => (
+            <option key={c.id} value={c.id}>{c.name} ({c.status==='online'?'在线':'离线'})</option>
+          ))}
+        </select>
+      </div>
+
+      <div className="fg" style={{marginBottom:14}}>
+        <label>连接名称</label>
+        <input value={name} onChange={e=>setName(e.target.value)} placeholder="My Computer" />
+      </div>
+
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:14}}>
+        <div className="fg">
+          <label>默认权限模式</label>
+          <select value={pmode} onChange={e=>setPmode(e.target.value)}>
+            <option value="default">默认</option>
+            <option value="full_auto">全自动</option>
+            <option value="read_only">只读</option>
+          </select>
+        </div>
+        <div className="fg">
+          <label>默认优先级 <span style={{color:'var(--gold)',fontFamily:'var(--mono)',fontWeight:700}}>P{priority}</span></label>
+          <input type="range" min={1} max={10} value={priority} onChange={e=>setPriority(Number(e.target.value))}
+            style={{width:'100%',accentColor:'var(--gold)'}}/>
+        </div>
+      </div>
+
+      <div className="fg" style={{marginBottom:20}}>
+        <label style={{display:'flex',alignItems:'center',gap:6}}>
+          默认 Webhook URL
+          <span style={{fontSize:10,color:'var(--fg3)',fontWeight:400}}>任务完成时自动 POST</span>
+        </label>
+        <div style={{display:'flex',gap:8}}>
+          <input value={webhook} onChange={e=>setWebhook(e.target.value)}
+            placeholder="https://your-server.com/webhook" style={{flex:1,fontFamily:'var(--mono)',fontSize:12}}/>
+          <button className="btn btn-s" onClick={testWebhook} disabled={!webhook} style={{fontSize:11,whiteSpace:'nowrap',
+            color: testStatus==='ok'?'var(--green)':testStatus==='fail'?'var(--red)':undefined}}>
+            {testStatus==='sending'?'发送中…':testStatus==='ok'?'✓ 成功':testStatus==='fail'?'✗ 失败':'测试'}
+          </button>
+        </div>
+        <div style={{fontSize:10,color:'var(--fg3)',marginTop:4}}>
+          POST 格式：{`{"event":"task_completed","task_id":"...","status":"completed","cost_usd":0.001,...}`}
+        </div>
+      </div>
+
+      <button className="btn btn-p" onClick={save} disabled={saving}>{saving?'保存中…':'保存配置'}</button>
+    </div>
+  );
+}
+
+// ── Setup page (no connections yet) ──
+function BridgeSetupPage({user, onDownload}) {
+  const [showManual, setShowManual] = React.useState(false);
+  const token  = localStorage.getItem('mf_token') || 'YOUR_TOKEN_HERE';
+  const origin = window.location.origin;
+  const installCmd = `curl -sSL ${origin}/api/bridge/install/?token=${token} | bash`;
+
+  return (
+    <div style={{flex:1,overflowY:'auto',display:'flex',alignItems:'flex-start',justifyContent:'center',padding:'40px 20px'}}>
+      <div style={{maxWidth:580,width:'100%'}}>
+        <div style={{textAlign:'center',marginBottom:36}}>
+          <div style={{marginBottom:12}}><Icon name="bolt" size={48}/></div>
+          <h1 style={{fontFamily:'var(--serif)',fontSize:24,marginBottom:8}}>Claude Bridge v2</h1>
+          <p style={{color:'var(--fg3)',fontSize:13,lineHeight:1.7}}>
+            将本地 Claude Code 连接到平台 · 优先级队列 · 全程可视 · Webhook 通知
+          </p>
+        </div>
+
+        <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10,marginBottom:28}}>
+          {[
+            {icon:'bolt',   title:'优先级队列',  desc:'P1–P10 优先级，高优先级任务先执行'},
+            {icon:'eye',    title:'实时可视',    desc:'工具调用、Diff、权限请求全程可见'},
+            {icon:'link',   title:'Webhook',    desc:'任务完成自动 POST 通知外部系统'},
+          ].map(f => (
+            <div key={f.title} style={{border:'1px solid var(--border)',borderRadius:10,padding:'14px',textAlign:'center'}}>
+              <div style={{marginBottom:6}}><Icon name={f.icon} size={20}/></div>
+              <div style={{fontSize:12,fontWeight:700,marginBottom:4}}>{f.title}</div>
+              <div style={{fontSize:11,color:'var(--fg3)',lineHeight:1.5}}>{f.desc}</div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{border:'1px solid var(--border2)',borderRadius:12,overflow:'hidden',marginBottom:16}}>
+          <div style={{padding:'12px 18px',background:'var(--bg3)',borderBottom:'1px solid var(--border)',display:'flex',alignItems:'center',gap:8}}>
+            <Icon name="rocket" size={15}/>
+            <span style={{fontWeight:700,fontSize:13}}>一键安装</span>
+          </div>
+          <div style={{padding:'20px'}}>
+            <div style={{position:'relative',marginBottom:16}}>
+              <pre style={{background:'var(--bg)',padding:'14px 44px 14px 14px',borderRadius:8,
+                fontFamily:'var(--mono)',fontSize:11,color:'var(--gold)',
+                border:'1px solid var(--border2)',overflowX:'auto',whiteSpace:'pre-wrap',wordBreak:'break-all',margin:0}}>
+                {installCmd}
+              </pre>
+              <button onClick={()=>{navigator.clipboard.writeText(installCmd);showAlert('已复制','复制成功');}}
+                style={{position:'absolute',right:8,top:8,background:'var(--bg4)',color:'var(--fg2)',
+                  padding:'5px',borderRadius:5,border:'1px solid var(--border2)',cursor:'pointer'}}>
+                <Icon name="clipboard" size={12}/>
+              </button>
+            </div>
+            <div style={{fontSize:11,color:'var(--fg3)',lineHeight:1.6}}>
+              需要 Python 3 + npm + <code style={{background:'var(--bg4)',padding:'1px 4px',borderRadius:3}}>@anthropic-ai/claude-code</code>
+            </div>
+          </div>
+        </div>
+
+        <button className="btn-s" style={{background:'none',border:'none',color:'var(--fg3)',fontSize:11,textDecoration:'underline',cursor:'pointer'}}
+          onClick={()=>setShowManual(o=>!o)}>
+          {showManual?'收起手动步骤':'查看手动安装步骤'}
+        </button>
+
+        {showManual && (
+          <div style={{marginTop:20,padding:'16px 20px',background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:10}}>
+            {[
+              {n:1, t:'下载脚本', c:<button className="btn btn-p" style={{fontSize:12}} onClick={onDownload}>⬇ 下载 claude_bridge_client.py</button>},
+              {n:2, t:'安装依赖', c:<pre style={{background:'var(--bg)',padding:'8px 12px',borderRadius:6,fontFamily:'var(--mono)',fontSize:11,color:'var(--fg2)',margin:0}}>pip install requests</pre>},
+              {n:3, t:'安装 Claude Code CLI', c:<pre style={{background:'var(--bg)',padding:'8px 12px',borderRadius:6,fontFamily:'var(--mono)',fontSize:11,color:'var(--fg2)',margin:0}}>npm install -g @anthropic-ai/claude-code</pre>},
+              {n:4, t:'运行桥接客户端', c:<pre style={{background:'var(--bg)',padding:'8px 12px',borderRadius:6,fontFamily:'var(--mono)',fontSize:11,color:'var(--fg2)',margin:0}}>python3 claude_bridge_client.py</pre>},
+            ].map(s => (
+              <div key={s.n} style={{display:'flex',gap:12,marginBottom:16}}>
+                <div style={{width:22,height:22,borderRadius:'50%',background:'var(--bg4)',color:'var(--fg3)',
+                  display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,fontWeight:700,flexShrink:0}}>
+                  {s.n}
+                </div>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:12,fontWeight:600,marginBottom:6}}>{s.t}</div>
+                  {s.c}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Main App ──────────────────────────────────────────────────
 function ClaudeBridgeApp({user, onLogout, onUpdateUser}) {
-  const [connections, setConnections]       = React.useState([]);
-  const [sessions, setSessions]             = React.useState([]);
-  const [selectedSession, setSelectedSession] = React.useState(null);
-  const [showNewModal, setShowNewModal]     = React.useState(false);
-  const [showSetup, setShowSetup]           = React.useState(false);
-  const [sbOpen, setSbOpen]                 = React.useState(false);
-  const [loadingConns, setLoadingConns]     = React.useState(true);
+  const [connections, setConnections]   = React.useState([]);
+  const [tasks, setTasks]               = React.useState([]);
+  const [selectedTask, setSelectedTask] = React.useState(null);
+  const [activeView, setActiveView]     = React.useState('tasks'); // tasks|stats|config
+  const [showNewModal, setShowNewModal] = React.useState(false);
+  const [sbOpen, setSbOpen]             = React.useState(false);
+  const [loading, setLoading]           = React.useState(true);
+  const [taskFilter, setTaskFilter]     = React.useState('all'); // all|active|done
 
   const token = user?.token || '';
 
-  const loadConnections = async () => {
+  const loadData = async () => {
     try {
-      const res = await F(`${API}/bridge/connections/`);
-      setConnections(res);
-      if (res.length === 0) setShowSetup(true);
+      const [conns, ts] = await Promise.all([
+        F(`${BRIDGE_API}/connections/`),
+        F(`${BRIDGE_API}/sessions/`),
+      ]);
+      setConnections(conns);
+      setTasks(ts);
     } catch {}
-    setLoadingConns(false);
-  };
-
-  const loadSessions = async () => {
-    try {
-      const res = await F(`${API}/bridge/sessions/`);
-      setSessions(res);
-    } catch {}
+    setLoading(false);
   };
 
   React.useEffect(() => {
-    loadConnections();
-    loadSessions();
-    const t = setInterval(() => { loadConnections(); loadSessions(); }, 8000);
+    loadData();
+    const t = setInterval(loadData, 8000);
     return () => clearInterval(t);
   }, []);
 
   const handleDownloadScript = async () => {
     try {
-      const resp = await fetch(`${API}/bridge/client/script/`, {headers:{'Authorization':`Token ${token}`}});
+      const resp = await fetch(`${BRIDGE_API}/client/script/`, {headers:{'Authorization':`Token ${token}`}});
       if (!resp.ok) throw new Error('下载失败');
       const blob = await resp.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = url; a.download = 'claude_bridge.py'; a.click();
+      a.href = url; a.download = 'claude_bridge_client.py'; a.click();
       URL.revokeObjectURL(url);
     } catch(e) { showAlert(e.message, '下载失败'); }
   };
 
-  const handleSessionCreated = async (connId, sessionId) => {
-    await loadSessions();
-    // Auto-select the new session
+  const handleTaskCreated = async (sessionId) => {
+    await loadData();
     try {
-      const s = await F(`${API}/bridge/sessions/${sessionId}/`);
-      setSelectedSession(s);
+      const t = await F(`${BRIDGE_API}/sessions/${sessionId}/`);
+      setSelectedTask(t);
+      setActiveView('tasks');
+      setSbOpen(false);
+    } catch {}
+  };
+
+  const selectTask = async (t) => {
+    try {
+      const full = await F(`${BRIDGE_API}/sessions/${t.id}/`);
+      setSelectedTask(full);
+      setActiveView('tasks');
       setSbOpen(false);
     } catch {}
   };
 
   const onlineCount = connections.filter(c => c.status === 'online').length;
 
+  // Task list helpers
+  const activeTasks   = tasks.filter(t => ['queued','pending','running','waiting'].includes(t.status));
+  const doneTasks     = tasks.filter(t => ['completed','error','cancelled'].includes(t.status));
+  const filteredTasks = taskFilter==='active' ? activeTasks : taskFilter==='done' ? doneTasks : tasks;
+
   const statusColor = s => ({
-    pending:'var(--gold)',running:'var(--blue)',waiting:'var(--orange)',
+    queued:'var(--fg3)',pending:'var(--gold)',running:'var(--blue)',waiting:'var(--orange)',
     completed:'var(--green)',error:'var(--red)',cancelled:'var(--fg3)',
   }[s] || 'var(--fg3)');
+  const statusLabel = s => ({queued:'排队',pending:'等待',running:'运行',waiting:'权限',completed:'完成',error:'出错',cancelled:'取消'}[s]||s);
+
+  const noConns = !loading && connections.length === 0;
 
   return (
     <div style={{display:'flex',height:'100vh',flexDirection:'column',overflow:'hidden'}}>
       {/* top nav */}
       <div className="top" style={{flexShrink:0,justifyContent:'space-between',borderBottom:'1px solid var(--border)'}}>
-        <button className="menu-btn" onClick={()=>setSbOpen(o=>!o)}><Icon name="menu" size={18} /></button>
+        <button className="menu-btn" onClick={()=>setSbOpen(o=>!o)}><Icon name="menu" size={18}/></button>
         <div style={{display:'flex',alignItems:'center',gap:10}}>
-          <span style={{display:'inline-flex',alignItems:'center'}}><Icon name="bolt" size={16} /></span>
+          <span style={{display:'inline-flex',alignItems:'center'}}><Icon name="bolt" size={16}/></span>
           <span style={{fontFamily:'var(--serif)',fontSize:16,fontWeight:700}}>Claude Bridge</span>
           <span style={{fontSize:11,padding:'2px 8px',borderRadius:10,
             background: onlineCount>0?'rgba(90,184,122,.15)':'rgba(255,255,255,.06)',
             color: onlineCount>0?'var(--green)':'var(--fg3)'}}>
             {onlineCount} 在线
           </span>
+          {activeTasks.length > 0 &&
+            <span style={{fontSize:11,padding:'2px 8px',borderRadius:10,background:'rgba(90,140,196,.15)',color:'var(--blue)'}}>
+              {activeTasks.length} 运行中
+            </span>
+          }
         </div>
-        <div style={{display:'flex',gap:8}}>
-          <button className="btn btn-sm btn-s" onClick={handleDownloadScript} title="下载桥接客户端" style={{display:'inline-flex',alignItems:'center',gap:6}}>
-            <Icon name="download" size={12} /> 脚本
+        <div style={{display:'flex',gap:6}}>
+          {['tasks','stats','config'].map(v => (
+            <button key={v} onClick={()=>setActiveView(v)}
+              className="btn btn-sm" style={{fontSize:11,
+                background: activeView===v?'var(--gold)':'var(--bg4)',
+                color: activeView===v?'#000':'var(--fg2)'}}>
+              {v==='tasks'?'任务':v==='stats'?'统计':'配置'}
+            </button>
+          ))}
+          <button className="btn btn-sm btn-p" onClick={()=>setShowNewModal(true)} style={{fontSize:11}}>+ 新建</button>
+          <button className="btn btn-sm btn-s" onClick={handleDownloadScript} title="下载客户端脚本" style={{fontSize:11}}>
+            <Icon name="download" size={12}/>
           </button>
-          <button className="btn btn-sm btn-p" onClick={()=>setShowNewModal(true)}>+ 新建会话</button>
-          <button className="btn btn-sm btn-s" onClick={onLogout} style={{color:'var(--fg3)'}}>退出</button>
         </div>
       </div>
 
       <div style={{display:'flex',flex:1,overflow:'hidden'}}>
         {/* ── Sidebar ── */}
-        <div className={`sb${sbOpen?' open':''}`} style={{width:260,display:'flex',flexDirection:'column',borderRight:'1px solid var(--border)',overflow:'hidden',background:'var(--bg2)'}}>
-          <div style={{padding:'12px 12px 8px',borderBottom:'1px solid var(--border)',flexShrink:0}}>
-            <div style={{fontSize:10,color:'var(--fg3)',letterSpacing:1,fontWeight:600,marginBottom:8}}>桥接连接</div>
-            {loadingConns && <div style={{fontSize:12,color:'var(--fg3)',padding:'4px 0'}}>加载中…</div>}
+        <div className={`sb${sbOpen?' open':''}`} style={{width:256,display:'flex',flexDirection:'column',
+          borderRight:'1px solid var(--border)',overflow:'hidden',background:'var(--bg2)',flexShrink:0}}>
+
+          {/* connections */}
+          <div style={{padding:'10px 10px 8px',borderBottom:'1px solid var(--border)',flexShrink:0}}>
+            <div style={{fontSize:9,color:'var(--fg3)',letterSpacing:1,fontWeight:600,marginBottom:6}}>桥接连接</div>
+            {loading && <div style={{fontSize:11,color:'var(--fg3)'}}>加载中…</div>}
             {connections.map(c => (
-              <div key={c.id} style={{padding:'6px 8px',borderRadius:6,marginBottom:4,
-                background:'var(--bg3)',display:'flex',alignItems:'center',gap:8}}>
+              <div key={c.id} style={{padding:'5px 8px',borderRadius:6,marginBottom:3,
+                background:'var(--bg3)',display:'flex',alignItems:'center',gap:7}}>
                 <StatusDot status={c.status}/>
                 <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:12,fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c.name}</div>
-                  <div style={{fontSize:10,color:'var(--fg3)'}}>{c.os_info || '—'}</div>
+                  <div style={{fontSize:11,fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c.name}</div>
+                  <div style={{fontSize:9,color:'var(--fg3)'}}>{c.os_info||'—'}</div>
                 </div>
-                <span style={{fontSize:10,color:c.status==='online'?'var(--green)':'var(--fg3)',flexShrink:0}}>
+                <span style={{fontSize:9,color:c.status==='online'?'var(--green)':'var(--fg3)',flexShrink:0}}>
                   {c.status==='online'?'在线':'离线'}
                 </span>
               </div>
             ))}
-            {connections.length === 0 && !loadingConns && (
-              <div style={{fontSize:11,color:'var(--fg3)',padding:'4px 0',lineHeight:1.5}}>
-                暂无连接<br/>
-                <span style={{color:'var(--blue)',cursor:'pointer',textDecoration:'underline'}} onClick={handleDownloadScript}>下载脚本</span>后运行
+            {connections.length===0 && !loading && (
+              <div style={{fontSize:11,color:'var(--fg3)',lineHeight:1.5}}>
+                暂无连接 ·{' '}
+                <span style={{color:'var(--gold)',cursor:'pointer',textDecoration:'underline'}} onClick={handleDownloadScript}>下载客户端</span>
               </div>
             )}
           </div>
 
-          <div style={{flex:1,overflowY:'auto',padding:'8px'}}>
-            <div style={{fontSize:10,color:'var(--fg3)',letterSpacing:1,fontWeight:600,padding:'4px 4px 8px'}}>最近会话</div>
-            {sessions.map(s => (
-              <div key={s.id}
-                onClick={async ()=>{
-                  try { const full = await F(`${API}/bridge/sessions/${s.id}/`); setSelectedSession(full); setSbOpen(false); }
-                  catch {}
-                }}
-                style={{padding:'8px 10px',borderRadius:7,marginBottom:5,cursor:'pointer',
-                  border:`1px solid ${selectedSession?.id===s.id?'var(--gold)':'var(--border)'}`,
-                  background: selectedSession?.id===s.id?'var(--bg4)':'var(--bg3)'}}>
-                <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:3}}>
-                  <StatusDot status={s.status} style={{width:6,height:6}}/>
-                  <span style={{fontSize:10,color:statusColor(s.status),fontWeight:600}}>{
-                    {pending:'等待',running:'运行中',waiting:'等待权限',completed:'完成',error:'出错',cancelled:'取消'}[s.status]||s.status
-                  }</span>
-                  <span style={{marginLeft:'auto',fontSize:9,color:'var(--fg3)'}}>{s.created_at?.slice(5,16)}</span>
+          {/* task filter tabs */}
+          <div style={{padding:'8px 10px 0',flexShrink:0}}>
+            <div style={{display:'flex',gap:4,marginBottom:6}}>
+              {[['all','全部'],['active','活跃'],['done','完成']].map(([v,l]) => (
+                <button key={v} onClick={()=>setTaskFilter(v)}
+                  style={{flex:1,padding:'3px 0',fontSize:10,fontWeight:600,borderRadius:5,border:'none',cursor:'pointer',
+                    background: taskFilter===v?'var(--gold)':'var(--bg4)',
+                    color: taskFilter===v?'#000':'var(--fg3)'}}>
+                  {l}{v==='active'&&activeTasks.length>0?` (${activeTasks.length})`:''}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* task list */}
+          <div style={{flex:1,overflowY:'auto',padding:'4px 8px 8px'}}>
+            {filteredTasks.map(t => (
+              <div key={t.id} onClick={()=>selectTask(t)}
+                style={{padding:'7px 9px',borderRadius:7,marginBottom:4,cursor:'pointer',
+                  border:`1px solid ${selectedTask?.id===t.id?'var(--gold)':'var(--border)'}`,
+                  background: selectedTask?.id===t.id?'var(--bg4)':'var(--bg3)'}}>
+                <div style={{display:'flex',alignItems:'center',gap:5,marginBottom:3}}>
+                  <StatusDot status={t.status} style={{width:6,height:6}}/>
+                  <span style={{fontSize:10,color:statusColor(t.status),fontWeight:600}}>{statusLabel(t.status)}</span>
+                  <PriorityBadge priority={t.priority}/>
+                  {t.cost_usd > 0 && <span style={{marginLeft:'auto',fontSize:9,color:'var(--gold)',fontFamily:'var(--mono)'}}>${t.cost_usd.toFixed(3)}</span>}
                 </div>
                 <div style={{fontSize:11,color:'var(--fg2)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',marginBottom:2}}>
-                  {s.initial_prompt || '(无描述)'}
+                  {t.initial_prompt||'(无描述)'}
                 </div>
-                <div style={{fontSize:10,color:'var(--fg3)',fontFamily:'var(--mono)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
-                  {s.working_dir}
+                <div style={{fontSize:9,color:'var(--fg3)',fontFamily:'var(--mono)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                  {t.working_dir}
                 </div>
               </div>
             ))}
-            {sessions.length === 0 && (
-              <div style={{padding:'20px 8px',textAlign:'center',color:'var(--fg3)',fontSize:12}}>
-                暂无会话<br/>点击「+ 新建会话」开始
+            {filteredTasks.length===0 && (
+              <div style={{padding:'20px 8px',textAlign:'center',color:'var(--fg3)',fontSize:11}}>
+                {taskFilter==='active'?'无活跃任务':taskFilter==='done'?'暂无完成任务':'点击「+ 新建」创建任务'}
               </div>
             )}
           </div>
 
-          <div style={{padding:'10px 12px',borderTop:'1px solid var(--border)',flexShrink:0}}>
-            <button className="btn btn-p" style={{width:'100%',fontSize:12}} onClick={()=>setShowNewModal(true)}>
-              + 新建 Claude Code 会话
+          <div style={{padding:'8px 10px',borderTop:'1px solid var(--border)',flexShrink:0}}>
+            <button className="btn btn-p" style={{width:'100%',fontSize:11}} onClick={()=>setShowNewModal(true)}>
+              + 新建任务
             </button>
           </div>
         </div>
 
         {/* ── Main area ── */}
-        {!selectedSession
-          ? <BridgeSetupPage user={user} onDownload={handleDownloadScript}/>
-          : <BridgeSessionView key={selectedSession.id} session={selectedSession} token={token}/>
-        }
+        <div style={{flex:1,display:'flex',overflow:'hidden'}}>
+          {activeView === 'stats' && <BridgeStatsView token={token}/>}
+          {activeView === 'config' && <BridgeConfigView connections={connections} token={token} onRefresh={loadData}/>}
+          {activeView === 'tasks' && (
+            noConns
+              ? <BridgeSetupPage user={user} onDownload={handleDownloadScript}/>
+              : selectedTask
+                ? <BridgeTaskView key={selectedTask.id} task={selectedTask} token={token} onRefresh={loadData}/>
+                : <div style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',gap:12,color:'var(--fg3)'}}>
+                    <Icon name="bolt" size={36}/>
+                    <div style={{fontSize:13}}>从左侧选择任务，或点击「+ 新建」</div>
+                    <button className="btn btn-p" onClick={()=>setShowNewModal(true)}>+ 新建任务</button>
+                  </div>
+          )}
+        </div>
       </div>
 
       {showNewModal && (
-        <NewSessionModal
+        <NewTaskModal
           connections={connections}
           onClose={()=>setShowNewModal(false)}
-          onCreated={handleSessionCreated}
+          onCreated={handleTaskCreated}
         />
       )}
     </div>
