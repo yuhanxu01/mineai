@@ -30,7 +30,8 @@ function OCRStudioApp({user, onLogout, onUpdateUser}) {
   const goTo = (view) => { setV(view); setSbOpen(false); };
 
   const navItems = [
-    { id:'relay', label:'中继识别', icon:'zap', hint:'Worker 中继模式' },
+    { id:'relay', label:'MixTeX', icon:'zap', hint:'图像公式识别' },
+    { id:'history', label:'历史记录', icon:'clock', hint:'查看过往识别' },
     { id:'upload', label:'API 识别', icon:'upload', hint:'PDF/图片批量模式' },
   ];
 
@@ -74,13 +75,16 @@ function OCRStudioApp({user, onLogout, onUpdateUser}) {
         <div className="top">
           <button className="menu-btn" onClick={() => setSbOpen(!sbOpen)}><Icon name="menu" size={18} /></button>
           <span className="top-t">
-            {v==='relay'?'中继识别':v==='upload'?'导入文件':v==='work'?'识别工作台':'识别结果'}
+            {v==='relay'?'MixTeX 识别':v==='history'?'历史记录':v==='upload'?'导入文件':v==='work'?'识别工作台':'识别结果'}
           </span>
           <div className="top-b">{user && (user.username || user.email)}</div>
         </div>
         <div className="ct">
           {v === 'relay' && (
             <OCRRelayMode user={user} token={localStorage.getItem('mf_token')} />
+          )}
+          {v === 'history' && (
+            <OCRHistory user={user} token={localStorage.getItem('mf_token')} />
           )}
           {v === 'upload' && (
             <OCRUpload
@@ -118,7 +122,8 @@ function OCRStudioApp({user, onLogout, onUpdateUser}) {
 // ─────────────────────────────────────────────────────────────
 function OCRRelayMode({user, token}) {
   const [modelType, setModelType] = React.useState('xuan'); // 'qing' | 'xuan'
-  const [imgDataUrl, setImgDataUrl] = React.useState(null);
+  const [imgDataUrl, setImgDataUrl] = React.useState(null);  // 本地预览用
+  const [processedImgUrl, setProcessedImgUrl] = React.useState(null);  // 服务器处理后的图片URL
   const [imgFile, setImgFile] = React.useState(null);
   const [isBinary, setIsBinary] = React.useState(false);
   const [cvReady, setCvReady] = React.useState(!!window.cv);
@@ -139,6 +144,15 @@ function OCRRelayMode({user, token}) {
   const pollCountRef = React.useRef(0);
   const resultPreviewRef = React.useRef(null);
   const fileInputRef = React.useRef(null);
+  const isMountedRef = React.useRef(true);
+
+  // ── 组件卸载时清理 ──
+  React.useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+      if (pollRef.current) clearTimeout(pollRef.current);
+    };
+  }, []);
 
   // ── 加载 MathJax ──
   React.useEffect(() => {
@@ -253,7 +267,6 @@ function OCRRelayMode({user, token}) {
 
   const handleFile = (file) => {
     if (!file || !file.type.startsWith('image/')) return;
-    if (file.size > 2 * 1024 * 1024) { setError('图片过大（>2MB），请截取更小区域'); return; }
     clearResult();
     if (isBinary && cvReady && window.cv && window.cv.Mat) {
       binarizeAndSet(file);
@@ -268,6 +281,7 @@ function OCRRelayMode({user, token}) {
     setResult(''); setEditText(''); setPageId(null);
     setFeedback(null); setFeedbackCount(0); setError('');
     setPollProgress(0); setPollCount(0);
+    setProcessedImgUrl(null);
     if (pollRef.current) clearTimeout(pollRef.current);
   };
 
@@ -280,15 +294,16 @@ function OCRRelayMode({user, token}) {
   // ── 上传并开始轮询 ──
   const startUpload = async () => {
     if (!imgFile) return;
-    if (!user) { showAlert('请先登录后使用中继识别', '提示'); window.location.hash = '#/login'; return; }
+    if (!user) { showAlert('请先登录后使用 MixTeX 识别', '提示'); window.location.hash = '#/login'; return; }
     if (quota && quota.left_count <= 0) {
-      setError('今日识别次数已用完，点赞或提交修改可增加次数'); return;
+      setError('今日识别次数已用完，点赞/点踩/提交修改可增加次数'); return;
     }
     setUploading(true); setError(''); clearResult();
     const formData = new FormData();
     formData.append('image', imgFile);
     formData.append('processing_mode', 'worker');
     formData.append('model_type', modelType);
+    formData.append('is_binary', isBinary ? '1' : '0');
     try {
       const resp = await fetch('/api/ocr/upload/', {
         method: 'POST',
@@ -298,6 +313,8 @@ function OCRRelayMode({user, token}) {
       const data = await resp.json();
       if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
       setPageId(data.page_id);
+      // 显示服务器返回的处理后图片
+      if (data.image_url) setProcessedImgUrl(data.image_url);
       setPolling(true);
       pollCountRef.current = 0;
       setPollCount(0);
@@ -311,6 +328,7 @@ function OCRRelayMode({user, token}) {
 
   const pollForResult = (pid) => {
     pollRef.current = setTimeout(async () => {
+      if (!isMountedRef.current) return;  // 组件已卸载，停止轮询
       pollCountRef.current++;
       setPollCount(pollCountRef.current);
       if (pollCountRef.current > 40) {
@@ -320,6 +338,7 @@ function OCRRelayMode({user, token}) {
       }
       try {
         const data = await F(`/api/ocr/pages/${pid}/`);
+        if (!isMountedRef.current) return;  // 再次检查，防止异步操作后组件已卸载
         if (data.ocr_status === 'done') {
           setResult(data.ocr_result);
           setEditText(data.ocr_result);
@@ -333,7 +352,7 @@ function OCRRelayMode({user, token}) {
           pollForResult(pid);
         }
       } catch(e) {
-        pollForResult(pid);
+        if (isMountedRef.current) pollForResult(pid);  // 只在组件仍挂载时继续轮询
       }
     }, 5000);
   };
@@ -354,7 +373,7 @@ function OCRRelayMode({user, token}) {
     if (!result) return;
     if (editText !== result) { setError('点赞时请勿修改文本内容'); return; }
     sendFeedback('like');
-    copyLatex();  // 点赞自动复制
+    copyLatex();
   };
 
   const thumbsDown = () => {
@@ -364,9 +383,9 @@ function OCRRelayMode({user, token}) {
 
   const submitEdit = () => {
     if (!result) return;
-    if (editText === result) { setError('文本未经修改'); return; }
+    if (editText === result) { setError('文本未经修改，请先编辑后再提交'); return; }
     sendFeedback('edit', editText);
-    copyLatex();  // 提交修改自动复制
+    copyLatex();
   };
 
   // ── 复制 ──
@@ -399,10 +418,10 @@ function OCRRelayMode({user, token}) {
       {/* 页头 */}
       <div style={{marginBottom:20}}>
         <h1 style={{fontFamily:'var(--serif)',fontSize:26,color:'var(--gold2)',marginBottom:4}}>
-          中继识别模式
+          MixTeX 识别
         </h1>
         <p style={{color:'var(--fg2)',fontSize:13}}>
-          图片上传至服务器，由后台 OCR Worker 处理 · 支持手写中英文混合公式与复杂排版
+          图片上传至服务器自动缩放压缩，由后台 OCR Worker 处理 · 支持手写中英文混合公式与复杂排版
         </p>
       </div>
 
@@ -476,12 +495,13 @@ function OCRRelayMode({user, token}) {
 
       {/* 配额栏 */}
       {quota && (
-        <div style={{display:'flex',gap:8,marginBottom:20,flexWrap:'wrap'}}>
+        <div style={{display:'flex',gap:8,marginBottom:20,flexWrap:'wrap',alignItems:'center'}}>
           {[
-            {label:'今日剩余', val: Math.max(0, Math.round(quota.left_count)), color:'#5eb87a'},
-            {label:'点赞/踩', val: quota.like_count + (quota.dislike_count||0), color:'var(--gold)'},
-            {label:'已修改', val: quota.nonfeedback_count !== undefined ? quota.upload_count - quota.nonfeedback_count : 0, color:'var(--fg2)'},
-            {label:'总识别', val: quota.upload_count, color:'var(--fg3)'},
+            {label:'今日剩余', val: Math.max(0, Math.floor(quota.left_count * 10) / 10), color:'#5eb87a'},
+            {label:'已识别', val: quota.upload_count, color:'var(--fg2)'},
+            {label:'点赞', val: quota.like_count, color:'var(--gold)'},
+            {label:'点踩', val: quota.dislike_count||0, color:'var(--fg3)'},
+            {label:'提交修改', val: quota.edit_count||0, color:'#5a8ac4'},
           ].map(({label,val,color}) => (
             <div key={label} style={{padding:'5px 12px',background:'var(--bg3)',borderRadius:6,
               border:'1px solid var(--border2)',display:'flex',gap:6,alignItems:'center'}}>
@@ -489,6 +509,7 @@ function OCRRelayMode({user, token}) {
               <span style={{fontSize:15,fontWeight:700,color}}>{val}</span>
             </div>
           ))}
+          <div style={{fontSize:11,color:'var(--fg3)',marginLeft:'auto'}}>每日 50 次基础额度</div>
         </div>
       )}
 
@@ -528,20 +549,29 @@ function OCRRelayMode({user, token}) {
             onDragOver={e=>{e.preventDefault();setDragging(true);}}
             onDragLeave={()=>setDragging(false)}
             onDrop={e=>{e.preventDefault();setDragging(false);handleFile(e.dataTransfer.files[0]);}}
-            onClick={()=>!imgDataUrl&&fileInputRef.current?.click()}
+            onClick={()=>!(processedImgUrl||imgDataUrl)&&fileInputRef.current?.click()}
           >
             <input ref={fileInputRef} type="file" accept="image/*" hidden
               onChange={e=>handleFile(e.target.files[0])} />
-            {imgDataUrl ? (
-              <img src={imgDataUrl} alt="已选图片"
-                style={{maxWidth:'100%',maxHeight:300,objectFit:'contain',display:'block'}} />
+            {(processedImgUrl || imgDataUrl) ? (
+              <div style={{position:'relative',width:'100%'}}>
+                <img src={processedImgUrl || imgDataUrl} alt="已选图片"
+                  style={{maxWidth:'100%',maxHeight:300,objectFit:'contain',display:'block',margin:'0 auto'}} />
+                {processedImgUrl && (
+                  <div style={{position:'absolute',bottom:4,right:4,fontSize:10,
+                    background:'rgba(94,184,122,.85)',color:'#000',
+                    padding:'2px 6px',borderRadius:4,fontWeight:600}}>
+                    已处理 ✓
+                  </div>
+                )}
+              </div>
             ) : (
               <div style={{textAlign:'center',padding:28,pointerEvents:'none'}}>
                 <div style={{color:'var(--gold)',marginBottom:10}}>
                   <Icon name="image" size={36} stroke={1.4} />
                 </div>
                 <div style={{fontWeight:500,fontSize:14,marginBottom:6}}>拖拽 / 点击 / Ctrl+V 粘贴图片</div>
-                <div style={{fontSize:12,color:'var(--fg3)'}}>截图可直接粘贴 · 最大 2MB</div>
+                <div style={{fontSize:12,color:'var(--fg3)'}}>截图可直接粘贴 · 自动缩放压缩</div>
               </div>
             )}
           </div>
@@ -611,7 +641,7 @@ function OCRRelayMode({user, token}) {
                 {mathJaxReady ? 'MathJax ✓' : 'MathJax 加载中...'}
               </span>
             </div>
-            <div ref={resultPreviewRef}
+            <div
               style={{
                 minHeight:110, padding:'12px 16px',
                 background:'var(--bg3)', border:'1px solid var(--border2)',
@@ -629,6 +659,8 @@ function OCRRelayMode({user, token}) {
                   <span style={{fontSize:13}}>等待 OCR Worker 处理...</span>
                 </div>
               )}
+              {/* MathJax 专用容器：React 不向此节点渲染子元素，避免 innerHTML 操作与 vDOM 冲突 */}
+              <div ref={resultPreviewRef} />
             </div>
           </div>
 
@@ -669,39 +701,26 @@ function OCRRelayMode({user, token}) {
                 padding:'8px 12px',background:'var(--bg3)',borderRadius:8,
                 border:'1px solid var(--border2)'}}>
                 <div style={{display:'flex',gap:6}}>
-                  <button
-                    onClick={thumbsUp}
-                    title="点赞（+0.5次剩余）"
-                    style={{
-                      width:38,height:34,border:'1px solid var(--border2)',
-                      borderRadius:6,cursor:'pointer',fontSize:15,
-                      background: feedback==='like' ? 'rgba(94,184,122,.15)' : 'transparent',
-                      color: feedback==='like' ? '#5eb87a' : 'var(--fg2)',
-                      transition:'all .15s', display:'flex',alignItems:'center',justifyContent:'center',
-                    }}>👍</button>
-                  <button
-                    onClick={submitEdit}
-                    title="提交修改（+2次剩余）"
-                    style={{
-                      width:38,height:34,border:'1px solid var(--border2)',
-                      borderRadius:6,cursor:'pointer',fontSize:15,
-                      background: feedback==='edit' ? 'rgba(100,149,237,.15)' : 'transparent',
-                      color: feedback==='edit' ? '#5a8ac4' : 'var(--fg2)',
-                      transition:'all .15s', display:'flex',alignItems:'center',justifyContent:'center',
-                    }}>✏️</button>
-                  <button
-                    onClick={thumbsDown}
-                    title="点踩（+0.5次剩余）"
-                    style={{
-                      width:38,height:34,border:'1px solid var(--border2)',
-                      borderRadius:6,cursor:'pointer',fontSize:15,
-                      background: feedback==='dislike' ? 'rgba(200,60,60,.15)' : 'transparent',
-                      color: feedback==='dislike' ? 'var(--red)' : 'var(--fg2)',
-                      transition:'all .15s', display:'flex',alignItems:'center',justifyContent:'center',
-                    }}>👎</button>
+                  {[
+                    {type:'like', icon:'thumb-up', label:'+0.5次', active:'rgba(94,184,122,.15)', activeColor:'#5eb87a', fn: thumbsUp},
+                    {type:'dislike', icon:'thumb-down', label:'+0.5次', active:'rgba(200,60,60,.15)', activeColor:'var(--red)', fn: thumbsDown},
+                    {type:'edit', icon:'pen', label:'+2次', active:'rgba(100,149,237,.15)', activeColor:'#5a8ac4', fn: submitEdit},
+                  ].map(({type, icon, label, active, activeColor, fn}) => (
+                    <button key={type} onClick={fn} title={label}
+                      style={{
+                        height:32, padding:'0 10px',border:'1px solid var(--border2)',
+                        borderRadius:4, cursor:'pointer', fontSize:12,
+                        background: feedback===type ? active : 'transparent',
+                        color: feedback===type ? activeColor : 'var(--fg3)',
+                        transition:'all .15s', display:'flex', alignItems:'center', gap:5,
+                      }}>
+                      <Icon name={icon} size={13} style={{color:'inherit'}}/>
+                      <span style={{fontSize:11,color:'inherit',letterSpacing:'.02em'}}>{label}</span>
+                    </button>
+                  ))}
                 </div>
                 <div style={{fontSize:11,color:'var(--fg3)'}}>
-                  反馈增加次数 · 已反馈 {feedbackCount}/5
+                  {feedbackCount > 0 ? `已反馈 ${feedbackCount} 次` : '反馈可增加今日次数'}
                 </div>
               </div>
             </>
@@ -711,14 +730,176 @@ function OCRRelayMode({user, token}) {
 
       {/* 说明卡片 */}
       <div className="card" style={{marginTop:24,padding:'14px 18px',fontSize:12,color:'var(--fg2)',lineHeight:1.7}}>
-        <strong style={{color:'var(--gold2)'}}>关于中继识别模式</strong>
+        <strong style={{color:'var(--gold2)'}}>关于 MixTeX 识别</strong>
         <div style={{marginTop:6}}>
-          图片上传后由后台 <strong>OCR Worker</strong> 处理，青·小模型适合手写公式，玄·大模型适合复杂公式/表格混排。
-          Worker 处理完成后结果自动回填，可查看 MathJax 实时渲染效果。
-          <br/>点赞 (+0.5次) · 点踩 (+0.5次) · 提交修改 (+2次) 可增加今日使用次数。
-          如需自行运行 Worker，请启动 <code style={{background:'var(--bg4)',padding:'1px 5px',borderRadius:3}}>python ocr_worker.py</code>。
+          上传图片自动缩放至最大边 512px 并压缩，由后台 <strong>OCR Worker</strong> 处理。
+          青·小模型适合手写公式，玄·大模型适合复杂公式/表格混排。每位用户每日 50 次基础额度。
+          <br/>
+          <span style={{display:'inline-flex',alignItems:'center',gap:4}}>
+            <strong style={{color:'#5eb87a',display:'inline-flex',alignItems:'center',gap:3}}><Icon name="thumb-up" size={11}/>点赞 +0.5次</strong>
+            {' · '}
+            <strong style={{color:'var(--fg3)',display:'inline-flex',alignItems:'center',gap:3}}><Icon name="thumb-down" size={11}/>点踩 +0.5次</strong>
+            {' · '}
+            <strong style={{color:'#5a8ac4',display:'inline-flex',alignItems:'center',gap:3}}><Icon name="pen" size={11}/>提交修改 +2次</strong>
+          </span>
+          <br/>历史识别记录可在左侧「历史记录」标签查看。
         </div>
       </div>
+    </div>
+  );
+}
+
+
+// ─────────────────────────────────────────────────────────────
+// 历史记录
+// ─────────────────────────────────────────────────────────────
+function OCRHistory({user, token}) {
+  const [records, setRecords] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [selected, setSelected] = React.useState(null);
+  const mathJaxRef = React.useRef(null);
+
+  React.useEffect(() => {
+    if (!user) return;
+    F('/api/ocr/history/')
+      .then(d => { setRecords(d); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, [user]);
+
+  // MathJax 渲染选中记录
+  React.useEffect(() => {
+    if (!selected || !mathJaxRef.current) return;
+    if (!window.MathJax || !window.MathJax.typesetPromise) return;
+    mathJaxRef.current.innerHTML = (selected.ocr_result || '').replace(/\n/g, '<br/>');
+    window.MathJax.typesetPromise([mathJaxRef.current]).catch(() => {});
+  }, [selected]);
+
+  const feedbackColor = {like:'#5eb87a', dislike:'var(--red)', edit:'#5a8ac4'};
+  const feedbackIcon = {like:'thumb-up', dislike:'thumb-down', edit:'pen'};
+  const modelLabel = {qing:'青', xuan:'玄'};
+
+  const copyText = (text) => {
+    navigator.clipboard.writeText(text || '').catch(() => {
+      const ta = document.createElement('textarea');
+      ta.value = text; document.body.appendChild(ta); ta.select();
+      document.execCommand('copy'); document.body.removeChild(ta);
+    });
+  };
+
+  if (!user) return (
+    <div style={{padding:40,textAlign:'center',color:'var(--fg3)'}}>请先登录</div>
+  );
+
+  return (
+    <div className="fade-in" style={{maxWidth:900,margin:'0 auto'}}>
+      <div style={{marginBottom:20}}>
+        <h1 style={{fontFamily:'var(--serif)',fontSize:24,color:'var(--gold2)',marginBottom:4}}>历史记录</h1>
+        <p style={{color:'var(--fg2)',fontSize:13}}>最近 100 条 MixTeX 识别记录</p>
+      </div>
+
+      {loading && (
+        <div style={{display:'flex',alignItems:'center',gap:10,color:'var(--fg3)',padding:32}}>
+          <div className="load" style={{width:14,height:14}} />加载中...
+        </div>
+      )}
+
+      {!loading && records.length === 0 && (
+        <div style={{padding:48,textAlign:'center',color:'var(--fg3)'}}>暂无识别记录</div>
+      )}
+
+      {!loading && records.length > 0 && (
+        <div style={{display:'grid',gridTemplateColumns:selected?'1fr 1.2fr':'1fr',gap:16}}>
+          {/* 左列：列表 */}
+          <div style={{display:'flex',flexDirection:'column',gap:10}}>
+            {records.map(r => (
+              <div key={r.id}
+                onClick={() => setSelected(selected?.id === r.id ? null : r)}
+                style={{
+                  display:'flex',gap:12,padding:'10px 12px',
+                  background: selected?.id===r.id ? 'var(--bg4)' : 'var(--bg3)',
+                  border:`1px solid ${selected?.id===r.id ? 'var(--gold)' : 'var(--border2)'}`,
+                  borderRadius:8,cursor:'pointer',transition:'all .15s',
+                }}>
+                {/* 缩略图 */}
+                {r.image_url ? (
+                  <img src={r.image_url} alt=""
+                    style={{width:64,height:48,objectFit:'cover',borderRadius:4,flexShrink:0,background:'var(--bg5)'}} />
+                ) : (
+                  <div style={{width:64,height:48,background:'var(--bg5)',borderRadius:4,flexShrink:0,
+                    display:'flex',alignItems:'center',justifyContent:'center'}}>
+                    <Icon name="image" size={20} style={{color:'var(--fg3)'}} />
+                  </div>
+                )}
+                {/* 内容 */}
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:3}}>
+                    <span style={{fontSize:11,fontWeight:600,color:'var(--fg2)',
+                      background:'var(--bg5)',padding:'1px 6px',borderRadius:4}}>
+                      {modelLabel[r.model_type] || r.model_type}
+                    </span>
+                    {r.feedback_type && (
+                      <span style={{display:'inline-flex',alignItems:'center',color: feedbackColor[r.feedback_type]}}>
+                        <Icon name={feedbackIcon[r.feedback_type] || 'check'} size={11} style={{color:'inherit'}}/>
+                      </span>
+                    )}
+                    <span style={{fontSize:11,color:'var(--fg3)',marginLeft:'auto',flexShrink:0}}>
+                      {r.completed_at ? new Date(r.completed_at).toLocaleDateString('zh-CN',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}) : ''}
+                    </span>
+                  </div>
+                  <div style={{
+                    fontSize:12,color:'var(--fg2)',overflow:'hidden',
+                    display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',
+                    lineHeight:1.5,
+                  }}>
+                    {r.ocr_result || '(无结果)'}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* 右列：详情 */}
+          {selected && (
+            <div style={{position:'sticky',top:0,alignSelf:'start'}}>
+              <div className="card" style={{padding:'16px 18px'}}>
+                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}}>
+                  <span style={{fontSize:13,fontWeight:600,color:'var(--gold2)'}}>识别详情</span>
+                  <div style={{display:'flex',gap:6}}>
+                    <button className="btn btn-sm btn-s" onClick={() => copyText(selected.ocr_result)}>
+                      <span className="with-ic"><Icon name="copy" size={12} />复制</span>
+                    </button>
+                    <button className="btn btn-sm btn-s" onClick={() => setSelected(null)}>✕</button>
+                  </div>
+                </div>
+                {selected.image_url && (
+                  <img src={selected.image_url} alt=""
+                    style={{width:'100%',maxHeight:200,objectFit:'contain',borderRadius:6,
+                      background:'var(--bg4)',marginBottom:12}} />
+                )}
+                <div style={{fontSize:11,color:'var(--fg3)',marginBottom:8}}>LaTeX 预览</div>
+                <div style={{minHeight:80,padding:'10px 12px',background:'var(--bg4)',
+                  borderRadius:6,fontSize:14,lineHeight:1.9,marginBottom:10}}>
+                  <div ref={mathJaxRef} />
+                </div>
+                <div style={{fontSize:11,color:'var(--fg3)',marginBottom:4}}>原文</div>
+                <pre style={{
+                  margin:0,padding:'10px 12px',background:'var(--bg4)',borderRadius:6,
+                  fontSize:12,color:'var(--fg)',fontFamily:'monospace',lineHeight:1.6,
+                  whiteSpace:'pre-wrap',wordBreak:'break-all',maxHeight:200,overflowY:'auto',
+                }}>
+                  {selected.ocr_result}
+                </pre>
+                {selected.feedback_text && (
+                  <div style={{marginTop:10,padding:'8px 12px',background:'var(--bg4)',
+                    borderRadius:6,fontSize:12,color:'var(--fg2)'}}>
+                    <span style={{color:'#5a8ac4',fontWeight:600}}>修改反馈：</span>{selected.feedback_text}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -870,6 +1051,12 @@ function OCRWork({pages, setPages, apiKey, keyMode, ocrPrompt, activePageIdx, se
   const [selected, setSelected] = React.useState(() => new Set(pages.map(p => p.id)));
   const [running, setRunning] = React.useState(false);
   const abortRef = React.useRef(false);
+  const isMountedRef = React.useRef(true);
+
+  // 组件卸载时清理
+  React.useEffect(() => {
+    return () => { isMountedRef.current = false; };
+  }, []);
 
   const toggle = (id) => setSelected(prev => { const n=new Set(prev); n.has(id)?n.delete(id):n.add(id); return n; });
   const doneCount = pages.filter(p => p.status === 'done').length;
@@ -891,7 +1078,7 @@ function OCRWork({pages, setPages, apiKey, keyMode, ocrPrompt, activePageIdx, se
     if (!targets.length) { showAlert('没有待处理页面', '提示'); return; }
     setRunning(true); abortRef.current = false;
     for (const page of targets) {
-      if (abortRef.current) break;
+      if (abortRef.current || !isMountedRef.current) break;
       setPages(prev => prev.map(p => p.id===page.id ? {...p, status:'processing'} : p));
       const b64 = page.dataUrl.replace(/^data:image\/\w+;base64,/, '');
       try {
@@ -902,12 +1089,14 @@ function OCRWork({pages, setPages, apiKey, keyMode, ocrPrompt, activePageIdx, se
         });
         const data = await resp.json();
         if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
+        if (!isMountedRef.current) break;  // 组件已卸载，停止处理
         setPages(prev => prev.map(p => p.id===page.id ? {...p, status:'done', result:data.text, error:''} : p));
       } catch(e) {
+        if (!isMountedRef.current) break;  // 组件已卸载，停止处理
         setPages(prev => prev.map(p => p.id===page.id ? {...p, status:'error', error:e.message} : p));
       }
     }
-    setRunning(false);
+    if (isMountedRef.current) setRunning(false);
   };
 
   const retryPage = async (pageId) => {
@@ -923,8 +1112,10 @@ function OCRWork({pages, setPages, apiKey, keyMode, ocrPrompt, activePageIdx, se
       });
       const data = await resp.json();
       if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
+      if (!isMountedRef.current) return;  // 组件已卸载
       setPages(prev => prev.map(p => p.id===pageId ? {...p, status:'done', result:data.text, error:''} : p));
     } catch(e) {
+      if (!isMountedRef.current) return;  // 组件已卸载
       setPages(prev => prev.map(p => p.id===pageId ? {...p, status:'error', error:e.message} : p));
     }
   };

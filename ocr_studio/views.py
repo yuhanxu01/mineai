@@ -1,11 +1,15 @@
+import io
 import json
 import uuid
 import redis
 import requests
 
+from PIL import Image
+
 from django.db.models import Q
 from django.utils import timezone
 from django.conf import settings
+from django.core.files.base import ContentFile
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
@@ -20,6 +24,8 @@ from .models import OCRProject, OCRPage, OCRUsageQuota
 
 OCR_API_URL = 'https://api.z.ai/api/paas/v4/layout_parsing'
 MAX_B64_SIZE = 40 * 1024 * 1024
+MAX_EDGE = 512          # 上传图片最大边分辨率
+JPEG_QUALITY = 50       # JPEG 压缩质量
 
 
 def _generate_project_id():
@@ -41,7 +47,39 @@ def _generate_callback_token():
     return str(uuid.uuid4())
 
 
-def _get_or_update_quota(user, delta_upload=0, delta_like=0, delta_dislike=0, delta_nonfeedback=0):
+def _process_image(image_file, is_binary=False):
+    """
+    对上传图片进行预处理：
+    - 将最大边缩放至不超过 MAX_EDGE (512)
+    - 普通图片：转 JPEG 50% 压缩
+    - 二值化图片：转 P 模式 PNG
+    返回 (ContentFile, filename)
+    """
+    img = Image.open(image_file)
+
+    # 缩放
+    w, h = img.size
+    if max(w, h) > MAX_EDGE:
+        ratio = MAX_EDGE / max(w, h)
+        img = img.resize((int(w * ratio), int(h * ratio)), Image.LANCZOS)
+
+    buf = io.BytesIO()
+    if is_binary:
+        gray = img.convert('L')
+        p_img = gray.convert('P')
+        p_img.save(buf, format='PNG', optimize=True)
+        filename = 'processed.png'
+    else:
+        rgb = img.convert('RGB')
+        rgb.save(buf, format='JPEG', quality=JPEG_QUALITY, optimize=True)
+        filename = 'processed.jpg'
+
+    buf.seek(0)
+    return ContentFile(buf.read(), name=filename), filename
+
+
+def _get_or_update_quota(user, delta_upload=0, delta_like=0, delta_dislike=0,
+                         delta_nonfeedback=0, delta_edit=0):
     """获取或更新用户今日配额，返回 quota 对象"""
     quota, _ = OCRUsageQuota.objects.get_or_create(
         user=user,
@@ -50,6 +88,7 @@ def _get_or_update_quota(user, delta_upload=0, delta_like=0, delta_dislike=0, de
             'upload_count': 0,
             'like_count': 0,
             'dislike_count': 0,
+            'edit_count': 0,
             'nonfeedback_count': 0,
         }
     )
@@ -59,6 +98,8 @@ def _get_or_update_quota(user, delta_upload=0, delta_like=0, delta_dislike=0, de
         quota.like_count += delta_like
     if delta_dislike:
         quota.dislike_count += delta_dislike
+    if delta_edit:
+        quota.edit_count += delta_edit
     if delta_nonfeedback:
         quota.nonfeedback_count += delta_nonfeedback
     quota.save()
@@ -99,11 +140,6 @@ class OCRRecognizeView(APIView):
     """
     浏览器端把页面渲染成 base64 PNG，POST 到这里，
     后端转发给 OCR API 并把结果原样返回。
-
-    请求体（JSON）：
-        image_b64  str   base64 编码的 PNG（不含 data: 前缀）
-        api_key    str   用户自己的 OCR API 密钥
-        prompt     str   可选，自定义提示词
     """
     permission_classes = [IsAuthenticated]
 
@@ -230,6 +266,7 @@ class OCRProjectDetailView(APIView):
                 'page_num': p.page_num,
                 'ocr_status': p.ocr_status,
                 'ocr_result': p.ocr_result,
+                'image_url': p.image_file.url if p.image_file else None,
                 'feedback_type': p.feedback_type,
                 'feedback_text': p.feedback_text,
                 'submitted_at': p.submitted_at.isoformat() if p.submitted_at else None,
@@ -252,7 +289,7 @@ class OCRPageDetailView(APIView):
             'id': page.id,
             'project_id': page.project.id,
             'page_num': page.page_num,
-            'image_file': page.image_file.url if page.image_file else None,
+            'image_url': page.image_file.url if page.image_file else None,
             'ocr_status': page.ocr_status,
             'ocr_result': page.ocr_result,
             'error_msg': page.error_msg,
@@ -264,7 +301,8 @@ class OCRPageDetailView(APIView):
 
 class OCRUploadView(APIView):
     """
-    上传图片，保存到 media，创建 project/page。
+    上传图片：
+    - 自动缩放（最大边 ≤ 512）并压缩（JPEG 50% 或二值化 P 模式 PNG）
     - API 模式：直接返回 page_id，前端自己 POST /recognize/ 处理
     - Worker 模式：发布任务到 Redis，前端轮询 /pages/<id>/ 等待结果
     """
@@ -274,6 +312,7 @@ class OCRUploadView(APIView):
         image = request.FILES.get('image')
         processing_mode = request.data.get('processing_mode', 'worker')
         project_id = request.data.get('project_id', '').strip()
+        is_binary = request.data.get('is_binary', '0') == '1'
 
         if not image:
             return Response({'error': '请提供图片文件'}, status=status.HTTP_400_BAD_REQUEST)
@@ -282,9 +321,18 @@ class OCRUploadView(APIView):
         try:
             quota = _get_or_update_quota(request.user)
             if quota.left_count <= 0:
-                return Response({'error': '今日识别次数已用完，请明天再试'}, status=status.HTTP_429_TOO_MANY_REQUESTS)
+                return Response({'error': '今日识别次数已用完，点赞/点踩/提交修改可增加次数'},
+                                status=status.HTTP_429_TOO_MANY_REQUESTS)
         except Exception:
             pass
+
+        # 图片预处理：缩放 + 压缩
+        try:
+            processed_file, _ = _process_image(image, is_binary=is_binary)
+        except Exception:
+            # 处理失败时使用原图
+            image.seek(0)
+            processed_file = image
 
         # 创建或获取项目
         if project_id:
@@ -293,7 +341,6 @@ class OCRUploadView(APIView):
             except OCRProject.DoesNotExist:
                 return Response({'error': '项目未找到'}, status=status.HTTP_404_NOT_FOUND)
         else:
-            # 自动创建项目（支持单张图片快速上传）
             project = OCRProject.objects.create(
                 id=_generate_project_id(),
                 user=request.user,
@@ -302,24 +349,21 @@ class OCRUploadView(APIView):
                 processing_mode=processing_mode,
             )
 
-        # 解析模型类型（qing=青·小模型 / xuan=玄·大模型）
         model_type = request.data.get('model_type', 'xuan')
         if model_type not in ('qing', 'xuan'):
             model_type = 'xuan'
 
-        # 创建页面，存储图片文件
         page_num = project.pages.count() + 1
         page = OCRPage.objects.create(
             project=project,
             page_num=page_num,
             image_path='',
-            image_file=image,
+            image_file=processed_file,
             ocr_status='pending',
             model_type=model_type,
             submitted_at=timezone.now(),
         )
 
-        # 更新项目页数
         project.total_pages = project.pages.count()
         project.save()
 
@@ -342,26 +386,24 @@ class OCRUploadView(APIView):
                 "callback_url": f"{site_url}/api/ocr/worker/callback/{callback_token}/",
                 "project_id": project.id,
                 "page_num":   page_num,
-                "model_type": model_type,   # 'qing' | 'xuan'
+                "model_type": model_type,
             }
 
-            # 按模型类型路由到不同 Redis 频道
-            # 青：ocr_tasks_qing  /  玄：ocr_tasks_xuan（兼容旧频道 ocr_tasks）
             channel = f"ocr_tasks_{model_type}"
-
             try:
                 r = _get_redis()
                 r.publish(channel, json.dumps(task_payload))
             except Exception:
-                # Redis 不可用，Worker 降级为 HTTP 轮询时会自行过滤 model_type
                 pass
 
+        image_url = page.image_file.url if page.image_file else None
         return Response({
             'project_id': project.id,
             'page_id':    page.id,
             'model_type': model_type,
+            'image_url':  image_url,
             'status':     'queued',
-            'message':    f'Worker 模式（{"青·小模型" if model_type=="qing" else "玄·大模型"}）：等待 OCR 处理器',
+            'message':    f'MixTeX（{"青·小模型" if model_type=="qing" else "玄·大模型"}）：等待 OCR 处理器',
         }, status=status.HTTP_201_CREATED)
 
 
@@ -391,7 +433,6 @@ class OCRWorkerCallbackView(APIView):
         page.completed_at = timezone.now()
         page.save()
 
-        # 更新项目状态
         project = page.project
         all_pages = project.pages.all()
         done_count = all_pages.filter(ocr_status='done').count()
@@ -405,7 +446,7 @@ class OCRWorkerCallbackView(APIView):
 
 
 class OCRFeedbackView(APIView):
-    """提交反馈（like/dislike/edit）"""
+    """提交反馈（like / dislike / edit）"""
     permission_classes = [IsAuthenticated]
 
     def post(self, request, page_id):
@@ -414,26 +455,28 @@ class OCRFeedbackView(APIView):
         except OCRPage.DoesNotExist:
             return Response({'error': '页面未找到'}, status=status.HTTP_404_NOT_FOUND)
 
-        feedback_type = request.data.get('type')  # 'like' / 'dislike'
+        feedback_type = request.data.get('type')   # 'like' / 'dislike' / 'edit'
         feedback_text = request.data.get('text', '')
 
         old_feedback = page.feedback_type
-        if feedback_type in ['like', 'dislike']:
+        if feedback_type in ['like', 'dislike', 'edit']:
             page.feedback_type = feedback_type
         if feedback_text:
             page.feedback_text = feedback_text
         page.save()
 
-        # 更新配额（仅第一次反馈计入）
+        # 仅第一次反馈计入配额增益
         if not old_feedback:
             try:
                 if feedback_type == 'like':
+                    # 点赞 +0.5次
                     _get_or_update_quota(request.user, delta_like=1, delta_nonfeedback=-1)
                 elif feedback_type == 'dislike':
+                    # 点踩 +0.5次
                     _get_or_update_quota(request.user, delta_dislike=1, delta_nonfeedback=-1)
-                elif feedback_text:
-                    # 编辑反馈：计为 like（旧项目逻辑：编辑+2配额）
-                    _get_or_update_quota(request.user, delta_like=1, delta_nonfeedback=-1)
+                elif feedback_type == 'edit':
+                    # 提交修改 +2次
+                    _get_or_update_quota(request.user, delta_edit=1, delta_nonfeedback=-1)
             except Exception:
                 pass
 
@@ -448,17 +491,46 @@ class OCRQuotaView(APIView):
         try:
             quota = _get_or_update_quota(request.user)
         except Exception:
-            return Response({'left_count': 10, 'upload_count': 0, 'like_count': 0})
+            return Response({'left_count': 50, 'upload_count': 0, 'like_count': 0,
+                             'dislike_count': 0, 'edit_count': 0})
 
         return Response({
-            'quota_date': quota.quota_date.isoformat(),
-            'upload_count': quota.upload_count,
-            'like_count': quota.like_count,
-            'dislike_count': quota.dislike_count,
+            'quota_date':        quota.quota_date.isoformat(),
+            'upload_count':      quota.upload_count,
+            'like_count':        quota.like_count,
+            'dislike_count':     quota.dislike_count,
+            'edit_count':        quota.edit_count,
             'nonfeedback_count': quota.nonfeedback_count,
-            'used_count': quota.used_count,
-            'left_count': quota.left_count,
+            'used_count':        quota.used_count,
+            'left_count':        quota.left_count,
         })
+
+
+class OCRHistoryView(APIView):
+    """获取用户历史识别记录（最近 100 条已完成页面）"""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        pages = (
+            OCRPage.objects
+            .filter(project__user=request.user, ocr_status='done')
+            .select_related('project')
+            .order_by('-completed_at')[:100]
+        )
+        result = []
+        for p in pages:
+            result.append({
+                'id':           p.id,
+                'project_id':   p.project.id,
+                'project_name': p.project.name,
+                'image_url':    p.image_file.url if p.image_file else None,
+                'ocr_result':   p.ocr_result,
+                'feedback_type': p.feedback_type,
+                'feedback_text': p.feedback_text,
+                'model_type':   p.model_type,
+                'completed_at': p.completed_at.isoformat() if p.completed_at else None,
+            })
+        return Response(result)
 
 
 # ─────────────────────────────────────────────────────────────
@@ -481,7 +553,6 @@ class OCREmptyTextView(APIView):
             ocr_status='pending',
             image_file__isnull=False,
         )
-        # 按 model_type 过滤（Worker 传自己负责的类型）
         model_type = request.GET.get('model_type', '')
         if model_type in ('qing', 'xuan'):
             qs = qs.filter(model_type=model_type)
@@ -510,9 +581,7 @@ class OCREmptyTextView(APIView):
 
 
 class OCRSubmitResultView(APIView):
-    """
-    兼容旧 Worker 的结果提交（POST image/{id}/ with text_data）
-    """
+    """兼容旧 Worker 的结果提交（POST image/{id}/ with text_data）"""
     permission_classes = [AllowAny]
 
     def post(self, request, page_id):

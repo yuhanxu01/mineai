@@ -50,22 +50,97 @@ window.MathJax = {
 <script>
 {% include "partials/_banished_engine.html" %}
 </script>
+
+<!-- 关键包：约 1600 行，立即编译，React 挂载后首屏即可交互 -->
 <script type="text/babel" translate="no" class="notranslate">
 {% include "partials/_globals.html" %}
-{% include "partials/_novel.html" %}
+{% include "partials/_critical_extras.html" %}
 {% include "partials/_settings.html" %}
 {% include "partials/_platform.html" %}
+</script>
+
+<!-- 懒加载块：type="text/babel-lazy"，Babel 不自动处理，由 lazyLoadApp 按需编译 -->
+<script type="text/babel-lazy" data-apps="novel memoryforge profile admin">
+{% include "partials/_novel.html" %}
+</script>
+<script type="text/babel-lazy" data-apps="ocr_studio">
 {% include "partials/_ocr.html" %}
+</script>
+<script type="text/babel-lazy" data-apps="paper_lab">
 {% include "partials/_paper.html" %}
+</script>
+<script type="text/babel-lazy" data-apps="knowledge_graph">
 {% include "partials/_kg.html" %}
+</script>
+<script type="text/babel-lazy" data-apps="code_agent">
 {% include "partials/_code_agent.html" %}
+</script>
+<script type="text/babel-lazy" data-apps="claude_bridge">
 {% include "partials/_bridge.html" %}
+</script>
+<script type="text/babel-lazy" data-apps="scan_enhance">
 {% include "partials/_scan.html" %}
+</script>
+<script type="text/babel-lazy" data-apps="question_bank">
 {% include "partials/_qbank.html" %}
+</script>
+<script type="text/babel-lazy" data-apps="doc_reader">
 {% include "partials/_docreader.html" %}
+</script>
+<script type="text/babel-lazy" data-apps="banished">
 {% include "partials/_banished.html" %}
+</script>
+<script type="text/babel-lazy" data-apps="chat">
 {% include "partials/_chat.html" %}
+</script>
+<script type="text/babel-lazy" data-apps="plugin">
 {% include "partials/_plugin.html" %}
+</script>
+
+<!-- 懒加载器：按需 Babel 编译并 eval 到全局作用域 -->
+<script>
+window.__lazyLoadedSlugs = new Set();
+window.__lazyLoadPromises = {};
+
+window.lazyLoadApp = function(slug) {
+  if (window.__lazyLoadPromises[slug]) return window.__lazyLoadPromises[slug];
+
+  var script = document.querySelector(
+    'script[type="text/babel-lazy"][data-apps~="' + slug + '"]'
+  );
+  if (!script) return Promise.resolve();
+
+  var promise = new Promise(function(resolve, reject) {
+    try {
+      var result = Babel.transform(script.textContent, {
+        presets: ['env', 'react'],
+        filename: slug + '.jsx'
+      });
+      // 去掉 "use strict" 后再间接 eval：
+      // 严格模式下 eval 内的函数声明不会提升到全局，去掉后才能注册到 window
+      var code = result.code;
+      if (code.startsWith('"use strict";')) code = code.slice(13);
+      (0, eval)(code);
+      (script.dataset.apps || slug).split(/\s+/).forEach(function(s) {
+        s = s.trim();
+        if (s) {
+          window.__lazyLoadedSlugs.add(s);
+          window.__lazyLoadPromises[s] = Promise.resolve();
+        }
+      });
+      resolve();
+    } catch(err) {
+      console.error('[LazyLoad] 编译失败 ' + slug + ':', err);
+      reject(err);
+    }
+  });
+
+  (script.dataset.apps || slug).split(/\s+/).forEach(function(s) {
+    s = s.trim();
+    if (s) window.__lazyLoadPromises[s] = promise;
+  });
+  return promise;
+};
 </script>
 </body>
 </html>

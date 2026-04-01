@@ -531,6 +531,46 @@ function applyFavicon(favicon) {
   }
 }
 
+// ── 懒加载容器组件 ─────────────────────────────────────────────
+// factory 是一个函数 () => <Component/>，延迟到加载完成后才调用，
+// 避免 JSX children 在 React.createElement 阶段就引用未定义的组件名。
+function LazyApp({ slug, fallbackSlug, factory, preload }) {
+  const effectiveSlug = fallbackSlug || slug;
+  const [loaded, setLoaded] = React.useState(
+    () => !!(window.__lazyLoadedSlugs && window.__lazyLoadedSlugs.has(effectiveSlug))
+  );
+  const [error, setError] = React.useState(null);
+
+  React.useEffect(() => {
+    if (loaded) return;
+    const deps = preload ? [window.lazyLoadApp(preload), window.lazyLoadApp(effectiveSlug)] : [window.lazyLoadApp(effectiveSlug)];
+    Promise.all(deps)
+      .then(() => setLoaded(true))
+      .catch(e => setError(e.message || '加载失败'));
+  }, [effectiveSlug, preload]);
+
+  if (error) return (
+    <div style={{display:'flex',alignItems:'center',justifyContent:'center',
+                 height:'100vh',flexDirection:'column',gap:16,color:'var(--fg2)'}}>
+      <div style={{color:'var(--danger)'}}>模块加载失败：{error}</div>
+      <button className="btn btn-s" onClick={() => window.location.reload()}>刷新重试</button>
+    </div>
+  );
+
+  if (!loaded) return (
+    <div style={{display:'flex',alignItems:'center',justifyContent:'center',
+                 height:'100vh',flexDirection:'column',gap:12,
+                 background:'var(--bg)',color:'var(--fg3)'}}>
+      <div style={{width:32,height:32,borderRadius:'50%',
+                   border:'3px solid var(--bg4)',borderTopColor:'var(--gold)',
+                   animation:'spin 0.8s linear infinite'}} />
+      <div style={{fontSize:13}}>正在加载…</div>
+    </div>
+  );
+
+  return factory();
+}
+
 function Root() {
   const [user, setUser] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
@@ -636,39 +676,42 @@ function Root() {
 
   let pageContent;
   if (route === '#/app/memoryforge') {
-    pageContent = <MemoryForgeApp user={user} onLogout={logout} onUpdateUser={setUser} />;
+    pageContent = <LazyApp slug="memoryforge" fallbackSlug="novel" factory={() => <MemoryForgeApp user={user} onLogout={logout} onUpdateUser={setUser} />} />;
   } else if (route === '#/app/ocr_studio') {
-    pageContent = <OCRStudioApp user={user} onLogout={logout} onUpdateUser={setUser} />;
+    pageContent = <LazyApp slug="ocr_studio" factory={() => <OCRStudioApp user={user} onLogout={logout} onUpdateUser={setUser} />} />;
   } else if (route === '#/app/paper_lab') {
-    pageContent = <PaperLabApp user={user} onLogout={logout} onUpdateUser={setUser} />;
+    // paper_lab 依赖 _ocr.html 末尾的 PA / renderMd 常量，先加载 ocr_studio 再加载 paper_lab
+    pageContent = <LazyApp slug="paper_lab"
+      factory={() => <PaperLabApp user={user} onLogout={logout} onUpdateUser={setUser} />}
+      preload="ocr_studio" />;
   } else if (route === '#/app/knowledge_graph') {
-    pageContent = <KGApp user={user} onLogout={logout} onUpdateUser={setUser} />;
+    pageContent = <LazyApp slug="knowledge_graph" factory={() => <KGApp user={user} onLogout={logout} onUpdateUser={setUser} />} />;
   } else if (route === '#/app/code_agent') {
-    pageContent = <CodeAgentApp user={user} onLogout={logout} onUpdateUser={setUser} />;
+    pageContent = <LazyApp slug="code_agent" factory={() => <CodeAgentApp user={user} onLogout={logout} onUpdateUser={setUser} />} />;
   } else if (route === '#/app/claude_bridge') {
-    pageContent = <ClaudeBridgeApp user={user} onLogout={logout} onUpdateUser={setUser} />;
+    pageContent = <LazyApp slug="claude_bridge" factory={() => <ClaudeBridgeApp user={user} onLogout={logout} onUpdateUser={setUser} />} />;
   } else if (route === '#/app/scan_enhance') {
-    pageContent = <ScanEnhanceApp user={user} onLogout={logout} onUpdateUser={setUser} />;
+    pageContent = <LazyApp slug="scan_enhance" factory={() => <ScanEnhanceApp user={user} onLogout={logout} onUpdateUser={setUser} />} />;
   } else if (route === '#/app/question_bank') {
-    pageContent = <QuestionBankApp user={user} onLogout={logout} onUpdateUser={setUser} />;
+    pageContent = <LazyApp slug="question_bank" factory={() => <QuestionBankApp user={user} onLogout={logout} onUpdateUser={setUser} />} />;
   } else if (route === '#/app/doc_reader') {
-    pageContent = <DocReaderApp user={user} onLogout={logout} onUpdateUser={setUser} />;
+    pageContent = <LazyApp slug="doc_reader" factory={() => <DocReaderApp user={user} onLogout={logout} onUpdateUser={setUser} />} />;
   } else if (route === '#/app/banished') {
-    pageContent = <BanishedApp user={user} onLogout={logout} onUpdateUser={setUser} />;
+    pageContent = <LazyApp slug="banished" factory={() => <BanishedApp user={user} onLogout={logout} onUpdateUser={setUser} />} />;
   } else if (route === '#/app/chat') {
-    pageContent = <ChatApp user={user} onLogout={logout} onUpdateUser={setUser} />;
+    pageContent = <LazyApp slug="chat" factory={() => <ChatApp user={user} onLogout={logout} onUpdateUser={setUser} />} />;
   } else if (route === '#/profile') {
-    pageContent = <UserPanelApp user={user} onLogout={logout} onUpdateUser={setUser} siteConfig={siteConfig} />;
+    pageContent = <LazyApp slug="profile" fallbackSlug="novel" factory={() => <UserPanelApp user={user} onLogout={logout} onUpdateUser={setUser} siteConfig={siteConfig} />} />;
   } else if (route === '#/admin') {
     if (!user?.is_staff) {
       window.setTimeout(() => { window.location.hash = '#/'; }, 0);
       pageContent = null;
     } else {
-      pageContent = <AdminPanelApp user={user} onLogout={logout} />;
+      pageContent = <LazyApp slug="admin" fallbackSlug="novel" factory={() => <AdminPanelApp user={user} onLogout={logout} />} />;
     }
   } else if (route.startsWith('#/app/plugin_')) {
     const pluginSlug = route.slice('#/app/plugin_'.length);
-    pageContent = <PluginRunnerApp pluginSlug={pluginSlug} />;
+    pageContent = <LazyApp slug="plugin" factory={() => <PluginRunnerApp pluginSlug={pluginSlug} />} />;
   } else {
     pageContent = <PlatformHome user={user} onLogout={logout} siteConfig={siteConfig} />;
   }
@@ -681,4 +724,5 @@ function Root() {
   );
 }
 
+ReactDOM.createRoot(document.getElementById('root')).render(<Root/>);
 {% endverbatim %}

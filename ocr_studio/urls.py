@@ -23,6 +23,9 @@ urlpatterns = [
     # 配额
     path('quota/', views.OCRQuotaView.as_view(), name='ocr_quota'),
 
+    # 历史记录
+    path('history/', views.OCRHistoryView.as_view(), name='ocr_history'),
+
     # 兼容旧 Worker 轮询协议
     path('get-empty-text-images/', views.OCREmptyTextView.as_view(), name='ocr_empty_text'),
     path('image/<int:page_id>/', views.OCRSubmitResultView.as_view(), name='ocr_submit_result'),

@@ -142,6 +142,7 @@ class OCRUsageQuota(models.Model):
     upload_count = models.IntegerField(default=0, verbose_name='上传次数')
     like_count = models.IntegerField(default=0, verbose_name='点赞次数')
     dislike_count = models.IntegerField(default=0, verbose_name='点踩次数')
+    edit_count = models.IntegerField(default=0, verbose_name='提交修改次数')
     nonfeedback_count = models.IntegerField(default=0, verbose_name='未反馈次数')
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='创建时间')
     updated_at = models.DateTimeField(auto_now=True, verbose_name='更新时间')
@@ -156,10 +157,9 @@ class OCRUsageQuota(models.Model):
 
     @property
     def used_count(self):
-        # 复刻旧项目公式：2*nonfeedback - upload + 1.5*like
-        return 2 * self.nonfeedback_count - self.upload_count + 1.5 * self.like_count
+        return max(0, self.upload_count - self.like_count * 0.5 - self.dislike_count * 0.5 - self.edit_count * 2)
 
     @property
     def left_count(self):
-        # 默认每日 10 次上限
-        return max(0, 10 - self.used_count)
+        # 每日 50 次基础额度，点赞/点踩各 +0.5，提交修改 +2
+        return max(0, 50 - self.upload_count + self.like_count * 0.5 + self.dislike_count * 0.5 + self.edit_count * 2)

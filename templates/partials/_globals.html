@@ -452,6 +452,18 @@ const ICONS = {
       <polyline points="21 15 16 10 5 21" />
     </Svg>
   ),
+  'thumb-up': (p) => (
+    <Svg {...p}>
+      <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3H14z"/>
+      <path d="M7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/>
+    </Svg>
+  ),
+  'thumb-down': (p) => (
+    <Svg {...p}>
+      <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3H10z"/>
+      <path d="M17 2h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"/>
+    </Svg>
+  ),
 };
 
 const Icon = ({name, ...props}) => {
@@ -605,5 +617,30 @@ const showConfirm = (message, title = '确认') => {
 window.alert = (message) => {
   showAlert(String(message));
 };
+
+// ── SSE 流式辅助（迁移自 _kg.html，全局共享）──
+async function* streamSSE(url, body, token) {
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json','Authorization':`Token ${token}`},
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok) throw new Error(`${resp.status}: ${await resp.text()}`);
+  const reader = resp.body.getReader();
+  const dec = new TextDecoder();
+  let buf = '';
+  while (true) {
+    const {done, value} = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, {stream: true});
+    const lines = buf.split('\n');
+    buf = lines.pop();
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        try { yield JSON.parse(line.slice(6)); } catch {}
+      }
+    }
+  }
+}
 
 {% endverbatim %}
