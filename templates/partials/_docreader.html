@@ -1,8 +1,9 @@
 {% verbatim %}
-// ── 文档阅读器应用组件 ────────────────────────────────────────
-// 支持 PDF/MD 文档阅读，GLM-OCR 解析，可视化分段，LLM 对话
+// ── Document Reader app component ─────────────────────────────
+// Supports PDF/MD reading, GLM-OCR parsing, visual segmentation, and LLM chat
 
 function DocReaderApp({user, onLogout, onUpdateUser}) {
+  const lang = localStorage.getItem('mf_lang') === 'en' ? 'en' : 'zh';
   const [v, setV] = useState('documents'); // documents, reader, chat
   const [documents, setDocuments] = useState([]);
   const [currentDoc, setCurrentDoc] = useState(null);
@@ -24,7 +25,10 @@ function DocReaderApp({user, onLogout, onUpdateUser}) {
   const [pdfLoaded, setPdfLoaded] = useState(!!window.pdfjsLib);
   const [dragActive, setDragActive] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [textContent, setTextContent] = useState('');
   const fileInputRef = useRef(null);
+
+  const isTextFile = (name) => /\.(out|txt|log|md|csv|tsv|sh|py|js|ts|yaml|yml|json|xml|ini|conf|cfg|err|slurmout)$/i.test(name);
 
   const token = localStorage.getItem('mf_token');
 
@@ -105,7 +109,7 @@ function DocReaderApp({user, onLogout, onUpdateUser}) {
     });
     const data = await res.json();
     if (!res.ok) {
-      throw new Error(data.error || '创建文档失败');
+      throw new Error(data.error || 'Failed to create document');
     }
     return data;
   };
@@ -113,11 +117,11 @@ function DocReaderApp({user, onLogout, onUpdateUser}) {
   // 加载本地 PDF 文档，支持自动创建项目
   const loadLocalPDF = async (file, existingDoc = null, shouldCreate = true) => {
     if (!pdfLoaded) {
-      showAlert('PDF.js 加载中，请稍候...', '提示');
+      showAlert('PDF.js is loading, please wait...', 'Tip');
       return;
     }
     if (!file || !file.name.toLowerCase().endsWith('.pdf')) {
-      showAlert('请导入 PDF 文件', '提示');
+      showAlert('Please import a PDF file', 'Tip');
       return;
     }
 
@@ -138,8 +142,8 @@ function DocReaderApp({user, onLogout, onUpdateUser}) {
           });
           setDocuments(prev => [serverDoc, ...prev.filter(d => d.id !== serverDoc.id)]);
         } catch (createErr) {
-          console.warn('自动创建文档项目失败，将使用本地阅读模式:', createErr);
-          showAlert('已进入本地阅读模式（自动创建文档失败，可稍后重试）', '提示');
+          console.warn('Auto-create document project failed; falling back to local reading mode:', createErr);
+          showAlert('Entered local reading mode (auto-create failed; you can retry later)', 'Tip');
         }
       }
 
@@ -160,25 +164,74 @@ function DocReaderApp({user, onLogout, onUpdateUser}) {
       setPdfDoc(pdf);
       setCurrentPage(1);
     } catch (err) {
-      console.error('PDF加载失败:', err);
-      showAlert(`PDF加载失败: ${err.message}`, '错误');
+      console.error('PDF load failed:', err);
+      showAlert(`PDF load failed: ${err.message}`, 'Error');
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const loadLocalText = async (file, existingDoc = null, shouldCreate = true) => {
+    try {
+      setImporting(true);
+      const text = await file.text();
+
+      let serverDoc = existingDoc;
+      if (!serverDoc && shouldCreate) {
+        try {
+          serverDoc = await createDocumentProject({
+            name: file.name,
+            fileType: 'text',
+            totalPages: 1,
+            fileSize: file.size,
+          });
+          setDocuments(prev => [serverDoc, ...prev.filter(d => d.id !== serverDoc.id)]);
+        } catch (e) {
+          console.warn('Auto-create text doc failed; local mode:', e);
+        }
+      }
+
+      const localDoc = {
+        ...(serverDoc || {}),
+        id: (serverDoc && serverDoc.id) || `local-${Date.now()}`,
+        name: (serverDoc && serverDoc.name) || file.name,
+        file_type: 'text',
+        total_pages: 1,
+        file_size: (serverDoc && serverDoc.file_size) || file.size,
+      };
+
+      // Pre-populate selectedSegments from paragraphs so AI chat can use them
+      const paras = text.split(/\n{2,}/).map(s => s.trim()).filter(Boolean);
+      setTextContent(text);
+      setSelectedSegments(paras.slice(0, 200)); // cap at 200 segments
+      setCurrentDoc(localDoc);
+      setV('reader');
+      setOcrResults({});
+      setPdfDoc(null);
+      setCurrentPage(1);
+    } catch (err) {
+      showAlert(`Text load failed: ${err.message}`, 'Error');
     } finally {
       setImporting(false);
     }
   };
 
   const openExistingDocument = async (doc) => {
-    if (doc.file_type !== 'pdf') {
-      showAlert('当前仅支持 PDF 阅读', '提示');
+    if (doc.file_type !== 'pdf' && doc.file_type !== 'text') {
+      showAlert('Only PDF and text reading is supported for now', 'Tip');
       return;
     }
     const picker = document.createElement('input');
     picker.type = 'file';
-    picker.accept = '.pdf';
+    picker.accept = doc.file_type === 'pdf' ? '.pdf' : '.out,.txt,.log,.md,.csv,.tsv,.sh,.py,.js,.yaml,.yml,.json,.conf,.ini';
     picker.onchange = async (e) => {
       const file = e.target.files && e.target.files[0];
       if (!file) return;
-      await loadLocalPDF(file, doc, false);
+      if (doc.file_type === 'text' || isTextFile(file.name)) {
+        await loadLocalText(file, doc, false);
+      } else {
+        await loadLocalPDF(file, doc, false);
+      }
     };
     picker.click();
   };
@@ -186,7 +239,11 @@ function DocReaderApp({user, onLogout, onUpdateUser}) {
   const handlePickedFile = async (e) => {
     const file = e.target.files && e.target.files[0];
     if (!file) return;
-    await loadLocalPDF(file, null, true);
+    if (isTextFile(file.name)) {
+      await loadLocalText(file, null, true);
+    } else {
+      await loadLocalPDF(file, null, true);
+    }
     e.target.value = '';
   };
 
@@ -196,7 +253,11 @@ function DocReaderApp({user, onLogout, onUpdateUser}) {
     setDragActive(false);
     const file = e.dataTransfer.files && e.dataTransfer.files[0];
     if (!file) return;
-    await loadLocalPDF(file, null, true);
+    if (isTextFile(file.name)) {
+      await loadLocalText(file, null, true);
+    } else {
+      await loadLocalPDF(file, null, true);
+    }
   };
 
   // 渲染当前页面为图片
@@ -217,7 +278,7 @@ function DocReaderApp({user, onLogout, onUpdateUser}) {
   const uploadPage = async (pageNum) => {
     const canUseServer = currentDoc && currentDoc.id && !String(currentDoc.id).startsWith('local-');
     if (!canUseServer) {
-      throw new Error('当前文档未创建服务端项目，无法上传页面');
+      throw new Error('This document has no server-side project yet, so pages cannot be uploaded');
     }
     const dataUrl = await renderPageToImage(pageNum);
     const base64 = dataUrl.split(',')[1];
@@ -244,10 +305,10 @@ function DocReaderApp({user, onLogout, onUpdateUser}) {
   const parsePage = async (pageNum) => {
     const canUseServer = currentDoc && currentDoc.id && !String(currentDoc.id).startsWith('local-');
     if (!canUseServer) {
-      showAlert('当前文档仅本地阅读，无法解析。请重新导入并自动创建文档项目。', '提示');
+      showAlert('This document is local-only and cannot be parsed. Please re-import it and create a document project automatically.', 'Tip');
       return null;
     }
-    setParseProgress({current: pageNum, total: pageNum, status: `正在解析第 ${pageNum} 页...`});
+    setParseProgress({current: pageNum, total: pageNum, status: `Parsing page ${pageNum}...`});
     const res = await fetch(`/api/reader/documents/${currentDoc.id}/pages/${pageNum}/parse/`, {
       method: 'POST',
       headers: {'Authorization': `Token ${token}`},
@@ -264,7 +325,7 @@ function DocReaderApp({user, onLogout, onUpdateUser}) {
   const batchParse = async (pageNumbers) => {
     const canUseServer = currentDoc && currentDoc.id && !String(currentDoc.id).startsWith('local-');
     if (!canUseServer) {
-      showAlert('当前文档仅本地阅读，无法批量解析。请重新导入并自动创建文档项目。', '提示');
+      showAlert('This document is local-only and cannot be batch parsed. Please re-import it and create a document project automatically.', 'Tip');
       return;
     }
     
@@ -274,18 +335,18 @@ function DocReaderApp({user, onLogout, onUpdateUser}) {
       // Check if page already has image cached on server
       const pageInfo = currentDoc.pages?.find(p => p.page_num === pageNum);
       if (!pageInfo || !pageInfo.has_image) {
-        setParseProgress({current: i+1, total: pageNumbers.length, status: `缓存第 ${pageNum} 页图片...`});
+        setParseProgress({current: i+1, total: pageNumbers.length, status: `Caching page ${pageNum} image...`});
         try {
           await uploadPage(pageNum);
         } catch (e) {
-          showAlert(`缓存第 ${pageNum} 页失败: ${e.message}`, '错误');
+          showAlert(`Failed to cache page ${pageNum}: ${e.message}`, 'Error');
           setParseProgress({current: 0, total: 0, status: ''});
           return;
         }
       }
     }
 
-    setParseProgress({current: 0, total: pageNumbers.length, status: '准备解析...'});
+    setParseProgress({current: 0, total: pageNumbers.length, status: 'Preparing to parse...'});
 
     const res = await fetch(`/api/reader/documents/${currentDoc.id}/parse/batch/`, {
       method: 'POST',
@@ -308,14 +369,14 @@ function DocReaderApp({user, onLogout, onUpdateUser}) {
         if (line.startsWith('data: ')) {
           const data = JSON.parse(line.slice(6));
           if (data.type === 'progress') {
-            setParseProgress({current: data.page_num, total: pageNumbers.length, status: `解析第 ${data.page_num} 页...`});
+            setParseProgress({current: data.page_num, total: pageNumbers.length, status: `Parsing page ${data.page_num}...`});
           } else if (data.type === 'success') {
             setOcrResults(prev => ({...prev, [data.page_num]: {...data, ocr_status: 'done'}}));
           } else if (data.type === 'error') {
-            showAlert(`第 ${data.page_num} 页解析失败: ${data.message}`, '错误');
+            showAlert(`Page ${data.page_num} failed to parse: ${data.message}`, 'Error');
             setOcrResults(prev => ({...prev, [data.page_num]: {ocr_status: 'error', error_msg: data.message}}));
           } else if (data.type === 'done') {
-            setParseProgress({current: 0, total: 0, status: `完成！成功 ${data.completed}，失败 ${data.failed}`});
+            setParseProgress({current: 0, total: 0, status: `Completed! Success ${data.completed}, failed ${data.failed}`});
             
             // Reload document details to update server state
             if (currentDoc && currentDoc.id && !String(currentDoc.id).startsWith('local-')) {
@@ -344,22 +405,22 @@ function DocReaderApp({user, onLogout, onUpdateUser}) {
   const sendMessage = async () => {
     const canUseServer = currentDoc && currentDoc.id && !String(currentDoc.id).startsWith('local-');
     if (!canUseServer) {
-      showAlert('当前文档仅本地阅读，AI对话需先创建服务端文档项目。', '提示');
+      showAlert(lang === 'en' ? 'This document is local-only. AI chat requires creating a server-side document project first.' : '该文档仅为本地预览。AI 对话需要先创建服务器端文档项目。', lang === 'en' ? 'Tip' : '提示');
       return;
     }
     if (loading) return;
     if (selectedSegments.length === 0 && instructionType === 'custom') {
-      showAlert('请先选择文本或输入自定义消息', '提示');
+      showAlert('Please select some text or enter a custom message first', 'Tip');
       return;
     }
 
     let content = userMessage;
     if (instructionType === 'translate') {
-      content = '请将以下文本翻译成中文：';
+      content = 'Please translate the following text into Chinese:';
     } else if (instructionType === 'summarize') {
-      content = '请总结以下文本的要点：';
+      content = 'Please summarize the key points of the following text:';
     } else if (instructionType === 'explain') {
-      content = '请详细讲解以下文本的内容，包括背景和含义：';
+      content = 'Please explain the following text in detail, including its background and meaning:';
     }
 
     // 添加用户消息
@@ -411,7 +472,7 @@ function DocReaderApp({user, onLogout, onUpdateUser}) {
               setStreamingContent('');
             }
             if (data.error) {
-              showAlert('错误: ' + data.error, '错误');
+      showAlert('Error: ' + data.error, 'Error');
               setLoading(false);
               return;
             }
@@ -420,7 +481,7 @@ function DocReaderApp({user, onLogout, onUpdateUser}) {
       }
     } catch (err) {
       console.error('发送消息失败:', err);
-      showAlert('发送失败: ' + err.message, '错误');
+      showAlert((lang === 'en' ? 'Send failed: ' : '发送失败：') + err.message, lang === 'en' ? 'Error' : '错误');
     } finally {
       setLoading(false);
     }
@@ -432,7 +493,7 @@ function DocReaderApp({user, onLogout, onUpdateUser}) {
       <div className="app" style={{height:'100vh'}}>
         <aside className={'sb' + (sbOpen ? ' open' : '')} style={{padding:'1rem'}}>
           <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'1.5rem'}}>
-            <h2 style={{margin:0, fontSize:'1.2rem', color:'var(--gold)', fontFamily:'var(--serif)'}} className="with-ic"><Icon name="file-text" size={16}/> 文档阅读器</h2>
+            <h2 style={{margin:0, fontSize:'1.2rem', color:'var(--gold)', fontFamily:'var(--serif)'}} className="with-ic"><Icon name="file-text" size={16}/> {lang === 'en' ? 'Document Reader' : '文档阅读器'}</h2>
             <button className="btn btn-s" onClick={() => setSbOpen(!sbOpen)} style={{padding:'0.3rem 0.6rem', fontSize:'1.2rem'}}>
               <Icon name={sbOpen ? 'x' : 'menu'} size={14}/>
             </button>
@@ -440,42 +501,42 @@ function DocReaderApp({user, onLogout, onUpdateUser}) {
 
           <div style={{marginBottom:'1rem'}}>
             <button className="btn btn-p" style={{width:'100%'}} onClick={() => fileInputRef.current && fileInputRef.current.click()}>
-              + 导入 PDF
+              + {lang === 'en' ? 'Import file' : '导入文件'}
             </button>
             <input
               ref={fileInputRef}
               type="file"
-              accept=".pdf"
+              accept=".pdf,.out,.txt,.log,.md,.csv,.tsv,.sh,.py,.js,.yaml,.yml,.json,.conf,.ini,.err"
               style={{display:'none'}}
               onChange={handlePickedFile}
             />
           </div>
 
           <div style={{marginBottom:'1rem'}}>
-            <button className="btn" style={{width:'100%', background:'var(--bg3)', color:'var(--fg)'}} onClick={() => showAlert('云盘选择功能即将上线', '提示')}>
-              <span className="with-ic"><Icon name="cloud-drive" size={13}/> 从云盘选择</span>
+            <button className="btn" style={{width:'100%', background:'var(--bg3)', color:'var(--fg)'}} onClick={() => showAlert(lang === 'en' ? 'Cloud drive selection is coming soon' : '云盘选择功能即将上线', lang === 'en' ? 'Tip' : '提示')}>
+              <span className="with-ic"><Icon name="cloud-drive" size={13}/>{lang === 'en' ? 'Choose from cloud drive' : '从云盘选择'}</span>
             </button>
           </div>
 
           <div style={{borderTop:'1px solid var(--border)', paddingTop:'1rem', marginBottom:'1rem'}}>
-            <div style={{fontSize:'0.8rem', color:'var(--fg3)', marginBottom:'0.5rem'}}>缓存使用量</div>
+            <div style={{fontSize:'0.8rem', color:'var(--fg3)', marginBottom:'0.5rem'}}>{lang === 'en' ? 'Cache usage' : '缓存用量'}</div>
             <div style={{fontSize:'1.5rem', fontWeight:'bold', color:'var(--gold)'}}>
               {formatSize(cacheUsage.used)} / {formatSize(cacheUsage.quota)}
             </div>
             <div style={{fontSize:'0.8rem', color:cacheUsage.percentage > 90 ? 'var(--danger)' : 'var(--fg3)'}}>
-              {cacheUsage.percentage}% 已使用
+              {cacheUsage.percentage}% {lang === 'en' ? 'used' : '已用'}
             </div>
             {cacheUsage.percentage > 90 && (
               <div style={{fontSize:'0.7rem', color:'var(--danger)', marginTop:'0.3rem'}}>
-                <span className="with-ic"><Icon name="alert" size={11}/> 缓存空间不足</span>
+                <span className="with-ic"><Icon name="alert" size={11}/>{lang === 'en' ? 'Cache space is low' : '缓存空间不足'}</span>
               </div>
             )}
           </div>
         </aside>
 
         <main style={{flex:1, padding:'2rem', overflow:'auto'}}>
-          <h1 style={{marginTop:0, marginBottom:'0.5rem'}}>我的文档</h1>
-          <p style={{marginTop:0, color:'var(--fg3)', marginBottom:'1.2rem'}}>拖入 PDF 立即阅读，系统会自动创建文档项目。</p>
+          <h1 style={{marginTop:0, marginBottom:'0.5rem'}}>{lang === 'en' ? 'My Documents' : '我的文档'}</h1>
+          <p style={{marginTop:0, color:'var(--fg3)', marginBottom:'1.2rem'}}>{lang === 'en' ? 'Drag in a PDF to read immediately; a document project will be created automatically.' : '拖入 PDF 即可立即阅读；系统会自动创建文档项目。'}</p>
 
           <section
             onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
@@ -494,17 +555,17 @@ function DocReaderApp({user, onLogout, onUpdateUser}) {
               boxShadow:'0 10px 28px rgba(0,0,0,0.08)',
             }}
           >
-            <div style={{fontWeight:700, marginBottom:'0.3rem'}}><span className="with-ic"><Icon name="upload" size={15}/> 拖拽 PDF 到这里</span></div>
+            <div style={{fontWeight:700, marginBottom:'0.3rem'}}><span className="with-ic"><Icon name="upload" size={15}/>{lang === 'en' ? 'Drag file here' : '拖拽文件到这里'}</span></div>
             <div style={{fontSize:'0.85rem', color:'var(--fg3)'}}>
-              支持“拖入即阅读”，自动创建文档；也可点击此处选择文件
+              {lang === 'en' ? 'PDF · TXT · LOG · OUT · MD · JSON · CSV · and more' : 'PDF · TXT · LOG · OUT · MD · JSON · CSV 等文本类文件'}
             </div>
-            {importing && <div style={{fontSize:'0.8rem', color:'var(--gold)', marginTop:'0.6rem'}}>正在导入中...</div>}
+            {importing && <div style={{fontSize:'0.8rem', color:'var(--gold)', marginTop:'0.6rem'}}>{lang === 'en' ? 'Importing...' : '导入中...'}</div>}
           </section>
 
           {documents.length === 0 ? (
             <div style={{textAlign:'center', padding:'3rem', color:'var(--fg3)'}}>
               <div style={{marginBottom:'1rem'}}><Icon name="file-text" size={34}/></div>
-              <p>还没有文档，拖入一个 PDF 开始阅读吧</p>
+              <p>{lang === 'en' ? 'No documents yet. Drag in a PDF to start reading.' : '暂无文档。拖入 PDF 即可开始阅读。'}</p>
             </div>
           ) : (
             <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(250px, 1fr))', gap:'1rem'}}>
@@ -524,10 +585,10 @@ function DocReaderApp({user, onLogout, onUpdateUser}) {
                     {doc.name}
                   </div>
                   <div style={{fontSize:'0.8rem', color:'var(--fg3)'}}>
-                    {doc.file_type.toUpperCase()} · {doc.total_pages}页
+                    {doc.file_type.toUpperCase()} · {doc.total_pages} pages
                   </div>
                   <div style={{fontSize:'0.7rem', color:'var(--fg3)', marginTop:'0.3rem'}}>
-                    缓存: {doc.cached_pages}/{doc.total_pages}页 ({formatSize(doc.cache_size)})
+                    Cache: {doc.cached_pages}/{doc.total_pages} pages ({formatSize(doc.cache_size)})
                   </div>
                 </div>
               ))}
@@ -550,7 +611,7 @@ function DocReaderApp({user, onLogout, onUpdateUser}) {
         <aside className={'sb' + (sbOpen ? ' open' : '')} style={{padding:'1rem', width:'250px'}}>
           <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'1rem'}}>
             <button className="btn" onClick={() => {setCurrentDoc(null); setV('documents');}} style={{padding:'0.3rem 0.6rem'}}>
-              ← 返回
+              {lang === 'en' ? '← Back' : '← 返回'}
             </button>
             <button className="btn btn-s" onClick={() => setSbOpen(!sbOpen)} style={{padding:'0.3rem 0.6rem', fontSize:'1.2rem'}}>
               <Icon name={sbOpen ? 'x' : 'menu'} size={14}/>
@@ -559,12 +620,12 @@ function DocReaderApp({user, onLogout, onUpdateUser}) {
 
           <h3 style={{marginBottom:'1rem', fontSize:'1rem', color:'var(--gold)'}}>{currentDoc.name}</h3>
 
-          <div style={{marginBottom:'1rem'}}>
+          {currentDoc.file_type === 'pdf' && <div style={{marginBottom:'1rem'}}>
             <button className="btn btn-p" style={{width:'100%', marginBottom:'0.5rem'}} disabled={!canUseServerFeatures} onClick={async () => {
               if (parseProgress.total > 0) return;
               await batchParse([currentPage]);
             }}>
-              {parseProgress.total > 0 ? '解析中...' : '解析当前页'}
+              {parseProgress.total > 0 ? 'Parsing...' : 'Parse current page'}
             </button>
             <button className="btn" style={{width:'100%'}} disabled={!canUseServerFeatures} onClick={async () => {
               if (parseProgress.total > 0) return;
@@ -573,16 +634,16 @@ function DocReaderApp({user, onLogout, onUpdateUser}) {
                 if (!ocrResults[i]) pageNums.push(i);
               }
               if (pageNums.length === 0) {
-                showAlert('所有页面已解析', '提示');
+                showAlert(lang === 'en' ? 'All pages have been parsed' : '所有页面都已解析', lang === 'en' ? 'Tip' : '提示');
                 return;
               }
-              const confirmed = await showConfirm(`将解析 ${pageNums.length} 个页面，继续？`);
+              const confirmed = await showConfirm(lang === 'en' ? `Parse ${pageNums.length} pages? Continue?` : `解析 ${pageNums.length} 页？是否继续？`);
               if (!confirmed) return;
               await batchParse(pageNums);
             }}>
-              {parseProgress.total > 0 ? `解析中 ${parseProgress.current}/${parseProgress.total}` : '批量解析全部'}
+              {parseProgress.total > 0 ? (lang === 'en' ? `Parsing ${parseProgress.current}/${parseProgress.total}` : `解析 ${parseProgress.current}/${parseProgress.total}`) : (lang === 'en' ? 'Parse all' : '解析全部')}
             </button>
-          </div>
+          </div>}
 
           {parseProgress.status && (
             <div style={{padding:'0.5rem', background:'var(--bg3)', borderRadius:'4px', fontSize:'0.8rem', marginBottom:'1rem'}}>
@@ -591,7 +652,7 @@ function DocReaderApp({user, onLogout, onUpdateUser}) {
           )}
 
           <div style={{borderTop:'1px solid var(--border)', paddingTop:'1rem'}}>
-            <div style={{fontSize:'0.8rem', color:'var(--fg3)', marginBottom:'0.5rem'}}>页面导航</div>
+            <div style={{fontSize:'0.8rem', color:'var(--fg3)', marginBottom:'0.5rem'}}>{lang === 'en' ? 'Page navigation' : '页面导航'}</div>
             <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, 1fr)', gap:'0.3rem', maxHeight:'60vh', overflow:'auto'}}>
               {Array.from({length: currentDoc.total_pages}, (_, i) => i + 1).map(pageNum => (
                 <button
@@ -618,22 +679,22 @@ function DocReaderApp({user, onLogout, onUpdateUser}) {
           <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'1rem', background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:'12px', padding:'0.7rem 1rem'}}>
             <div>
               <button className="btn" onClick={() => setCurrentPage(Math.max(1, currentPage - 1))} disabled={currentPage <= 1}>
-                ← 上一页
+                {lang === 'en' ? '← Previous' : '← 上一页'}
               </button>
               <span style={{margin:'0 1rem'}}>
-                第 {currentPage} / {currentDoc.total_pages} 页
+                Page {currentPage} / {currentDoc.total_pages}
               </span>
               <button className="btn" onClick={() => setCurrentPage(Math.min(currentDoc.total_pages, currentPage + 1))} disabled={currentPage >= currentDoc.total_pages}>
-                下一页 →
+                {lang === 'en' ? 'Next →' : '下一页 →'}
               </button>
             </div>
             <button className="btn" onClick={() => setV('chat')} disabled={!canUseServerFeatures}>
-              <span className="with-ic"><Icon name="chat" size={13}/> AI 对话 →</span>
+              <span className="with-ic"><Icon name="chat" size={13}/>{lang === 'en' ? 'AI chat →' : 'AI 对话 →'}</span>
             </button>
           </div>
           {!canUseServerFeatures && (
             <div style={{marginBottom:'1rem', background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:'10px', padding:'0.7rem 0.9rem', color:'var(--fg3)', fontSize:'0.85rem'}}>
-              当前为本地临时阅读，OCR 解析和 AI 对话不可用。通过“导入 PDF”创建项目后可启用这些能力。
+              {lang === 'en' ? 'You are currently in local preview mode. OCR parsing and AI chat are unavailable. Import a PDF to create a project and enable these features.' : '当前处于本地预览模式，OCR 解析和 AI 对话不可用。导入 PDF 并创建项目后即可使用这些功能。'}
             </div>
           )}
 
@@ -656,19 +717,47 @@ function DocReaderApp({user, onLogout, onUpdateUser}) {
                   />
                 </div>
               ) : (
-                <div style={{padding:'1rem', whiteSpace:'pre-wrap', fontFamily:'monospace'}}>
-                  {/* MD/TXT内容 */}
+                <div style={{padding:'1rem 1.2rem', whiteSpace:'pre-wrap', fontFamily:'monospace', fontSize:'0.88rem', lineHeight:'1.7', color:'var(--fg)', wordBreak:'break-word'}}>
+                  {textContent || <span style={{color:'var(--fg3)'}}>(empty)</span>}
                 </div>
               )}
             </div>
 
-            {/* OCR结果 - 可视化分段 */}
+            {/* OCR结果 / 文本段落 */}
             <div style={{width:'350px', background:'var(--bg2)', borderRadius:'8px', padding:'1rem', overflow:'auto'}}>
-              <h4 style={{margin:'0 0 1rem 0', color:'var(--gold)'}}>解析结果</h4>
+              <h4 style={{margin:'0 0 1rem 0', color:'var(--gold)'}}>
+                {currentDoc.file_type === 'text' ? (lang === 'en' ? 'Text segments' : '文本段落') : (lang === 'en' ? 'Parsing results' : '解析结果')}
+              </h4>
 
-              {!ocrData ? (
+              {currentDoc.file_type === 'text' ? (
+                <div>
+                  <div style={{marginBottom:'1rem', display:'flex', alignItems:'center', gap:'0.4rem', flexWrap:'wrap'}}>
+                    <button className=”btn btn-p” style={{fontSize:'0.8rem', padding:'0.3rem 0.6rem'}} onClick={() => {
+                      const paras = textContent.split(/\n{2,}/).map(s => s.trim()).filter(Boolean);
+                      setSelectedSegments(paras.slice(0, 200));
+                    }}>{lang === 'en' ? 'Select all' : '全选'}</button>
+                    <button className=”btn” style={{fontSize:'0.8rem', padding:'0.3rem 0.6rem'}} onClick={() => setSelectedSegments([])}>{lang === 'en' ? 'Clear' : '清空'}</button>
+                    <span style={{fontSize:'0.8rem', color:'var(--fg3)'}}>{lang === 'en' ? `${selectedSegments.length} selected` : `已选 ${selectedSegments.length} 段`}</span>
+                  </div>
+                  {selectedSegments.length === 0 ? (
+                    <div style={{color:'var(--fg3)', fontSize:'0.85rem'}}>{lang === 'en' ? 'No segments selected' : '未选择段落'}</div>
+                  ) : (
+                    selectedSegments.map((seg, idx) => (
+                      <div key={idx} style={{padding:'0.4rem 0.5rem', marginBottom:'0.4rem', background:'var(--bg3)', borderRadius:'4px', fontSize:'0.82rem', cursor:'pointer', border:'1px solid var(--border)'}}
+                        onClick={() => setSelectedSegments(prev => prev.filter((_, i) => i !== idx))}>
+                        <div style={{maxHeight:'80px', overflow:'hidden', wordBreak:'break-word'}}>{seg.substring(0, 200)}{seg.length > 200 && '...'}</div>
+                      </div>
+                    ))
+                  )}
+                  {selectedSegments.length > 0 && (
+                    <button className=”btn btn-p” style={{width:'100%', marginTop:'1rem'}} disabled={!canUseServerFeatures} onClick={() => setV('chat')}>
+                      {lang === 'en' ? 'Send to AI chat →' : '发送到 AI 对话 →'}
+                    </button>
+                  )}
+                </div>
+              ) : !ocrData ? (
                 <div style={{color:'var(--fg3)', fontSize:'0.9rem'}}>
-                  {parseProgress.status || '点击"解析当前页"开始解析'}
+                  {parseProgress.status || (lang === 'en' ? 'Click “Parse current page” to begin' : '点击”解析当前页”开始')}
                 </div>
               ) : (
                 <div>
@@ -677,13 +766,13 @@ function DocReaderApp({user, onLogout, onUpdateUser}) {
                       const allTexts = layoutDetails.map((seg, i) => seg.content || '');
                       setSelectedSegments(allTexts);
                     }}>
-                      全选
+                      {lang === 'en' ? 'Select all' : '全选'}
                     </button>
                     <button className="btn" style={{fontSize:'0.8rem', padding:'0.3rem 0.6rem', marginLeft:'0.5rem'}} onClick={() => setSelectedSegments([])}>
-                      清空
+                      {lang === 'en' ? 'Clear' : '清空'}
                     </button>
                     <span style={{fontSize:'0.8rem', color:'var(--fg3)', marginLeft:'0.5rem'}}>
-                      已选 {selectedSegments.length} 段
+                      {lang === 'en' ? `Selected ${selectedSegments.length} segments` : `已选择 ${selectedSegments.length} 段`}
                     </span>
                   </div>
 
@@ -711,7 +800,7 @@ function DocReaderApp({user, onLogout, onUpdateUser}) {
                       <div style={{fontSize:'0.7rem', color:'var(--fg3)', marginBottom:'0.2rem'}}>
                         <span className="with-ic">
                           <Icon name={segment.label === 'text' ? 'note' : segment.label === 'image' ? 'image' : 'grid'} size={11}/>
-                          <span>索引 {segment.index}</span>
+                          <span>{lang === 'en' ? 'Index' : '序号'} {segment.index}</span>
                         </span>
                       </div>
                       <div style={{maxHeight:'100px', overflow:'hidden'}}>
@@ -728,7 +817,7 @@ function DocReaderApp({user, onLogout, onUpdateUser}) {
                       disabled={!canUseServerFeatures}
                       onClick={() => setV('chat')}
                     >
-                      发送到 AI 对话 →
+                      {lang === 'en' ? 'Send to AI chat →' : '发送到 AI 对话 →'}
                     </button>
                   )}
                 </div>
@@ -747,15 +836,15 @@ function DocReaderApp({user, onLogout, onUpdateUser}) {
         {/* 左侧 - 选中文本预览 */}
         <aside style={{width:'300px', background:'var(--bg2)', padding:'1rem', borderRight:'1px solid var(--border)'}}>
           <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'1rem'}}>
-            <h3 style={{margin:0, fontSize:'1rem', color:'var(--gold)'}}>选中的文本</h3>
+            <h3 style={{margin:0, fontSize:'1rem', color:'var(--gold)'}}>{lang === 'en' ? 'Selected text' : '选中文本'}</h3>
             <button className="btn" onClick={() => setV('reader')} style={{padding:'0.3rem 0.6rem'}}>
-              ← 返回
+              {lang === 'en' ? '← Back' : '← 返回'}
             </button>
           </div>
 
           <div style={{maxHeight:'60vh', overflow:'auto', fontSize:'0.9rem'}}>
             {selectedSegments.length === 0 ? (
-              <div style={{color:'var(--fg3)'}}>未选择任何文本</div>
+              <div style={{color:'var(--fg3)'}}>{lang === 'en' ? 'No text selected' : '未选择文本'}</div>
             ) : (
               selectedSegments.map((text, idx) => (
                 <div key={idx} style={{
@@ -773,30 +862,30 @@ function DocReaderApp({user, onLogout, onUpdateUser}) {
           </div>
 
           <div style={{marginTop:'1rem', borderTop:'1px solid var(--border)', paddingTop:'1rem'}}>
-            <div style={{fontSize:'0.8rem', color:'var(--fg3)', marginBottom:'0.5rem'}}>预设指令</div>
+            <div style={{fontSize:'0.8rem', color:'var(--fg3)', marginBottom:'0.5rem'}}>{lang === 'en' ? 'Preset instructions' : '预设指令'}</div>
             <select
               value={instructionType}
               onChange={(e) => setInstructionType(e.target.value)}
               style={{width:'100%', padding:'0.5rem', background:'var(--bg3)', border:'1px solid var(--border)', color:'var(--fg)', borderRadius:'4px'}}
             >
-              <option value="custom">自定义对话</option>
-              <option value="translate">翻译（中文）</option>
-              <option value="summarize">总结内容</option>
-              <option value="explain">详细讲解</option>
+              <option value="custom">{lang === 'en' ? 'Custom chat' : '自定义对话'}</option>
+              <option value="translate">{lang === 'en' ? 'Translate to Chinese' : '翻译成中文'}</option>
+              <option value="summarize">{lang === 'en' ? 'Summarize' : '总结'}</option>
+              <option value="explain">{lang === 'en' ? 'Explain in detail' : '详细解释'}</option>
             </select>
           </div>
         </aside>
 
         {/* 右侧 - 对话区域 */}
         <main style={{flex:1, display:'flex', flexDirection:'column', padding:'1rem'}}>
-          <h3 style={{margin:'0 0 1rem 0'}}>AI 对话助手</h3>
+          <h3 style={{margin:'0 0 1rem 0'}}>{lang === 'en' ? 'AI chat assistant' : 'AI 对话助手'}</h3>
 
           <div style={{flex:1, overflow:'auto', marginBottom:'1rem', padding:'1rem', background:'var(--bg2)', borderRadius:'8px'}}>
             {chatMessages.length === 0 && !streamingContent ? (
               <div style={{textAlign:'center', color:'var(--fg3)', marginTop:'2rem'}}>
                 <div style={{marginBottom:'1rem'}}><Icon name="chat" size={26}/></div>
-                <p>选择文本后开始对话</p>
-                <p style={{fontSize:'0.9rem'}}>支持翻译、总结、讲解等功能</p>
+                <p>{lang === 'en' ? 'Select text to start chatting' : '选择文本开始对话'}</p>
+                <p style={{fontSize:'0.9rem'}}>{lang === 'en' ? 'Supports translation, summarization, explanation, and more' : '支持翻译、总结、解释等功能'}</p>
               </div>
             ) : (
               <>
@@ -808,7 +897,7 @@ function DocReaderApp({user, onLogout, onUpdateUser}) {
                     background: msg.role === 'user' ? 'var(--bg3)' : 'var(--bg4)',
                   }}>
                     <div style={{fontSize:'0.8rem', color:'var(--fg3)', marginBottom:'0.3rem'}}>
-                      <span className="with-ic"><Icon name={msg.role === 'user' ? 'user' : 'bot'} size={11}/> {msg.role === 'user' ? '你' : '助手'}</span>
+                      <span className="with-ic"><Icon name={msg.role === 'user' ? 'user' : 'bot'} size={11}/> {msg.role === 'user' ? (lang === 'en' ? 'You' : '你') : (lang === 'en' ? 'Assistant' : '助手')}</span>
                     </div>
                     <div style={{whiteSpace:'pre-wrap'}}>{msg.content}</div>
                   </div>
@@ -819,7 +908,7 @@ function DocReaderApp({user, onLogout, onUpdateUser}) {
                     borderRadius:'8px',
                     background:'var(--bg4)',
                   }}>
-                    <div style={{fontSize:'0.8rem', color:'var(--fg3)', marginBottom:'0.3rem'}} className="with-ic"><Icon name="bot" size={11}/> 助手</div>
+                    <div style={{fontSize:'0.8rem', color:'var(--fg3)', marginBottom:'0.3rem'}} className="with-ic"><Icon name="bot" size={11}/> Assistant</div>
                     <div style={{whiteSpace:'pre-wrap'}}>
                       {streamingContent}
                       <span style={{animation:'blink 1s infinite'}}>▌</span>
@@ -836,7 +925,7 @@ function DocReaderApp({user, onLogout, onUpdateUser}) {
               value={userMessage}
               onChange={(e) => setUserMessage(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
-              placeholder={instructionType === 'custom' ? '输入你的问题...' : '点击发送开始处理'}
+              placeholder={instructionType === 'custom' ? (lang === 'en' ? 'Enter your question...' : '输入你的问题…') : (lang === 'en' ? 'Click Send to begin' : '点击发送开始')}
               disabled={loading}
               style={{
                 flex:1,
@@ -853,7 +942,7 @@ function DocReaderApp({user, onLogout, onUpdateUser}) {
               onClick={sendMessage}
               disabled={loading || (selectedSegments.length === 0 && instructionType !== 'custom')}
             >
-              {loading ? '...' : '发送'}
+              {loading ? '...' : (lang === 'en' ? 'Send' : '发送')}
             </button>
           </div>
         </main>
