@@ -1,22 +1,22 @@
 {% extends 'dashboard/base.html' %}
-{% block title %}应用管理{% endblock %}
-{% block page_title %}应用管理{% endblock %}
+{% block title %}App Management{% endblock %}
+{% block page_title %}App Management{% endblock %}
 
 {% block content %}
 <div class="page-header">
   <div class="page-header-left">
-    <h1>应用管理</h1>
-    <p>管理 Hub 中展示的应用条目</p>
+    <h1>App Management</h1>
+    <p>Manage the apps shown in the Hub</p>
   </div>
-  <a href="{% url 'dashboard:app_create' %}" class="btn btn-primary">＋ 新建应用</a>
+  <a href="{% url 'dashboard:app_create' %}" class="btn btn-primary">＋ New App</a>
 </div>
 
 <div class="card">
-  <div class="card-header"><h2>应用列表</h2></div>
+  <div class="card-header"><h2>App List</h2></div>
   <div class="table-wrap">
     <table>
       <thead>
-        <tr><th>图标</th><th>名称</th><th>标识符</th><th>描述</th><th>主题色</th><th>排序</th><th>状态</th><th>操作</th></tr>
+        <tr><th>Icon</th><th>Name</th><th>Slug</th><th>Description</th><th>Color</th><th>Order</th><th>Status</th><th>Actions</th></tr>
       </thead>
       <tbody>
         {% for app in apps %}
@@ -33,22 +33,22 @@
           </td>
           <td class="td-muted">{{ app.order }}</td>
           <td>
-            {% if app.is_active %}<span class="badge badge-success">启用</span>
-            {% else %}<span class="badge badge-muted">停用</span>{% endif %}
+            {% if app.is_active %}<span class="badge badge-success">Active</span>
+            {% else %}<span class="badge badge-muted">Disabled</span>{% endif %}
           </td>
           <td>
             <div class="action-group">
-              <a href="{% url 'dashboard:app_edit' app.pk %}" class="btn btn-outline btn-xs">编辑</a>
+              <a href="{% url 'dashboard:app_edit' app.pk %}" class="btn btn-outline btn-xs">Edit</a>
               <form method="post" action="{% url 'dashboard:app_delete' app.pk %}"
-                    onsubmit="return confirm('确定删除应用 {{ app.name }}？')" style="display:inline">
+                    onsubmit="return confirm('Delete app {{ app.name }}?')" style="display:inline">
                 {% csrf_token %}
-                <button class="btn btn-danger btn-xs" type="submit">删除</button>
+                <button class="btn btn-danger btn-xs" type="submit">Delete</button>
               </form>
             </div>
           </td>
         </tr>
         {% empty %}
-        <tr><td colspan="8"><div class="empty-state"><div class="empty-icon">{% include 'dashboard/_icon.html' with name='grid' size=36 %}</div><p>暂无应用，点击新建按钮添加</p></div></td></tr>
+        <tr><td colspan="8"><div class="empty-state"><div class="empty-icon">{% include 'dashboard/_icon.html' with name='grid' size=36 %}</div><p>No apps yet. Click New App to add one.</p></div></td></tr>
         {% endfor %}
       </tbody>
     </table>

@@ -1,31 +1,31 @@
 {% extends 'dashboard/base.html' %}
-{% block title %}写作项目{% endblock %}
-{% block page_title %}写作项目{% endblock %}
+{% block title %}Writing Projects{% endblock %}
+{% block page_title %}Writing Projects{% endblock %}
 
 {% block content %}
 <div class="page-header">
   <div class="page-header-left">
-    <h1>写作项目</h1>
-    <p>查看和管理所有用户的本地写作项目</p>
+    <h1>Writing Projects</h1>
+    <p>View and manage all users' local writing projects</p>
   </div>
 </div>
 
 <div class="card">
   <div class="card-header">
-    <h2>项目列表</h2>
+    <h2>Project List</h2>
     <form class="search-bar" method="get">
       <div class="search-input">
         <span class="search-icon">{% include 'dashboard/_icon.html' with name='search' size=14 %}</span>
-        <input class="form-control" name="q" value="{{ q }}" placeholder="搜索书名或类型…">
+        <input class="form-control" name="q" value="{{ q }}" placeholder="Search title or genre...">
       </div>
-      <button class="btn btn-outline" type="submit">搜索</button>
-      {% if q %}<a href="{% url 'dashboard:project_list' %}" class="btn btn-outline">清除</a>{% endif %}
+      <button class="btn btn-outline" type="submit">Search</button>
+      {% if q %}<a href="{% url 'dashboard:project_list' %}" class="btn btn-outline">Clear</a>{% endif %}
     </form>
   </div>
   <div class="table-wrap">
     <table>
       <thead>
-        <tr><th>ID</th><th>书名</th><th>类型</th><th>所属用户</th><th>章节数</th><th>最近更新</th><th>操作</th></tr>
+        <tr><th>ID</th><th>Title</th><th>Genre</th><th>User</th><th>Chapters</th><th>Updated</th><th>Actions</th></tr>
       </thead>
       <tbody>
         {% for p in page_obj %}
@@ -33,28 +33,28 @@
           <td class="td-muted">#{{ p.pk }}</td>
           <td><strong>{{ p.title }}</strong></td>
           <td class="td-muted">{{ p.genre|default:"—" }}</td>
-          <td class="td-muted">{{ p.user.email|default:"匿名" }}</td>
-          <td><span class="badge badge-info">{{ p.chapter_count }} 章</span></td>
+          <td class="td-muted">{{ p.user.email|default:"Anonymous" }}</td>
+          <td><span class="badge badge-info">{{ p.chapter_count }} chapters</span></td>
           <td class="td-muted">{{ p.updated_at|date:"Y-m-d" }}</td>
           <td>
             <form method="post" action="{% url 'dashboard:project_delete' p.pk %}"
-                  onsubmit="return confirm('确定删除项目《{{ p.title }}》？所有章节和记忆节点将同步删除！')" style="display:inline">
+                  onsubmit="return confirm('Delete project {{ p.title }}? All chapters and memory nodes will also be deleted!')" style="display:inline">
               {% csrf_token %}
-              <button class="btn btn-danger btn-xs" type="submit">删除</button>
+              <button class="btn btn-danger btn-xs" type="submit">Delete</button>
             </form>
           </td>
         </tr>
         {% empty %}
-        <tr><td colspan="7"><div class="empty-state"><div class="empty-icon">{% include 'dashboard/_icon.html' with name='pen' size=36 %}</div><p>暂无写作项目</p></div></td></tr>
+        <tr><td colspan="7"><div class="empty-state"><div class="empty-icon">{% include 'dashboard/_icon.html' with name='pen' size=36 %}</div><p>No writing projects yet</p></div></td></tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
   {% if page_obj.has_other_pages %}
   <div class="pagination">
-    {% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}&q={{ q }}">上一页</a>{% endif %}
+    {% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}&q={{ q }}">Previous</a>{% endif %}
     <span class="current">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
-    {% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}&q={{ q }}">下一页</a>{% endif %}
+    {% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}&q={{ q }}">Next</a>{% endif %}
   </div>
   {% endif %}
 </div>

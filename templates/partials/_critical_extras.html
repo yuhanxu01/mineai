@@ -1,5 +1,6 @@
 {% verbatim %}
 function AuthScreen({onAuth, siteConfig}) {
+  const lang = getLang();
   const [tab, setTab] = useState('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -36,7 +37,7 @@ function AuthScreen({onAuth, siteConfig}) {
   };
 
   const sendCode = async () => {
-    if (!email) return setError('请先输入邮箱');
+    if (!email) return setError(lang === 'en' ? 'Please enter your email first' : '请先输入邮箱');
     setError(''); setSending(true);
     try {
       const res = await P(`${API}/auth/send-code/`, {email});
@@ -50,7 +51,7 @@ function AuthScreen({onAuth, siteConfig}) {
         setError(msg.error);
       } else {
         // If we can't parse the error, show the raw message for debugging
-        setError(`发送失败: ${e.message?.substring(0, 100) || '未知错误'}`);
+        setError(lang === 'en' ? `Send failed: ${e.message?.substring(0, 100) || 'Unknown error'}` : `发送失败: ${e.message?.substring(0, 100) || '未知错误'}`);
       }
       if (msg.remaining_seconds) startCountdown(msg.remaining_seconds);
     }
@@ -59,7 +60,7 @@ function AuthScreen({onAuth, siteConfig}) {
 
   const submit = async () => {
     if (!email || !password) return;
-    if (tab === 'register' && !code) return setError('请输入验证码');
+    if (tab === 'register' && !code) return setError(lang === 'en' ? 'Please enter the verification code' : '请输入验证码');
     setError(''); setLoading(true);
     try {
       const url = tab === 'login' ? `${API}/auth/login/` : `${API}/auth/register/`;
@@ -69,20 +70,20 @@ function AuthScreen({onAuth, siteConfig}) {
       onAuth(res);
     } catch(e) {
       const msg = parseErr(e);
-      setError(msg.error || '网络错误，请重试');
+      setError(msg.error || (lang === 'en' ? 'Network error, please try again' : '网络错误，请重试'));
     }
     setLoading(false);
   };
 
   const submitForgot = async () => {
-    if (!email) return setError('请输入邮箱');
+    if (!email) return setError(lang === 'en' ? 'Please enter your email' : '请输入邮箱');
     setError(''); setLoading(true);
     try {
       await P(`${API}/auth/forgot-password/`, {email});
       setForgotSent(true);
     } catch(e) {
       const msg = parseErr(e);
-      setError(msg.error || '发送失败，请重试');
+      setError(msg.error || (lang === 'en' ? 'Send failed, please try again' : '发送失败，请重试'));
     }
     setLoading(false);
   };
@@ -99,12 +100,12 @@ function AuthScreen({onAuth, siteConfig}) {
           <img src="/static/favicon-mineai.svg" alt="MineAI" style={{width:36,height:36,display:'inline-block'}} />
           {siteConfig?.site_title || 'MineAI'}
         </h1>
-        <p style={{color:'var(--fg3)',marginBottom:28,fontSize:12,letterSpacing:2}}>{siteConfig?.site_subtitle || '多功能应用集成工作台'}</p>
+        <p style={{color:'var(--fg3)',marginBottom:28,fontSize:12,letterSpacing:2}}>{siteConfig?.site_subtitle || (lang === 'en' ? 'Multi-app integration workspace' : '多功能应用集成工作台')}</p>
         <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:12,padding:28}}>
           {tab !== 'forgot' && (
             <div className="tabs" style={{marginBottom:20}}>
-              <div className={`tab ${tab==='login'?'on':''}`} onClick={()=>switchTab('login')}>登录</div>
-              <div className={`tab ${tab==='register'?'on':''}`} onClick={()=>switchTab('register')}>注册</div>
+              <div className={`tab ${tab==='login'?'on':''}`} onClick={()=>switchTab('login')}>{lang === 'en' ? 'Log in' : '登录'}</div>
+              <div className={`tab ${tab==='register'?'on':''}`} onClick={()=>switchTab('register')}>{lang === 'en' ? 'Register' : '注册'}</div>
             </div>
           )}
 
@@ -112,39 +113,39 @@ function AuthScreen({onAuth, siteConfig}) {
             forgotSent ? (
               <div style={{textAlign:'center',padding:'12px 0'}}>
                 <div style={{marginBottom:12}}><Icon name="mail" size={36} /></div>
-                <div style={{color:'var(--fg)',fontSize:14,marginBottom:8}}>重置链接已发送</div>
-                <div style={{color:'var(--fg3)',fontSize:12,marginBottom:20}}>请检查 <b>{email}</b> 的收件箱，链接 30 分钟内有效。</div>
-                <button className="btn btn-s" onClick={()=>switchTab('login')} style={{width:'100%'}}>返回登录</button>
+                <div style={{color:'var(--fg)',fontSize:14,marginBottom:8}}>{lang === 'en' ? 'Reset link sent' : '重置链接已发送'}</div>
+                <div style={{color:'var(--fg3)',fontSize:12,marginBottom:20}}>{lang === 'en' ? <>Check the inbox for <b>{email}</b>. The link is valid for 30 minutes.</> : <>请检查 <b>{email}</b> 的收件箱，链接 30 分钟内有效。</>}</div>
+                <button className="btn btn-s" onClick={()=>switchTab('login')} style={{width:'100%'}}>{lang === 'en' ? 'Back to Log in' : '返回登录'}</button>
               </div>
             ) : (
               <>
                 <div style={{textAlign:'left',marginBottom:16}}>
-                  <div style={{color:'var(--fg)',fontSize:14,fontWeight:600,marginBottom:4}}>忘记密码</div>
-                  <div style={{color:'var(--fg3)',fontSize:12}}>输入注册邮箱，我们将发送重置链接。</div>
+                  <div style={{color:'var(--fg)',fontSize:14,fontWeight:600,marginBottom:4}}>{lang === 'en' ? 'Forgot password' : '忘记密码'}</div>
+                  <div style={{color:'var(--fg3)',fontSize:12}}>{lang === 'en' ? 'Enter your registered email and we will send a reset link.' : '输入注册邮箱，我们将发送重置链接。'}</div>
                 </div>
                 <div className="fg" style={{textAlign:'left'}}>
-                  <label>邮箱</label>
+                  <label>{lang === 'en' ? 'Email' : '邮箱'}</label>
                   <input type="email" value={email} onChange={e=>setEmail(e.target.value)}
                     onKeyDown={e=>e.key==='Enter'&&submitForgot()}
                     placeholder="your@email.com" style={{width:'100%'}}/>
                 </div>
                 {error && <div style={{color:'var(--red)',fontSize:12,marginBottom:12,textAlign:'left',padding:'6px 10px',background:'rgba(196,90,90,.1)',borderRadius:'var(--r)'}}>{error}</div>}
                 <button className="btn btn-p" onClick={submitForgot} disabled={loading||!email} style={{width:'100%',padding:'10px',fontSize:14,marginBottom:10}}>
-                  {loading?'发送中...':'发送重置链接'}
+                  {loading ? (lang === 'en' ? 'Sending...' : '发送中...') : (lang === 'en' ? 'Send Reset Link' : '发送重置链接')}
                 </button>
-                <button className="btn btn-s" onClick={()=>switchTab('login')} style={{width:'100%',fontSize:13}}>返回登录</button>
+                <button className="btn btn-s" onClick={()=>switchTab('login')} style={{width:'100%',fontSize:13}}>{lang === 'en' ? 'Back to Log in' : '返回登录'}</button>
               </>
             )
           ) : (
             <>
               <div className="fg" style={{textAlign:'left'}}>
-                <label>邮箱</label>
+                <label>{lang === 'en' ? 'Email' : '邮箱'}</label>
                 {tab==='register' ? (
                   <div style={{display:'flex',gap:8}}>
                     <input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="your@email.com" style={{flex:1,minWidth:0}}/>
                     <button className="btn btn-s" onClick={sendCode} disabled={sending||countdown>0||!email}
                       style={{flexShrink:0,fontSize:12,padding:'7px 10px',whiteSpace:'nowrap'}}>
-                      {sending?'发送中...':countdown>0?fmtCD(countdown):codeSent?'重新发送':'获取验证码'}
+                      {sending ? (lang === 'en' ? 'Sending...' : '发送中...') : countdown>0 ? fmtCD(countdown) : codeSent ? (lang === 'en' ? 'Resend' : '重新发送') : (lang === 'en' ? 'Get Code' : '获取验证码')}
                     </button>
                   </div>
                 ) : (
@@ -154,30 +155,30 @@ function AuthScreen({onAuth, siteConfig}) {
 
               {tab==='register' && (
                 <div className="fg" style={{textAlign:'left'}}>
-                  <label>验证码
+                  <label>{lang === 'en' ? 'Verification Code' : '验证码'}
                     {codeSent && (
                       <span style={{color:'var(--green)',fontSize:10,marginLeft:8,fontWeight:'normal'}}>
                         <span className="with-ic">
                           <Icon name="check" size={12} />
-                          已发送至邮箱
+                          {lang === 'en' ? 'Sent to email' : '已发送至邮箱'}
                         </span>
                       </span>
                     )}
                   </label>
                   <input value={code} onChange={e=>setCode(e.target.value.replace(/\D/g,'').slice(0,6))}
-                    placeholder="6 位数字验证码" maxLength={6}
+                    placeholder={lang === 'en' ? '6-digit code' : '6 位数字验证码'} maxLength={6}
                     style={{width:'100%',fontFamily:'var(--mono)',letterSpacing:6,fontSize:18,textAlign:'center'}}/>
                 </div>
               )}
 
               <div className="fg" style={{textAlign:'left'}}>
-                <label>密码{tab==='register'?' (至少 6 位)':''}</label>
+                <label>{lang === 'en' ? 'Password' : '密码'}{tab==='register'?(lang === 'en' ? ' (min 6 chars)' : ' (至少 6 位)'):''}</label>
                 <div style={{position:'relative',display:'flex',alignItems:'center'}}>
                   <input type={showPwd?'text':'password'} value={password} onChange={e=>setPassword(e.target.value)}
                     onKeyDown={e=>e.key==='Enter'&&submit()} placeholder="••••••" style={{width:'100%',paddingRight:36}}/>
                   <button type="button" onClick={()=>setShowPwd(v=>!v)}
                     style={{position:'absolute',right:8,background:'none',border:'none',cursor:'pointer',padding:0,color:'var(--muted)',lineHeight:1,fontSize:16}}
-                    title={showPwd?'隐藏密码':'显示密码'}>
+                    title={showPwd ? (lang === 'en' ? 'Hide password' : '隐藏密码') : (lang === 'en' ? 'Show password' : '显示密码')}>
                     {showPwd
                       ? <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
                       : <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
@@ -191,7 +192,7 @@ function AuthScreen({onAuth, siteConfig}) {
               <button className="btn btn-p" onClick={submit}
                 disabled={loading||!email||!password||(tab==='register'&&!code)}
                 style={{width:'100%',padding:'10px',fontSize:14}}>
-                {loading?(tab==='login'?'登录中...':'注册中...'):(tab==='login'?'登录':'注册账号')}
+                {loading ? (tab==='login' ? (lang === 'en' ? 'Logging in...' : '登录中...') : (lang === 'en' ? 'Registering...' : '注册中...')) : (tab==='login' ? (lang === 'en' ? 'Log in' : '登录') : (lang === 'en' ? 'Create Account' : '注册账号'))}
               </button>
 
               {tab==='login' && (
@@ -200,7 +201,7 @@ function AuthScreen({onAuth, siteConfig}) {
                     style={{background:'none',border:'none',cursor:'pointer',color:'var(--fg3)',fontSize:12,padding:0}}
                     onMouseOver={e=>e.target.style.color='var(--gold)'}
                     onMouseOut={e=>e.target.style.color='var(--fg3)'}>
-                    忘记密码？
+                    {lang === 'en' ? 'Forgot password?' : '忘记密码？'}
                   </button>
                 </div>
               )}
@@ -213,6 +214,7 @@ function AuthScreen({onAuth, siteConfig}) {
 }
 
 function ResetPasswordScreen({siteConfig}) {
+  const lang = getLang();
   const token = new URLSearchParams(window.location.hash.split('?')[1] || '').get('token') || '';
   const [password, setPassword] = useState('');
   const [showPwd, setShowPwd] = useState(false);
@@ -222,7 +224,7 @@ function ResetPasswordScreen({siteConfig}) {
 
   const submit = async () => {
     if (!password) return;
-    if (password.length < 6) return setError('密码至少 6 位');
+    if (password.length < 6) return setError(lang === 'en' ? 'Password must be at least 6 characters' : '密码至少 6 位');
     setError(''); setLoading(true);
     try {
       await P(`${API}/auth/reset-password/`, {token, password});
@@ -230,8 +232,8 @@ function ResetPasswordScreen({siteConfig}) {
     } catch(e) {
       try {
         const msg = JSON.parse((e.message || '').replace(/^\d+:\s*/, '').trim());
-        setError(msg.error || '重置失败，请重试');
-      } catch { setError('重置失败，请重试'); }
+        setError(msg.error || (lang === 'en' ? 'Reset failed, please try again' : '重置失败，请重试'));
+      } catch { setError(lang === 'en' ? 'Reset failed, please try again' : '重置失败，请重试'); }
     }
     setLoading(false);
   };
@@ -243,31 +245,31 @@ function ResetPasswordScreen({siteConfig}) {
           <img src="/static/favicon-mineai.svg" alt="MineAI" style={{width:36,height:36,display:'inline-block'}} />
           {siteConfig?.site_title || 'MineAI'}
         </h1>
-        <p style={{color:'var(--fg3)',marginBottom:28,fontSize:12,letterSpacing:2}}>重置密码</p>
+        <p style={{color:'var(--fg3)',marginBottom:28,fontSize:12,letterSpacing:2}}>{lang === 'en' ? 'Reset Password' : '重置密码'}</p>
         <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:12,padding:28}}>
           {!token ? (
-            <div style={{color:'var(--red)',fontSize:13}}>链接无效，请重新申请重置密码。</div>
+            <div style={{color:'var(--red)',fontSize:13}}>{lang === 'en' ? 'Invalid link. Please request a new password reset.' : '链接无效，请重新申请重置密码。'}</div>
           ) : done ? (
             <div style={{textAlign:'center',padding:'8px 0'}}>
               <div style={{marginBottom:12}}><Icon name="check" size={36} /></div>
-              <div style={{color:'var(--fg)',fontSize:14,marginBottom:8}}>密码已重置</div>
-              <div style={{color:'var(--fg3)',fontSize:12,marginBottom:20}}>请使用新密码登录。</div>
-              <button className="btn btn-p" onClick={()=>{window.location.hash='#/login';}} style={{width:'100%'}}>前往登录</button>
+              <div style={{color:'var(--fg)',fontSize:14,marginBottom:8}}>{lang === 'en' ? 'Password reset' : '密码已重置'}</div>
+              <div style={{color:'var(--fg3)',fontSize:12,marginBottom:20}}>{lang === 'en' ? 'Please sign in with your new password.' : '请使用新密码登录。'}</div>
+              <button className="btn btn-p" onClick={()=>{window.location.hash='#/login';}} style={{width:'100%'}}>{lang === 'en' ? 'Go to Log in' : '前往登录'}</button>
             </div>
           ) : (
             <>
               <div style={{textAlign:'left',marginBottom:16}}>
-                <div style={{color:'var(--fg)',fontSize:14,fontWeight:600,marginBottom:4}}>设置新密码</div>
-                <div style={{color:'var(--fg3)',fontSize:12}}>请输入您的新密码（至少 6 位）。</div>
+                <div style={{color:'var(--fg)',fontSize:14,fontWeight:600,marginBottom:4}}>{lang === 'en' ? 'Set a new password' : '设置新密码'}</div>
+                <div style={{color:'var(--fg3)',fontSize:12}}>{lang === 'en' ? 'Enter a new password (at least 6 characters).' : '请输入您的新密码（至少 6 位）。'}</div>
               </div>
               <div className="fg" style={{textAlign:'left'}}>
-                <label>新密码</label>
+                <label>{lang === 'en' ? 'New password' : '新密码'}</label>
                 <div style={{position:'relative',display:'flex',alignItems:'center'}}>
                   <input type={showPwd?'text':'password'} value={password} onChange={e=>setPassword(e.target.value)}
                     onKeyDown={e=>e.key==='Enter'&&submit()} placeholder="••••••" style={{width:'100%',paddingRight:36}}/>
                   <button type="button" onClick={()=>setShowPwd(v=>!v)}
                     style={{position:'absolute',right:8,background:'none',border:'none',cursor:'pointer',padding:0,color:'var(--muted)',lineHeight:1,fontSize:16}}
-                    title={showPwd?'隐藏密码':'显示密码'}>
+                    title={showPwd ? (lang === 'en' ? 'Hide password' : '隐藏密码') : (lang === 'en' ? 'Show password' : '显示密码')}>
                     {showPwd
                       ? <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
                       : <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
@@ -277,7 +279,7 @@ function ResetPasswordScreen({siteConfig}) {
               </div>
               {error && <div style={{color:'var(--red)',fontSize:12,marginBottom:12,textAlign:'left',padding:'6px 10px',background:'rgba(196,90,90,.1)',borderRadius:'var(--r)'}}>{error}</div>}
               <button className="btn btn-p" onClick={submit} disabled={loading||!password} style={{width:'100%',padding:'10px',fontSize:14}}>
-                {loading?'重置中...':'确认重置'}
+                {loading ? (lang === 'en' ? 'Resetting...' : '重置中...') : (lang === 'en' ? 'Confirm Reset' : '确认重置')}
               </button>
             </>
           )}
@@ -289,6 +291,7 @@ function ResetPasswordScreen({siteConfig}) {
 
 // ── Donate Widget ─────────────────────────────────────────────
 function DonateWidget() {
+  const lang = getLang();
   const BTN = 58; // button size px
   const token = localStorage.getItem('mf_token') || '';
   const [open, setOpen] = useState(false);
@@ -334,18 +337,20 @@ function DonateWidget() {
   };
 
   const submitClaim = async () => {
-    if (!token) { setClaimMsg('请先登录后再提交'); return; }
-    if (!noteEmail.trim()) { setClaimMsg('请填写登录邮箱'); return; }
-    if (!amountCny.trim()) { setClaimMsg('请填写赞赏金额'); return; }
+    if (!token) { setClaimMsg(lang === 'en' ? 'Please log in before submitting' : '请先登录后再提交'); return; }
+    if (!noteEmail.trim()) { setClaimMsg(lang === 'en' ? 'Please enter your login email' : '请填写登录邮箱'); return; }
+    if (!amountCny.trim()) { setClaimMsg(lang === 'en' ? 'Please enter the donation amount' : '请填写赞赏金额'); return; }
     setSubmitting(true); setClaimMsg('');
     const note = `${noteEmail.trim()} | 金额: ${amountCny.trim()}`;
     try {
       const res = await P(`${API}/auth/donate/claim/`, {note});
-      setClaimMsg(`✓ 已提交！管理员审核后会发放 ${res.amount_points} 积分，通常在 24 小时内处理。`);
+      setClaimMsg(lang === 'en'
+        ? `✓ Submitted! After review, ${res.amount_points} points will be granted, usually within 24 hours.`
+        : `✓ 已提交！管理员审核后会发放 ${res.amount_points} 积分，通常在 24 小时内处理。`);
       setStep('done'); loadRecords();
     } catch (e) {
-      try { setClaimMsg(JSON.parse(e.message.slice(e.message.indexOf(':') + 2)).error || '提交失败'); }
-      catch { setClaimMsg('提交失败：' + e.message); }
+      try { setClaimMsg(JSON.parse(e.message.slice(e.message.indexOf(':') + 2)).error || (lang === 'en' ? 'Submission failed' : '提交失败')); }
+      catch { setClaimMsg((lang === 'en' ? 'Submission failed: ' : '提交失败：') + e.message); }
     }
     setSubmitting(false);
   };
@@ -411,7 +416,7 @@ function DonateWidget() {
           boxShadow:'0 8px 40px rgba(0,0,0,.55)',
           userSelect:'text',
         }}>
-          <button onClick={dismiss} title="不再显示" style={{
+          <button onClick={dismiss} title={lang === 'en' ? 'Do not show again' : '不再显示'} style={{
             position:'absolute', top:8, right:8, width:24, height:24,
             borderRadius:'50%', border:'none', cursor:'pointer',
             background:'var(--bg4)', color:'var(--fg3)',
@@ -422,7 +427,7 @@ function DonateWidget() {
 
           <div style={{display:'flex', alignItems:'center', gap:7, marginBottom:12}}>
             <Icon name="heart" size={15} style={{color:'var(--gold)'}}/>
-            <span style={{fontWeight:600, fontSize:14, color:'var(--fg)'}}>支持 MineAI</span>
+            <span style={{fontWeight:600, fontSize:14, color:'var(--fg)'}}>{lang === 'en' ? 'Support MineAI' : '支持 MineAI'}</span>
           </div>
 
           {step === 'qr' && (<>
@@ -430,13 +435,13 @@ function DonateWidget() {
             <div style={{borderRadius:10, overflow:'hidden', marginBottom:10, border:'1px solid var(--border)', background:'#fff', minHeight:80, display:'flex', alignItems:'center', justifyContent:'center'}}>
               <img
                 src="/static/donate-qr.png"
-                alt="赞赏码"
+                alt={lang === 'en' ? 'Donation QR code' : '赞赏码'}
                 style={{width:'100%', display:'block'}}
                 onError={e => { e.target.style.display='none'; e.target.nextSibling.style.display='flex'; }}
               />
               <div style={{display:'none', flexDirection:'column', alignItems:'center', padding:'16px 8px', color:'#999', fontSize:12, textAlign:'center'}}>
                 <span style={{fontSize:28, marginBottom:4}}>🖼️</span>
-                请将赞赏码图片放到<br/><code style={{fontSize:10}}>/static/donate-qr.png</code>
+                {lang === 'en' ? <>Put the donation QR image at<br/><code style={{fontSize:10}}>/static/donate-qr.png</code></> : <>请将赞赏码图片放到<br/><code style={{fontSize:10}}>/static/donate-qr.png</code></>}
               </div>
             </div>
 
@@ -444,44 +449,44 @@ function DonateWidget() {
               background:'rgba(201,168,108,.08)', border:'1px solid rgba(201,168,108,.2)',
               borderRadius:8, padding:'8px 10px', marginBottom:10, fontSize:12, lineHeight:1.7,
             }}>
-              <strong style={{color:'var(--gold)'}}>赞赏1元=10积分</strong><br/>
-              <span style={{color:'var(--fg3)'}}>赞赏时备注填写<strong style={{color:'var(--fg2)'}}>登录邮箱</strong>，管理员核实后按金额发放。</span>
+              <strong style={{color:'var(--gold)'}}>{lang === 'en' ? '1 RMB tip = 10 points' : '赞赏1元=10积分'}</strong><br/>
+              <span style={{color:'var(--fg3)'}}>{lang === 'en' ? <>Include your <strong style={{color:'var(--fg2)'}}>login email</strong> in the note, and an admin will award points after verification.</> : <>赞赏时备注填写<strong style={{color:'var(--fg2)'}}>登录邮箱</strong>，管理员核实后按金额发放。</>}</span>
             </div>
 
             <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:6, fontSize:11, textAlign:'center', marginBottom:12}}>
               <div style={{background:'var(--bg3)', borderRadius:6, padding:'6px 4px', border:'1px solid var(--border)'}}>
-                <div style={{color:'var(--gold)', fontWeight:600}}>1 积分</div>
-                <div style={{color:'var(--fg3)', marginTop:2}}>5万输入Token</div>
+                <div style={{color:'var(--gold)', fontWeight:600}}>1 {lang === 'en' ? 'Point' : '积分'}</div>
+                <div style={{color:'var(--fg3)', marginTop:2}}>{lang === 'en' ? '50K input tokens' : '5万输入Token'}</div>
               </div>
               <div style={{background:'var(--bg3)', borderRadius:6, padding:'6px 4px', border:'1px solid var(--border)'}}>
-                <div style={{color:'var(--gold)', fontWeight:600}}>1 积分</div>
-                <div style={{color:'var(--fg3)', marginTop:2}}>2万输出Token</div>
+                <div style={{color:'var(--gold)', fontWeight:600}}>1 {lang === 'en' ? 'Point' : '积分'}</div>
+                <div style={{color:'var(--fg3)', marginTop:2}}>{lang === 'en' ? '20K output tokens' : '2万输出Token'}</div>
               </div>
             </div>
 
             <button className="btn btn-p" onClick={() => setStep('confirm')}
               style={{width:'100%', display:'flex', alignItems:'center', justifyContent:'center', gap:6}}>
-              <Icon name="check" size={14}/> 我已完成赞赏
+              <Icon name="check" size={14}/> {lang === 'en' ? 'I have completed the tip' : '我已完成赞赏'}
             </button>
             {pendingCount > 0 && (
               <div style={{marginTop:8, fontSize:11, color:'var(--gold)', textAlign:'center'}}>
-                {pendingCount} 条记录待审核中...
+                {lang === 'en' ? `${pendingCount} records pending review...` : `${pendingCount} 条记录待审核中...`}
               </div>
             )}
           </>)}
 
           {step === 'confirm' && (<>
             <div style={{marginBottom:12, fontSize:12, color:'var(--fg3)', lineHeight:1.7}}>
-              填写以下信息，管理员核实后发放 <strong style={{color:'var(--gold)'}}>10 积分</strong>。
+              {lang === 'en' ? <>Fill in the details below. After verification, <strong style={{color:'var(--gold)'}}>10 points</strong> will be granted.</> : <>填写以下信息，管理员核实后发放 <strong style={{color:'var(--gold)'}}>10 积分</strong>。</>}
             </div>
             <div className="fg" style={{marginBottom:8}}>
-              <label>登录邮箱（必填）</label>
+              <label>{lang === 'en' ? 'Login email (required)' : '登录邮箱（必填）'}</label>
               <input type="email" placeholder="your@email.com"
                 value={noteEmail} onChange={e => setNoteEmail(e.target.value)} />
             </div>
             <div className="fg" style={{marginBottom:10}}>
-              <label>赞赏金额（必填，如：6元、18元）</label>
-              <input type="text" placeholder="如：6元"
+              <label>{lang === 'en' ? 'Tip amount (required, e.g. $1, $5)' : '赞赏金额（必填，如：6元、18元）'}</label>
+              <input type="text" placeholder={lang === 'en' ? 'e.g. 6 RMB' : '如：6元'}
                 value={amountCny} onChange={e => setAmountCny(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && submitClaim()} />
             </div>
@@ -489,11 +494,11 @@ function DonateWidget() {
               <div style={{marginBottom:8, fontSize:12, color:'var(--red)'}}>{claimMsg}</div>
             )}
             <div style={{display:'flex', gap:8}}>
-              <button className="btn btn-s" onClick={() => setStep('qr')} style={{flex:1}}>返回</button>
+              <button className="btn btn-s" onClick={() => setStep('qr')} style={{flex:1}}>{lang === 'en' ? 'Back' : '返回'}</button>
               <button className="btn btn-p" onClick={submitClaim}
                 disabled={submitting || !noteEmail.trim() || !amountCny.trim()}
                 style={{flex:2, display:'flex', alignItems:'center', justifyContent:'center', gap:5}}>
-                {submitting ? '提交中...' : <><Icon name="send" size={13}/> 提交申请</>}
+                {submitting ? (lang === 'en' ? 'Submitting...' : '提交中...') : <><Icon name="send" size={13}/> {lang === 'en' ? 'Submit Claim' : '提交申请'}</>}
               </button>
             </div>
           </>)}
@@ -508,13 +513,13 @@ function DonateWidget() {
               <div style={{fontSize:13, color:'var(--fg2)', lineHeight:1.7}}>{claimMsg}</div>
             </div>
             <button className="btn btn-s" onClick={() => { setStep('qr'); setClaimMsg(''); setAmountCny(''); setNoteEmail(''); }} style={{width:'100%'}}>
-              再次赞赏
+              {lang === 'en' ? 'Tip again' : '再次赞赏'}
             </button>
           </>)}
 
           {records.length > 0 && step === 'qr' && (
             <div style={{marginTop:10, paddingTop:10, borderTop:'1px solid var(--border)'}}>
-              <div style={{fontSize:11, color:'var(--fg3)', marginBottom:6}}>我的赞赏记录</div>
+              <div style={{fontSize:11, color:'var(--fg3)', marginBottom:6}}>{lang === 'en' ? 'My tip records' : '我的赞赏记录'}</div>
               {records.slice(0,3).map(r => (
                 <div key={r.id} style={{display:'flex', justifyContent:'space-between', fontSize:11, marginBottom:3}}>
                   <span style={{color:'var(--fg3)'}}>{r.created_at}</span>
@@ -530,7 +535,7 @@ function DonateWidget() {
       <div
         onMouseDown={handlePointerDown}
         onTouchStart={handlePointerDown}
-        title="赞赏支持 MineAI（可拖动）"
+        title={lang === 'en' ? 'Support MineAI (draggable)' : '赞赏支持 MineAI（可拖动）'}
         style={{
           width: BTN, height: BTN, borderRadius:'50%',
           background: open ? 'var(--gold)' : 'var(--bg2)',

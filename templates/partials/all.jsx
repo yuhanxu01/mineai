@@ -1480,6 +1480,7 @@ function Setup({onDone, platformConfigured, platformAllowed}) {
 }
 
 function Home({ps, onSel, onRef, user}) {
+  const lang = getLang();
   const [show, setShow] = useState(false);
   const [f, setF] = useState({title:'',genre:'',synopsis:'',style_guide:'',world_setting:''});
   const [cr, setCr] = useState(false);

@@ -1,32 +1,32 @@
 {% extends 'dashboard/base.html' %}
-{% block title %}用户管理{% endblock %}
-{% block page_title %}用户管理{% endblock %}
+{% block title %}User Management{% endblock %}
+{% block page_title %}User Management{% endblock %}
 
 {% block content %}
 <div class="page-header">
   <div class="page-header-left">
-    <h1>用户管理</h1>
-    <p>管理所有注册用户权限与状态</p>
+    <h1>User Management</h1>
+    <p>Manage all registered users, roles, and status</p>
   </div>
-  <a href="{% url 'dashboard:user_create' %}" class="btn btn-primary">＋ 新建用户</a>
+  <a href="{% url 'dashboard:user_create' %}" class="btn btn-primary">＋ New User</a>
 </div>
 
 <div class="card">
   <div class="card-header">
-    <h2>用户列表</h2>
+    <h2>User List</h2>
     <form class="search-bar" method="get">
       <div class="search-input">
         <span class="search-icon">{% include 'dashboard/_icon.html' with name='search' size=14 %}</span>
-        <input class="form-control" name="q" value="{{ q }}" placeholder="搜索邮箱…">
+        <input class="form-control" name="q" value="{{ q }}" placeholder="Search email...">
       </div>
-      <button class="btn btn-outline" type="submit">搜索</button>
-      {% if q %}<a href="{% url 'dashboard:user_list' %}" class="btn btn-outline">清除</a>{% endif %}
+      <button class="btn btn-outline" type="submit">Search</button>
+      {% if q %}<a href="{% url 'dashboard:user_list' %}" class="btn btn-outline">Clear</a>{% endif %}
     </form>
   </div>
   <div class="table-wrap">
     <table>
       <thead>
-        <tr><th>ID</th><th>邮箱</th><th>状态</th><th>权限</th><th>注册来源</th><th>操作</th></tr>
+        <tr><th>ID</th><th>Email</th><th>Status</th><th>Role</th><th>Source</th><th>Actions</th></tr>
       </thead>
       <tbody>
         {% for u in page_obj %}
@@ -34,49 +34,49 @@
           <td class="td-muted">#{{ u.pk }}</td>
           <td><a href="{% url 'dashboard:user_edit' u.pk %}">{{ u.email }}</a></td>
           <td>
-            {% if u.is_active %}<span class="badge badge-success">{% include 'dashboard/_icon.html' with name='check' size=12 %} 正常</span>
-            {% else %}<span class="badge badge-danger">{% include 'dashboard/_icon.html' with name='error' size=12 %} 禁用</span>{% endif %}
+            {% if u.is_active %}<span class="badge badge-success">{% include 'dashboard/_icon.html' with name='check' size=12 %} Active</span>
+            {% else %}<span class="badge badge-danger">{% include 'dashboard/_icon.html' with name='error' size=12 %} Disabled</span>{% endif %}
           </td>
           <td>
-            {% if u.is_superuser %}<span class="badge badge-accent">超管</span>
-            {% elif u.is_staff %}<span class="badge badge-info">员工</span>
-            {% else %}<span class="badge badge-muted">普通</span>{% endif %}
+            {% if u.is_superuser %}<span class="badge badge-accent">Superuser</span>
+            {% elif u.is_staff %}<span class="badge badge-info">Staff</span>
+            {% else %}<span class="badge badge-muted">User</span>{% endif %}
           </td>
           <td class="td-muted">
-            {% if u.user_api_key %}{% include 'dashboard/_icon.html' with name='key' size=12 %} 自定义密钥{% else %}—{% endif %}
+            {% if u.user_api_key %}{% include 'dashboard/_icon.html' with name='key' size=12 %} Custom key{% else %}—{% endif %}
           </td>
           <td>
             <div class="action-group">
-              <a href="{% url 'dashboard:user_edit' u.pk %}" class="btn btn-outline btn-xs">编辑</a>
+              <a href="{% url 'dashboard:user_edit' u.pk %}" class="btn btn-outline btn-xs">Edit</a>
               <form method="post" action="{% url 'dashboard:user_toggle' u.pk %}" style="display:inline">
                 {% csrf_token %}
                 {% if u.is_active %}
-                <button class="btn btn-warning btn-xs" type="submit" style="background:rgba(210,153,34,.1);color:#d29922;border-color:rgba(210,153,34,.3)">禁用</button>
+                <button class="btn btn-warning btn-xs" type="submit" style="background:rgba(210,153,34,.1);color:#d29922;border-color:rgba(210,153,34,.3)">Disable</button>
                 {% else %}
-                <button class="btn btn-success btn-xs" type="submit">激活</button>
+                <button class="btn btn-success btn-xs" type="submit">Activate</button>
                 {% endif %}
               </form>
               {% if not u == request.user %}
               <form method="post" action="{% url 'dashboard:user_delete' u.pk %}" style="display:inline"
-                    onsubmit="return confirm('确定要删除用户 {{ u.email }} 吗？此操作不可撤销！')">
+                    onsubmit="return confirm('Delete user {{ u.email }}? This action cannot be undone!')">
                 {% csrf_token %}
-                <button class="btn btn-danger btn-xs" type="submit">删除</button>
+                <button class="btn btn-danger btn-xs" type="submit">Delete</button>
               </form>
               {% endif %}
             </div>
           </td>
         </tr>
         {% empty %}
-        <tr><td colspan="6"><div class="empty-state"><div class="empty-icon">{% include 'dashboard/_icon.html' with name='user' size=36 %}</div><p>暂无用户</p></div></td></tr>
+        <tr><td colspan="6"><div class="empty-state"><div class="empty-icon">{% include 'dashboard/_icon.html' with name='user' size=36 %}</div><p>No users yet</p></div></td></tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
   {% if page_obj.has_other_pages %}
   <div class="pagination">
-    {% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}&q={{ q }}">上一页</a>{% endif %}
+    {% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}&q={{ q }}">Previous</a>{% endif %}
     <span class="current">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
-    {% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}&q={{ q }}">下一页</a>{% endif %}
+    {% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}&q={{ q }}">Next</a>{% endif %}
   </div>
   {% endif %}
 </div>

@@ -104,6 +104,7 @@
 
 <script>
 (() => {
+  const lang = localStorage.getItem('mf_lang') === 'en' ? 'en' : 'zh';
   const apiBase = '/lan-transfer/api';
   const state = {
     roomCode: '',
@@ -136,12 +137,40 @@
   const recvState = $('recvState');
   const recvProgress = $('recvProgress');
 
+  const T = {
+    title: lang === 'en' ? 'LAN File Transfer' : '局域网大文件直传',
+    subtitle: lang === 'en'
+      ? 'The server only coordinates signaling. File data goes through browser-to-browser WebRTC and does not consume server bandwidth.'
+      : '服务器仅做信令协调，文件数据走浏览器点对点连接（WebRTC），不会经过你的服务器带宽。',
+    createRoom: lang === 'en' ? 'Create Room' : '创建房间',
+    joinRoom: lang === 'en' ? 'Join Room' : '加入房间',
+    joinPlaceholder: lang === 'en' ? 'Enter room code to join' : '输入房间码后加入',
+    noRoom: lang === 'en' ? 'Not in a room yet' : '未加入房间',
+    pickDir: lang === 'en' ? 'Prepare receive folder (recommended)' : '准备接收目录（推荐）',
+    dirHint: lang === 'en' ? 'No folder selected; receiver will fall back to in-memory cache mode (not suitable for huge files).' : '未选择目录，接收端将退回内存缓存模式（不适合超大文件）。',
+    sendFile: lang === 'en' ? 'Send File' : '发送文件',
+    sendIdle: lang === 'en' ? 'Send status: waiting for connection' : '发送状态：等待连接',
+    recvIdle: lang === 'en' ? 'Receive status: waiting for connection' : '接收状态：等待连接',
+  };
+
+  document.title = T.title;
+
   const setStatus = (el, text, ok = null) => {
     el.textContent = text;
     el.classList.remove('ok', 'danger');
     if (ok === true) el.classList.add('ok');
     if (ok === false) el.classList.add('danger');
   };
+
+  $('btnCreate').textContent = T.createRoom;
+  $('btnJoin').textContent = T.joinRoom;
+  joinCode.placeholder = T.joinPlaceholder;
+  roomInfo.textContent = T.noRoom;
+  $('btnPickDir').textContent = T.pickDir;
+  dirState.textContent = T.dirHint;
+  $('btnSend').textContent = T.sendFile;
+  sendState.textContent = T.sendIdle;
+  recvState.textContent = T.recvIdle;
 
   async function apiPost(path, data) {
     const body = new URLSearchParams(data);
@@ -152,7 +181,7 @@
     });
     const json = await resp.json();
     if (!resp.ok || !json.ok) {
-      throw new Error(json.error || `请求失败: ${resp.status}`);
+      throw new Error(json.error || (lang === 'en' ? `Request failed: ${resp.status}` : `请求失败: ${resp.status}`));
     }
     return json;
   }
@@ -162,7 +191,7 @@
     const resp = await fetch(`${apiBase}${path}?${qs.toString()}`);
     const json = await resp.json();
     if (!resp.ok || !json.ok) {
-      throw new Error(json.error || `请求失败: ${resp.status}`);
+      throw new Error(json.error || (lang === 'en' ? `Request failed: ${resp.status}` : `请求失败: ${resp.status}`));
     }
     return json;
   }
@@ -178,7 +207,7 @@
   async function joinRoom() {
     const code = joinCode.value.trim().toUpperCase();
     if (!code) {
-      throw new Error('请先输入房间码');
+      throw new Error(lang === 'en' ? 'Please enter the room code first' : '请先输入房间码');
     }
     const json = await apiPost('/join-room/', { room_code: code });
     state.roomCode = json.room_code;
@@ -188,9 +217,11 @@
   }
 
   function onJoinedRoom() {
-    roomInfo.innerHTML = `房间 <span class="mono">${state.roomCode}</span>，本机ID <span class="mono">${state.peerId.slice(0, 8)}...</span>。正在等待对端...`;
-    setStatus(sendState, '发送状态：等待 DataChannel 打开');
-    setStatus(recvState, '接收状态：等待 DataChannel 打开');
+    roomInfo.innerHTML = lang === 'en'
+      ? `Room <span class="mono">${state.roomCode}</span>, local ID <span class="mono">${state.peerId.slice(0, 8)}...</span>. Waiting for peer...`
+      : `房间 <span class="mono">${state.roomCode}</span>，本机ID <span class="mono">${state.peerId.slice(0, 8)}...</span>。正在等待对端...`;
+    setStatus(sendState, lang === 'en' ? 'Send status: waiting for DataChannel to open' : '发送状态：等待 DataChannel 打开');
+    setStatus(recvState, lang === 'en' ? 'Receive status: waiting for DataChannel to open' : '接收状态：等待 DataChannel 打开');
     btnPickDir.disabled = false;
     startPolling();
     startRoomWatcher();
@@ -213,7 +244,7 @@
           await handleSignal(msg);
         }
       } catch (err) {
-        setStatus(roomInfo, `信令轮询异常：${err.message}`, false);
+        setStatus(roomInfo, lang === 'en' ? `Signaling poll error: ${err.message}` : `信令轮询异常：${err.message}`, false);
       }
     }, 900);
   }
@@ -227,13 +258,15 @@
           room_code: state.roomCode,
           peer_id: state.peerId,
         });
-        roomInfo.innerHTML = `房间 <span class="mono">${info.room_code}</span>，在线人数 ${info.peer_count}/2，${info.is_ready ? '<span class="ok">可开始传输</span>' : '等待对端加入'}。`;
+        roomInfo.innerHTML = lang === 'en'
+          ? `Room <span class="mono">${info.room_code}</span>, online ${info.peer_count}/2, ${info.is_ready ? '<span class="ok">Ready to transfer</span>' : 'waiting for peer to join'}.`
+          : `房间 <span class="mono">${info.room_code}</span>，在线人数 ${info.peer_count}/2，${info.is_ready ? '<span class="ok">可开始传输</span>' : '等待对端加入'}。`;
         if (state.isHost && info.is_ready && !state.offerStarted) {
           state.offerStarted = true;
           await sendOffer();
         }
       } catch (err) {
-        setStatus(roomInfo, `房间状态异常：${err.message}`, false);
+        setStatus(roomInfo, lang === 'en' ? `Room status error: ${err.message}` : `房间状态异常：${err.message}`, false);
       }
     }, 1500);
   }
@@ -250,16 +283,16 @@
       try {
         await sendSignal('candidate', event.candidate);
       } catch (err) {
-        console.warn('candidate 发送失败', err);
+        console.warn(lang === 'en' ? 'candidate send failed' : 'candidate 发送失败', err);
       }
     };
 
     pc.onconnectionstatechange = () => {
       const st = pc.connectionState;
       if (st === 'connected') {
-        setStatus(roomInfo, `房间 ${state.roomCode} 已建立 P2P 连接`, true);
+        setStatus(roomInfo, lang === 'en' ? `Room ${state.roomCode} P2P connection established` : `房间 ${state.roomCode} 已建立 P2P 连接`, true);
       } else if (st === 'failed' || st === 'disconnected') {
-        setStatus(roomInfo, `P2P 连接状态：${st}。请确保双方在同一局域网并允许浏览器网络权限。`, false);
+        setStatus(roomInfo, lang === 'en' ? `P2P connection status: ${st}. Make sure both sides are on the same LAN and browser network access is allowed.` : `P2P 连接状态：${st}。请确保双方在同一局域网并允许浏览器网络权限。`, false);
       }
     };
 
@@ -279,19 +312,19 @@
     channel.onopen = () => {
       fileInput.disabled = false;
       btnSend.disabled = false;
-      setStatus(sendState, '发送状态：DataChannel 已打开，可发送文件', true);
-      setStatus(recvState, '接收状态：已就绪，可接收文件', true);
+      setStatus(sendState, lang === 'en' ? 'Send status: DataChannel open, ready to send files' : '发送状态：DataChannel 已打开，可发送文件', true);
+      setStatus(recvState, lang === 'en' ? 'Receive status: ready to receive files' : '接收状态：已就绪，可接收文件', true);
     };
 
     channel.onclose = () => {
       fileInput.disabled = true;
       btnSend.disabled = true;
-      setStatus(sendState, '发送状态：连接已关闭', false);
-      setStatus(recvState, '接收状态：连接已关闭', false);
+      setStatus(sendState, lang === 'en' ? 'Send status: connection closed' : '发送状态：连接已关闭', false);
+      setStatus(recvState, lang === 'en' ? 'Receive status: connection closed' : '接收状态：连接已关闭', false);
     };
 
     channel.onerror = (e) => {
-      setStatus(sendState, `发送通道错误：${e.message || '未知错误'}`, false);
+      setStatus(sendState, lang === 'en' ? `Send channel error: ${e.message || 'Unknown error'}` : `发送通道错误：${e.message || '未知错误'}`, false);
     };
 
     channel.onmessage = async (event) => {
@@ -384,15 +417,15 @@
   async function sendFile() {
     const file = fileInput.files && fileInput.files[0];
     if (!file) {
-      throw new Error('请先选择文件');
+      throw new Error(lang === 'en' ? 'Please select a file first' : '请先选择文件');
     }
     if (!state.channel || state.channel.readyState !== 'open') {
-      throw new Error('DataChannel 尚未连接');
+      throw new Error(lang === 'en' ? 'DataChannel is not connected yet' : 'DataChannel 尚未连接');
     }
 
     const channel = state.channel;
     sendProgress.value = 0;
-    setStatus(sendState, `发送中：${file.name} (${formatBytes(file.size)})`);
+    setStatus(sendState, lang === 'en' ? `Sending: ${file.name} (${formatBytes(file.size)})` : `发送中：${file.name} (${formatBytes(file.size)})`);
 
     channel.send(JSON.stringify({
       type: 'meta',
@@ -411,12 +444,12 @@
       channel.send(value.buffer);
       sent += value.byteLength;
       sendProgress.value = Math.min(100, (sent / file.size) * 100);
-      setStatus(sendState, `发送中：${file.name} ${Math.floor(sendProgress.value)}%`);
+      setStatus(sendState, lang === 'en' ? `Sending: ${file.name} ${Math.floor(sendProgress.value)}%` : `发送中：${file.name} ${Math.floor(sendProgress.value)}%`);
     }
 
     channel.send(JSON.stringify({ type: 'eof' }));
     sendProgress.value = 100;
-    setStatus(sendState, `发送完成：${file.name}`, true);
+    setStatus(sendState, lang === 'en' ? `Sent: ${file.name}` : `发送完成：${file.name}`, true);
   }
 
   async function onReceiveMeta(meta) {
@@ -436,9 +469,9 @@
         const handle = await state.savingDirHandle.getFileHandle(ctx.name, { create: true });
         ctx.handle = handle;
         ctx.writable = await handle.createWritable();
-        setStatus(recvState, `接收中：${ctx.name}（目录直写模式）`);
+        setStatus(recvState, lang === 'en' ? `Receiving: ${ctx.name} (direct-to-folder mode)` : `接收中：${ctx.name}（目录直写模式）`);
       } catch (err) {
-        setStatus(recvState, `目录写入失败，回退内存模式：${err.message}`, false);
+        setStatus(recvState, lang === 'en' ? `Folder write failed, falling back to memory mode: ${err.message}` : `目录写入失败，回退内存模式：${err.message}`, false);
       }
     }
 
@@ -465,7 +498,7 @@
     if (ctx.size > 0) {
       recvProgress.value = Math.min(100, (ctx.received / ctx.size) * 100);
     }
-    setStatus(recvState, `接收中：${ctx.name} ${Math.floor(recvProgress.value)}%`);
+    setStatus(recvState, lang === 'en' ? `Receiving: ${ctx.name} ${Math.floor(recvProgress.value)}%` : `接收中：${ctx.name} ${Math.floor(recvProgress.value)}%`);
   }
 
   async function onReceiveEnd() {
@@ -474,7 +507,7 @@
 
     if (ctx.writable) {
       await ctx.writable.close();
-      setStatus(recvState, `接收完成：${ctx.name}（已写入所选目录）`, true);
+      setStatus(recvState, lang === 'en' ? `Received: ${ctx.name} (written to selected folder)` : `接收完成：${ctx.name}（已写入所选目录）`, true);
     } else {
       const blob = new Blob(ctx.chunks, { type: ctx.mime });
       const url = URL.createObjectURL(blob);
@@ -483,7 +516,7 @@
       a.download = ctx.name;
       a.click();
       URL.revokeObjectURL(url);
-      setStatus(recvState, `接收完成：${ctx.name}（浏览器下载模式）`, true);
+      setStatus(recvState, lang === 'en' ? `Received: ${ctx.name} (browser download mode)` : `接收完成：${ctx.name}（浏览器下载模式）`, true);
     }
     recvProgress.value = 100;
     state.recvCtx = null;
@@ -491,11 +524,11 @@
 
   async function pickDirectory() {
     if (!window.showDirectoryPicker) {
-      throw new Error('当前浏览器不支持目录选择（建议 Chrome/Edge 最新版）');
+      throw new Error(lang === 'en' ? 'Current browser does not support folder selection (Chrome/Edge latest recommended)' : '当前浏览器不支持目录选择（建议 Chrome/Edge 最新版）');
     }
     const dir = await window.showDirectoryPicker({ mode: 'readwrite' });
     state.savingDirHandle = dir;
-    dirState.textContent = '已选择目录：后续接收会直接写入磁盘，适合超大文件。';
+    dirState.textContent = lang === 'en' ? 'Folder selected: incoming files will be written directly to disk, suitable for very large files.' : '已选择目录：后续接收会直接写入磁盘，适合超大文件。';
   }
 
   function formatBytes(bytes) {
@@ -525,7 +558,7 @@
     try {
       await sendFile();
     } catch (err) {
-      setStatus(sendState, `发送失败：${err.message}`, false);
+      setStatus(sendState, lang === 'en' ? `Send failed: ${err.message}` : `发送失败：${err.message}`, false);
     }
   });
 
@@ -533,7 +566,7 @@
     try {
       await pickDirectory();
     } catch (err) {
-      dirState.textContent = `目录准备失败：${err.message}`;
+      dirState.textContent = lang === 'en' ? `Folder setup failed: ${err.message}` : `目录准备失败：${err.message}`;
       dirState.classList.add('danger');
     }
   });

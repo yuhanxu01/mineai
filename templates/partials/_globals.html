@@ -18,9 +18,189 @@ const F = async (url, o = {}) => {
 };
 const P = (u, d) => F(u, {method:'POST', body:JSON.stringify(d)});
 const U = (u, d) => F(u, {method:'PUT', body:JSON.stringify(d)});
-const displayName = (u) => (u?.is_guest ? '访客' : (u?.email || '访客'));
+const displayName = (u) => (u?.is_guest ? 'Guest' : (u?.email || 'Guest'));
 
-const STATUS_MAP = {outline:'大纲',draft:'草稿',writing:'写作中',review:'审阅',done:'完成'};
+const LANG_KEY = 'mf_lang';
+const SUPPORTED_LANGS = ['zh', 'en'];
+const I18N = {
+  zh: {
+    langName: 'Chinese',
+    language: '语言',
+    switchTo: '切换到英文',
+    searching: '搜索应用，或描述需求让 AI 推荐…',
+    aiRecommend: 'AI 推荐',
+    aiRecommending: 'AI 推荐中…',
+    personalize: '个性化设置',
+    login: '登录',
+    loginRegister: '登录 / 注册',
+    logout: '退出',
+    dashboard: '后台',
+    profile: '个人中心',
+    tokenUsage: 'Token 用量',
+    ownedKey: '自有 API 密钥 · 无限额度',
+    totalQuestions: '总提问次数',
+    totalTokens: '累计 Token',
+    todayInput: '今日输入',
+    todayOutput: '今日输出',
+    appGraph: '应用图谱',
+    appGraphHint: '点击节点可直接跳转到对应应用',
+    appSearchPlaceholder: '描述你的需求，AI 会帮你找到合适的应用…',
+    aiNav: 'AI 导航',
+    appCount: 'Apps',
+    found: '找到',
+    loading: '加载中…',
+    noApp: '没有找到匹配的应用',
+    tryAi: '试试 AI 推荐',
+    todayUsed: '今日已用',
+    today: '今日',
+    input: '输入',
+    output: '输出',
+    limit: '限额',
+    plugin: '插件',
+    shareLink: '分享链接',
+    feedback: '反馈',
+    pin: '固定在首位',
+    unpin: '取消置顶',
+    editColor: '修改应用颜色',
+    aiAppRec: 'AI 应用推荐',
+    thinking: '思考中…',
+    copiedTitle: '已复制 {name} 链接',
+    copyManually: '请手动复制链接:',
+    recommendFailed: '推荐失败，请稍后再试',
+    keySettings: 'API 密钥设置',
+    currentKey: '当前密钥',
+    platformProvided: '平台提供',
+    platformKey: '平台密钥',
+    notConfigured: '未配置',
+    configuredByAdmin: '已配置（由管理员管理）',
+    addYourKey: '添加您的专属密钥',
+    changeRemoveKey: '更换 / 移除您的密钥',
+    ownKeyLabel: '您的 API 密钥',
+    newKeyLabel: '输入新密钥（留空则不更换）',
+    inputKeyPlaceholder: '输入密钥...',
+    saveKey: '保存密钥',
+    saveKeying: '保存中...',
+    removeKey: '移除密钥',
+    removeKeying: '移除中...',
+    about: 'About Memory Forge',
+    aboutDesc: 'Memory Forge implements a layered memory pyramid system inspired by H-MEM and MemGPT, designed for long-form Chinese web novel creation. Core features:',
+    dynamicMemory: 'Dynamic memory evolution:',
+    dynamicMemoryDesc: 'Each memory node has version history, and characters have growth snapshots. The agent can trace changes in beliefs, goals, and relationships over time.',
+    timeline: 'Timeline system:',
+    timelineDesc: 'Automatically extracts plot events, character changes, turning points, and foreshadowing from text to build a complete story timeline.',
+    theme: 'Theme',
+    accent: 'Accent',
+    resetDefault: 'Reset default',
+    done: 'Done',
+    themeVisual: '主题视觉',
+    accentColor: '强调色',
+    customColor: '自定义色值',
+    editAppColorTitle: '自定义「{name}」颜色',
+    cancel: '取消',
+    save: '保存',
+    initializing: '初始化中...',
+    loadingApp: '正在加载…',
+    loadFailed: '加载失败',
+    moduleLoadFailed: '模块加载失败：{error}',
+    retryRefresh: '刷新重试'
+  },
+  en: {
+    langName: 'English',
+    language: 'Language',
+    switchTo: 'Switch to Chinese',
+    searching: 'Search apps or describe what you need...',
+    aiRecommend: 'AI Recommend',
+    aiRecommending: 'Recommending...',
+    personalize: 'Personalize',
+    login: 'Log in',
+    loginRegister: 'Log in / Sign up',
+    logout: 'Log out',
+    dashboard: 'Admin',
+    profile: 'Profile',
+    tokenUsage: 'Token Usage',
+    ownedKey: 'Own API key · Unlimited quota',
+    totalQuestions: 'Total Questions',
+    totalTokens: 'Total Tokens',
+    todayInput: '今日输入',
+    todayOutput: '今日输出',
+    appGraph: 'Feature Navigation Map',
+    appGraphHint: 'Click a node to jump to an app',
+    appSearchPlaceholder: 'Describe what you want to do and AI will find the right app...',
+    aiNav: 'AI Navigate',
+    appCount: 'Apps',
+    found: 'Found',
+    loading: 'Loading...',
+    noApp: 'No matching apps found',
+    tryAi: 'Try "AI Recommend"',
+    todayUsed: 'Today used',
+    today: 'Today',
+    input: 'Input',
+    output: 'Output',
+    limit: 'Limit',
+    plugin: 'Plugin',
+    shareLink: 'Share link',
+    feedback: 'Feedback',
+    pin: 'Pin to top',
+    unpin: 'Unpin',
+    editColor: 'Edit app color',
+    aiAppRec: 'AI App Recommendation',
+    thinking: 'Thinking...',
+    copiedTitle: 'Copied {name} link',
+    copyManually: 'Please copy the link manually:',
+    recommendFailed: 'Recommendation failed, please try again later',
+    keySettings: 'API Key Settings',
+    currentKey: 'Current key',
+    platformProvided: 'Platform provided',
+    platformKey: 'Platform key',
+    notConfigured: 'Not configured',
+    configuredByAdmin: 'Configured by admin',
+    addYourKey: 'Add your own key',
+    changeRemoveKey: 'Change / remove your key',
+    ownKeyLabel: 'Your API key',
+    newKeyLabel: 'Enter a new key (leave blank to keep current)',
+    inputKeyPlaceholder: 'Enter API key...',
+    saveKey: 'Save key',
+    saveKeying: 'Saving...',
+    removeKey: 'Remove key',
+    removeKeying: 'Removing...',
+    about: 'About Memory Forge',
+    aboutDesc: 'Memory Forge implements a layered memory pyramid system inspired by H-MEM and MemGPT, designed for long-form Chinese web novel creation. Core features:',
+    dynamicMemory: 'Dynamic memory evolution:',
+    dynamicMemoryDesc: 'Each memory node keeps version history, and characters have growth snapshots. During writing, the agent can trace changes in beliefs, goals, and relationships, just like a human recalling how ideas and views evolve over time.',
+    timeline: 'Timeline system:',
+    timelineDesc: 'Automatically extracts plot events, character changes, turning points, and foreshadowing from text to build a complete story timeline, giving the agent a full view of story evolution.',
+    theme: 'Theme',
+    accent: 'Accent',
+    resetDefault: 'Reset default',
+    done: 'Done',
+    themeVisual: 'Theme style',
+    accentColor: 'Accent color',
+    customColor: 'Custom color',
+    editAppColorTitle: 'Customize "{name}" color',
+    cancel: 'Cancel',
+    save: 'Save',
+    initializing: 'Initializing...',
+    loadingApp: 'Loading…',
+    loadFailed: 'Load failed',
+    moduleLoadFailed: 'Failed to load module: {error}',
+    retryRefresh: 'Refresh to retry'
+  }
+};
+const getLang = () => (SUPPORTED_LANGS.includes(localStorage.getItem(LANG_KEY)) ? localStorage.getItem(LANG_KEY) : 'zh');
+const setLang = (lang) => { if (SUPPORTED_LANGS.includes(lang)) localStorage.setItem(LANG_KEY, lang); };
+const t = (lang, key, vars = {}) => {
+  const raw = (I18N[lang] && I18N[lang][key]) || I18N.zh[key] || key;
+  return raw.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? '');
+};
+const statusLabel = (lang, value) => {
+  const map = {
+    zh: {outline:'大纲',draft:'草稿',writing:'写作中',review:'审阅',done:'完成'},
+    en: {outline:'Outline',draft:'Draft',writing:'Writing',review:'Review',done:'Done'}
+  };
+  return (map[lang] && map[lang][value]) || value;
+};
+
+const STATUS_MAP = {outline:'Outline',draft:'Draft',writing:'Writing',review:'Review',done:'Done'};
 const EVT_COLORS = {plot:'var(--gold)',character:'var(--cyan)',relation:'var(--purple)',turning:'var(--red)',foreshadow:'var(--orange)',reveal:'var(--green)',worldbuild:'var(--blue)'};
 
 const hexToRgba = (hex, alpha) => {
@@ -517,10 +697,10 @@ const appIconStyle = (app = {}) => {
 // showDialog({title:'提示',message:'确定要删除吗？',onConfirm:()=>{...}})
 const showDialog = (options) => {
   const {
-    title = '提示',
+    title = 'Tip',
     message = '',
-    confirmText = '确定',
-    cancelText = '取消',
+    confirmText = 'Confirm',
+    cancelText = 'Cancel',
     showCancel = true,
     onConfirm = null,
     onCancel = null,
@@ -591,20 +771,20 @@ const showDialog = (options) => {
   };
 };
 
-// 简化的 alert 和 confirm 包装器
-const showAlert = (message, title = '提示') => {
+// Simplified alert / confirm wrappers
+const showAlert = (message, title = getLang() === 'en' ? 'Tip' : '提示') => {
   return new Promise((resolve) => {
     showDialog({title, message, showCancel: false, onConfirm: resolve});
   });
 };
 
-const showConfirm = (message, title = '确认') => {
+const showConfirm = (message, title = getLang() === 'en' ? 'Confirm' : '确认') => {
   return new Promise((resolve) => {
     showDialog({
       title,
       message,
-      confirmText: '确定',
-      cancelText: '取消',
+      confirmText: getLang() === 'en' ? 'Confirm' : '确定',
+      cancelText: getLang() === 'en' ? 'Cancel' : '取消',
       showCancel: true,
       onConfirm: () => resolve(true),
       onCancel: () => resolve(false)

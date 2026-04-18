@@ -1,0 +1,2470 @@
+{% verbatim %}
+// ─── SSH Manager ─────────────────────────────────────────────────────────────
+// 凭据存 localStorage，Django 仅作 SFTP/SSH 临时中继，不写库
+
+const SSH_LS_KEY      = 'mf_ssh_conns';
+const SSH_LAST_CONN   = 'mf_ssh_last_conn';
+const SSH_LAST_DIR_PFX= 'mf_ssh_dir_';
+const SSH_BM_PFX      = 'mf_ssh_bm_';
+
+function loadLastConn() { return localStorage.getItem(SSH_LAST_CONN) || null; }
+function saveLastConn(id) { localStorage.setItem(SSH_LAST_CONN, id); }
+function loadLastDir(id)  { return localStorage.getItem(SSH_LAST_DIR_PFX + id) || '/'; }
+function saveLastDir(id, p){ localStorage.setItem(SSH_LAST_DIR_PFX + id, p); }
+function loadBM(id)  { try { return JSON.parse(localStorage.getItem(SSH_BM_PFX + id) || '[]'); } catch { return []; } }
+function saveBM(id, bms) { localStorage.setItem(SSH_BM_PFX + id, JSON.stringify(bms)); }
+function loadConns() { try { return JSON.parse(localStorage.getItem(SSH_LS_KEY) || '[]'); } catch { return []; } }
+function saveConns(l){ localStorage.setItem(SSH_LS_KEY, JSON.stringify(l)); }
+function getConnHomePath(conn){
+  const p=(conn?.home_path||'').trim();
+  return p||'/';
+}
+
+const IMG_EXTS = new Set(['png','jpg','jpeg','gif','webp','svg','bmp','ico']);
+const MD_EXTS  = new Set(['md','markdown','mdx']);
+const TEXT_EXTS= new Set(['py','js','ts','jsx','tsx','sh','bash','zsh','rb','go',
+  'rs','c','cpp','h','hpp','java','kt','swift','php','html','htm','css','scss',
+  'less','json','yaml','yml','toml','ini','conf','cfg','env','txt','log','sql',
+  'xml','csv','r','lua','vim','lock','mod','sum','gradle','properties',
+  'out','err','slurmout','slurmerr','stderr','stdout','trace','diff','patch']);
+const EXT_COLOR = {
+  py:'#5a8ac4',js:'#c9a86c',ts:'#5a8ac4',jsx:'#c9a86c',tsx:'#5a8ac4',
+  sh:'#3eb87a',bash:'#3eb87a',go:'#5ac4b4',rs:'#d49a5a',rb:'#c45a5a',
+  java:'#c45a5a',md:'#8888aa',json:'#3eb87a',html:'#d49a5a',css:'#9a6ac4',
+  yml:'#5ac4b4',yaml:'#5ac4b4',sql:'#5ab4c4',txt:'#666677',
+};
+
+function sshFileType(name){
+  const ext=(name.split('.').pop()||'').toLowerCase();
+  const lo=name.toLowerCase();
+  if(lo==='dockerfile'||lo==='makefile'||lo==='.bashrc'||lo==='.zshrc'||lo==='.profile') return 'text';
+  if(IMG_EXTS.has(ext)) return 'image';
+  if(MD_EXTS.has(ext))  return 'md';
+  if(TEXT_EXTS.has(ext))return 'text';
+  return 'binary';
+}
+function sshExtColor(name){
+  const ext=(name.split('.').pop()||'').toLowerCase();
+  return EXT_COLOR[ext]||'var(--fg3)';
+}
+function sshExtBadge(name){
+  const ext=(name.split('.').pop()||'').toLowerCase();
+  const lo=name.toLowerCase();
+  if(lo==='dockerfile') return 'D';
+  if(lo==='makefile')   return 'M';
+  return ext?ext[0].toUpperCase():'·';
+}
+function isBatchScript(name){
+  const lo=(name||'').toLowerCase();
+  return lo.endsWith('.sh')||lo.endsWith('.sbatch')||lo.endsWith('.slurm');
+}
+function fmtSize(n){
+  if(!n&&n!==0) return '';
+  if(n>=1073741824) return (n/1073741824).toFixed(1)+'G';
+  if(n>=1048576)    return (n/1048576).toFixed(1)+'M';
+  if(n>=1024)       return (n/1024).toFixed(1)+'K';
+  return n+'B';
+}
+function fmtTime(ts){
+  if(!ts) return '';
+  const d=new Date(ts*1000), now=new Date();
+  const pad=n=>String(n).padStart(2,'0');
+  if(d.getFullYear()===now.getFullYear())
+    return `${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+}
+function fmtDuration(ms){
+  if(!ms || ms < 1000) return '刚刚开始';
+  const sec=Math.floor(ms/1000);
+  if(sec < 60) return `${sec} 秒`;
+  const min=Math.floor(sec/60);
+  const rem=sec%60;
+  return `${min} 分 ${rem} 秒`;
+}
+function fmtPercent(ratio){
+  if(ratio===null||ratio===undefined||Number.isNaN(ratio)) return '';
+  return `${Math.round(ratio*100)}%`;
+}
+function fmtSpeed(loadedBytes, startedAt){
+  if(!startedAt||!loadedBytes) return '';
+  const secs=(Date.now()-startedAt)/1000;
+  if(secs<0.5) return '';
+  const bps=loadedBytes/secs;
+  if(bps>=1073741824) return (bps/1073741824).toFixed(2)+' GB/s';
+  if(bps>=1048576) return (bps/1048576).toFixed(1)+' MB/s';
+  if(bps>=1024) return Math.round(bps/1024)+' KB/s';
+  return Math.round(bps)+' B/s';
+}
+function fmtEta(loadedBytes, totalBytes, startedAt){
+  if(!startedAt||!totalBytes||loadedBytes<=0) return '';
+  const secs=(Date.now()-startedAt)/1000;
+  if(secs<1) return '';
+  const bps=loadedBytes/secs;
+  if(bps<=0) return '';
+  const rem=(totalBytes-loadedBytes)/bps;
+  if(rem<5) return '即将完成';
+  if(rem<60) return `剩余 ${Math.round(rem)}s`;
+  return `剩余 ${Math.floor(rem/60)}m${Math.round(rem%60)}s`;
+}
+function stripAnsi(s){
+  return s
+    .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g,'')  // OSC: title set, etc.
+    .replace(/\x1b[PX^_][^\x1b]*\x1b\\/g,'')            // DCS / SOS / PM / APC
+    .replace(/\x1b\[[\x30-\x3f]*[\x20-\x2f]*[\x40-\x7e]/g,'') // CSI sequences
+    .replace(/\x1b[()][0-9A-Za-z]/g,'')                 // charset designation
+    .replace(/\x1b[^[\]PX^_()]/g,'')                    // simple 2-char ESC
+    .replace(/\x07/g,'')                                 // BEL
+    .replace(/\r\n/g,'\n').replace(/\r/g,'\n');
+}
+function joinPath(dir, name){
+  return dir.replace(/\/+$/,'')+'/'+name;
+}
+function parentPath(p){
+  const parts=p.replace(/\/+$/,'').split('/');
+  return parts.length<=1?'/':parts.slice(0,-1).join('/')||'/';
+}
+function shellQuote(s){
+  return `'${String(s).replace(/'/g, `'\"'\"'`)}'`;
+}
+function triggerBrowserDownload(blob, fileName){
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;
+  a.download=fileName;
+  a.click();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+
+async function sshBinaryPost(endpoint, body, token, options={}){
+  const resp=await fetch('/api/ssh/'+endpoint+'/',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','Authorization':'Token '+token},
+    body:JSON.stringify(body),
+    signal:options.signal,
+  });
+  if(!resp.ok){const t=await resp.text().catch(()=>resp.status+'');throw new Error(t);}
+  if(!resp.body || !options.onProgress) return resp.blob();
+  const total=Number(resp.headers.get('content-length')||0)||null;
+  const reader=resp.body.getReader();
+  const chunks=[];
+  let loaded=0;
+  options.onProgress?.({loaded,total,percent:total?loaded/total:null,done:false});
+  while(true){
+    const {done,value}=await reader.read();
+    if(done) break;
+    if(value){
+      chunks.push(value);
+      loaded+=value.byteLength;
+      options.onProgress?.({loaded,total,percent:total?loaded/total:null,done:false});
+    }
+  }
+  options.onProgress?.({loaded,total,percent:total?loaded/total:1,done:true});
+  return new Blob(chunks,{type:resp.headers.get('content-type')||'application/octet-stream'});
+}
+// conflict_mode: 'replace' | 'skip' | 'check'
+// onProgress({loaded, total, percent}) — 仅在实际上传文件时有效（XHR upload 事件）
+async function sshUpload(conn, remotePath, file, token, conflictMode='replace', onProgress){
+  const fd=new FormData();
+  fd.append('conn',JSON.stringify(conn));
+  fd.append('remote_path',remotePath);
+  fd.append('conflict_mode',conflictMode);
+  if(file) fd.append('file',file);
+  // check/skip 或小文件直接用 fetch；有 onProgress 回调且有文件时用 XHR 获取上传进度
+  if(!onProgress||conflictMode==='check'||!file){
+    const resp=await fetch('/api/ssh/upload/',{method:'POST',headers:{'Authorization':'Token '+token},body:fd});
+    if(!resp.ok){const t=await resp.text().catch(()=>'');throw new Error(resp.status+': '+t);}
+    return resp.json();
+  }
+  return new Promise((resolve,reject)=>{
+    const xhr=new XMLHttpRequest();
+    xhr.upload.addEventListener('progress',e=>{
+      if(e.lengthComputable) onProgress({loaded:e.loaded,total:e.total,percent:e.loaded/e.total});
+    });
+    xhr.onload=()=>{
+      if(xhr.status>=200&&xhr.status<300){
+        try{resolve(JSON.parse(xhr.responseText));}catch{resolve({ok:true});}
+      } else {
+        reject(new Error(xhr.status+': '+xhr.responseText));
+      }
+    };
+    xhr.onerror=()=>reject(new Error('网络错误'));
+    xhr.onabort=()=>{const e=new Error('AbortError');e.name='AbortError';reject(e);};
+    xhr.open('POST','/api/ssh/upload/');
+    xhr.setRequestHeader('Authorization','Token '+token);
+    xhr.send(fd);
+    if(onProgress) onProgress._xhr=xhr; // 暴露 xhr 供外部 abort
+  });
+}
+// 仅检查文件是否存在（不上传）
+async function sshCheckExists(conn, remotePath, token){
+  try{const r=await sshUpload(conn,remotePath,null,token,'check');return r.exists===true;}
+  catch{return false;}
+}
+
+// ─── PathBar（可编辑路径栏，替代只读面包屑）───────────────────────────────────
+function PathBar({path, onNavigate}){
+  const [editing,setEditing]=React.useState(false);
+  const [draft,setDraft]=React.useState(path);
+  const inputRef=React.useRef(null);
+
+  React.useEffect(()=>{if(!editing)setDraft(path);},[path,editing]);
+  React.useEffect(()=>{if(editing)inputRef.current?.select();},[editing]);
+
+  function commit(){
+    const p=draft.trim()||'/';
+    setEditing(false);
+    if(p!==path) onNavigate(p);
+  }
+  function onKeyDown(e){
+    if(e.key==='Enter'){e.preventDefault();commit();}
+    if(e.key==='Escape'){setEditing(false);setDraft(path);}
+  }
+
+  if(editing){
+    return(
+      <input ref={inputRef} value={draft} onChange={e=>setDraft(e.target.value)} onKeyDown={onKeyDown}
+        onBlur={commit} autoComplete="off"
+        style={{flex:1,minWidth:0,colorScheme:'dark',background:'var(--bg4)',border:'1px solid var(--gold)',
+          borderRadius:4,color:'var(--fg)',fontFamily:'var(--mono)',fontSize:12,padding:'2px 8px',outline:'none'}}/>
+    );
+  }
+
+  const parts=path.split('/').filter(Boolean);
+  const segs=[{label:'~',path:'/'}];
+  let cur='';
+  parts.forEach(p=>{cur+='/'+p;segs.push({label:p,path:cur});});
+
+  return(
+    <div style={{display:'flex',alignItems:'center',gap:1,fontSize:12,overflow:'hidden',minWidth:0,flex:1,cursor:'text'}}
+      onClick={()=>setEditing(true)} title="点击可直接输入路径跳转">
+      {segs.map((s,i)=>(
+        <React.Fragment key={s.path}>
+          {i>0&&<span style={{color:'var(--border)',flexShrink:0,margin:'0 1px'}}>/</span>}
+          <button onClick={e=>{e.stopPropagation();onNavigate(s.path);}}
+            style={{background:'none',border:'none',padding:'2px 4px',borderRadius:3,cursor:'pointer',
+              color:i===segs.length-1?'var(--fg)':'var(--gold)',
+              fontFamily:'var(--mono)',fontSize:12,maxWidth:140,overflow:'hidden',
+              textOverflow:'ellipsis',whiteSpace:'nowrap',flexShrink:i===segs.length-1?1:0}}>
+            {s.label}
+          </button>
+        </React.Fragment>
+      ))}
+      <span style={{fontSize:10,color:'var(--fg3)',opacity:.4,flexShrink:0,marginLeft:2}}>✏</span>
+    </div>
+  );
+}
+
+// ─── ConnForm ─────────────────────────────────────────────────────────────────
+function ConnForm({initial,onSave,onCancel}){
+  const [form,setForm]=React.useState(initial||{label:'',host:'',port:22,username:'',auth_type:'password',secret:'',passphrase:'',home_path:''});
+  const [testing,setTesting]=React.useState(false);
+  const [testMsg,setTestMsg]=React.useState(null);
+  const set=k=>e=>setForm(f=>({...f,[k]:e.target.value}));
+  const inp={colorScheme:'dark',background:'var(--bg4)',border:'1px solid var(--border)',borderRadius:5,
+    color:'var(--fg)',padding:'7px 10px',fontSize:12,width:'100%',boxSizing:'border-box',outline:'none'};
+
+  // 支持粘贴 user@host 或 ssh user@host:port 格式自动拆分
+  function onQuickPaste(e){
+    const raw=e.target.value;
+    // 去掉可能的 "ssh " 前缀
+    const s=raw.replace(/^ssh\s+/i,'').trim();
+    // 匹配 user@host 或 user@host:port
+    const m=s.match(/^([^@]+)@([^:\s]+)(?::(\d+))?$/);
+    if(m){
+      e.preventDefault();
+      setForm(f=>({...f,username:m[1],host:m[2],port:m[3]?Number(m[3]):f.port||22,label:f.label||m[2]}));
+    } else {
+      setForm(f=>({...f,host:raw}));
+    }
+  }
+
+  async function doTest(){
+    setTesting(true);setTestMsg(null);
+    try{
+      const r=await P('/api/ssh/test/',{...form,port:Number(form.port)});
+      setTestMsg(r.ok?{ok:true,text:`连接成功 · ${r.latency_ms}ms`}:{ok:false,text:r.error||'失败'});
+    }catch(e){setTestMsg({ok:false,text:String(e)});}
+    setTesting(false);
+  }
+
+  return (
+    <div style={{padding:'14px 16px',display:'flex',flexDirection:'column',gap:12,height:'100%',overflowY:'auto',background:'var(--bg2)'}}>
+      <div style={{display:'flex',alignItems:'center',gap:8,paddingBottom:4,borderBottom:'1px solid var(--border)'}}>
+        <Icon name="terminal" size={14} color="var(--gold)" />
+        <span style={{fontSize:13,fontWeight:600,color:'var(--fg)'}}>{initial?.id?'编辑连接':'新建 SSH 连接'}</span>
+      </div>
+      {/* 快速输入行：支持 user@host 格式一键填充 */}
+      <div>
+        <div style={{fontSize:10,color:'var(--fg3)',marginBottom:4,letterSpacing:.5}}>快速填充 <span style={{opacity:.5}}>粘贴 user@host 自动拆分</span></div>
+        <input style={{...inp,fontFamily:'var(--mono)'}} placeholder="rl5285@example.org  或  ssh rl5285@host:2222"
+          autoComplete="off" value={form.username&&form.host?form.username+'@'+form.host:''}
+          onChange={onQuickPaste}/>
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 72px',gap:8}}>
+        <div>
+          <div style={{fontSize:10,color:'var(--fg3)',marginBottom:4,letterSpacing:.5}}>主机名 / IP</div>
+          <input style={inp} value={form.host} onChange={set('host')} placeholder="example.org 或 192.168.1.1" autoComplete="off"/>
+        </div>
+        <div>
+          <div style={{fontSize:10,color:'var(--fg3)',marginBottom:4,letterSpacing:.5}}>端口</div>
+          <input style={inp} value={form.port} onChange={set('port')} placeholder="22" autoComplete="off"/>
+        </div>
+      </div>
+      <div>
+        <div style={{fontSize:10,color:'var(--fg3)',marginBottom:4,letterSpacing:.5}}>用户名</div>
+        <input style={inp} value={form.username} onChange={set('username')} placeholder="rl5285" autoComplete="off"/>
+      </div>
+      <div>
+        <div style={{fontSize:10,color:'var(--fg3)',marginBottom:4,letterSpacing:.5}}>连接名称（可选）</div>
+        <input style={inp} value={form.label} onChange={set('label')} placeholder="我的服务器" autoComplete="off"/>
+      </div>
+      <div>
+        <div style={{fontSize:10,color:'var(--fg3)',marginBottom:4,letterSpacing:.5}}>Home 目录（可选）</div>
+        <input style={{...inp,fontFamily:'var(--mono)'}} value={form.home_path||''} onChange={set('home_path')}
+          placeholder="/home/renqing 或 /var/www" autoComplete="off"/>
+      </div>
+      <div>
+        <div style={{fontSize:10,color:'var(--fg3)',marginBottom:6,letterSpacing:.5}}>认证方式</div>
+        <div style={{display:'flex',gap:1,background:'var(--bg4)',borderRadius:5,padding:2}}>
+          {[['password','密码'],['key','私钥']].map(([v,l])=>(
+            <button key={v} onClick={()=>setForm(f=>({...f,auth_type:v}))}
+              style={{flex:1,padding:'5px',borderRadius:4,fontSize:12,cursor:'pointer',border:'none',
+                background:form.auth_type===v?'var(--bg2)':'transparent',
+                color:form.auth_type===v?'var(--gold)':'var(--fg3)',fontWeight:form.auth_type===v?600:400}}>
+              {l}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div>
+        <div style={{fontSize:10,color:'var(--fg3)',marginBottom:4,letterSpacing:.5}}>
+          {form.auth_type==='password'?'密码':'私钥 (PEM)'}
+        </div>
+        {form.auth_type==='password'
+          ?<input type="password" style={{...inp,colorScheme:'dark'}} value={form.secret} onChange={set('secret')} placeholder="••••••••" autoComplete="current-password"/>
+          :<textarea rows={5} style={{...inp,resize:'vertical',fontFamily:'var(--mono)',fontSize:11,lineHeight:1.5}}
+              value={form.secret} onChange={set('secret')} placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"/>
+        }
+      </div>
+      {form.auth_type==='key'&&(
+        <div>
+          <div style={{fontSize:10,color:'var(--fg3)',marginBottom:4,letterSpacing:.5}}>Passphrase（无则留空）</div>
+          <input type="password" style={{...inp,colorScheme:'dark'}} value={form.passphrase} onChange={set('passphrase')} placeholder="••••••••" autoComplete="off"/>
+        </div>
+      )}
+      {testMsg&&(
+        <div style={{padding:'7px 10px',borderRadius:5,fontSize:12,display:'flex',alignItems:'center',gap:6,
+          background:testMsg.ok?'rgba(62,184,122,.1)':'rgba(196,90,90,.1)',
+          color:testMsg.ok?'var(--green)':'var(--red)',
+          border:'1px solid '+(testMsg.ok?'rgba(62,184,122,.3)':'rgba(196,90,90,.3)')}}>
+          <Icon name={testMsg.ok?'check':'alert'} size={12}/>{testMsg.text}
+        </div>
+      )}
+      <div style={{display:'flex',gap:6,marginTop:'auto',paddingTop:4}}>
+        <button onClick={doTest} disabled={testing}
+          style={{flex:1,padding:'7px',borderRadius:5,background:'var(--bg3)',border:'1px solid var(--border)',color:'var(--fg2)',cursor:'pointer',fontSize:12}}>
+          {testing?'测试中…':'测试连接'}
+        </button>
+        <button onClick={onCancel}
+          style={{padding:'7px 12px',borderRadius:5,background:'transparent',border:'1px solid var(--border)',color:'var(--fg3)',cursor:'pointer',fontSize:12}}>
+          取消
+        </button>
+        <button onClick={()=>onSave({...form,port:Number(form.port)})}
+          style={{padding:'7px 16px',borderRadius:5,background:'var(--gold)',border:'none',color:'#000',cursor:'pointer',fontSize:12,fontWeight:600}}>
+          保存
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── ContextMenu ──────────────────────────────────────────────────────────────
+function ContextMenu({menu, onClose, actions}){
+  const ref=React.useRef(null);
+  React.useEffect(()=>{
+    function onClick(e){if(ref.current&&!ref.current.contains(e.target))onClose();}
+    document.addEventListener('mousedown',onClick);
+    return()=>document.removeEventListener('mousedown',onClick);
+  },[]);
+  if(!menu)return null;
+  const style={position:'fixed',left:menu.x,top:menu.y,zIndex:2000,
+    background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:6,
+    boxShadow:'0 6px 20px rgba(0,0,0,.5)',minWidth:168,overflow:'hidden'};
+  return(
+    <div ref={ref} style={style} onClick={onClose}>
+      {actions.map((a,i)=>a===null
+        ?<div key={i} style={{height:1,background:'var(--border)',margin:'3px 0'}}/>
+        :<div key={i} onClick={a.action}
+          style={{display:'flex',alignItems:'center',gap:8,padding:'7px 12px',cursor:'pointer',fontSize:12,
+            color:a.danger?'var(--red)':'var(--fg2)'}}>
+          {a.icon&&<Icon name={a.icon} size={12} color={a.danger?'var(--red)':undefined}/>}
+          <span>{a.label}</span>
+          {a.hint&&<span style={{marginLeft:'auto',fontSize:10,color:'var(--fg3)'}}>{a.hint}</span>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// 终端输出处理器：正确处理 \r（回到行首）、\x1b[K（擦除到行尾）、\b（退格）
+// 使得 readline 历史导航（上下键）能覆盖而非累加
+function applyTermOutput(existing, rawChunk) {
+  // Strip irrelevant escape sequences, but keep CSI (handles \x1b[K etc.)
+  let data = rawChunk
+    .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g,'')
+    .replace(/\x1b[PX^_][^\x1b]*\x1b\\/g,'')
+    .replace(/\x1b[()][0-9A-Za-z]/g,'')
+    .replace(/\x1b(?![[\]])[^[\]PX^_()]/g,'')
+    .replace(/\x07/g,'');
+
+  const lines = existing.split('\n');
+  let curLine = lines[lines.length - 1];
+  let col = curLine.length;
+
+  let i = 0;
+  while (i < data.length) {
+    const ch = data[i];
+    if (ch === '\r' && data[i+1] === '\n') {
+      lines[lines.length-1] = curLine; lines.push('');
+      curLine = ''; col = 0; i += 2;
+    } else if (ch === '\r') {
+      col = 0; i++;
+    } else if (ch === '\n') {
+      lines[lines.length-1] = curLine; lines.push('');
+      curLine = ''; col = 0; i++;
+    } else if (ch === '\x08') {
+      if (col > 0) col--; i++;
+    } else if (ch === '\x1b' && data[i+1] === '[') {
+      // CSI sequence
+      let j = i + 2;
+      while (j < data.length && !(data.charCodeAt(j) >= 0x40 && data.charCodeAt(j) <= 0x7e)) j++;
+      if (j < data.length) {
+        const param = data.slice(i+2, j);
+        const cmd = data[j];
+        if (cmd === 'K') {
+          const n = parseInt(param) || 0;
+          if (n === 0) curLine = curLine.slice(0, col);       // erase to end
+          else if (n === 1) curLine = ' '.repeat(col) + curLine.slice(col); // erase to start
+          else curLine = '';                                   // erase entire
+        } else if (cmd === 'G' || cmd === 'H') {
+          col = Math.max(0, (parseInt(param) || 1) - 1);
+        } else if (cmd === 'P') {
+          const n = parseInt(param) || 1;
+          curLine = curLine.slice(0, col) + curLine.slice(col + n);
+        }
+        i = j + 1;
+      } else { i++; }
+    } else {
+      // Overwrite at col (not insert)
+      if (col < curLine.length) curLine = curLine.slice(0,col)+ch+curLine.slice(col+1);
+      else curLine = curLine.padEnd(col) + ch;
+      col++; i++;
+    }
+  }
+  lines[lines.length-1] = curLine;
+  return lines.join('\n');
+}
+
+// ─── TerminalTabContent ───────────────────────────────────────────────────────
+// 持久 PTY 会话：mount 时建立 invoke_shell，断开前一直保持
+function TerminalTabContent({isActive, conn, token}){
+  const [output,setOutput]=React.useState('');
+  const [status,setStatus]=React.useState('connecting'); // connecting|ready|closed|error
+  const [errMsg,setErrMsg]=React.useState('');
+  const sidRef=React.useRef(null);
+  const streamAbort=React.useRef(null);
+  const hostRef=React.useRef(null);
+  const termRef=React.useRef(null);
+  const fitAddonRef=React.useRef(null);
+  const resizeObserverRef=React.useRef(null);
+  const resizeTimerRef=React.useRef(null);
+
+  function sendText(text){
+    const sid=sidRef.current;
+    if(!sid) return;
+    fetch('/api/ssh/term/input/',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Token '+token},
+      body:JSON.stringify({session_id:sid,text}),
+    }).catch(()=>{});
+  }
+
+  function resizeRemote(cols, rows){
+    const sid=sidRef.current;
+    if(!sid || !cols || !rows) return;
+    fetch('/api/ssh/term/resize/',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Token '+token},
+      body:JSON.stringify({session_id:sid,cols,rows}),
+    }).catch(()=>{});
+  }
+
+  function scheduleFit(){
+    if(!fitAddonRef.current || !termRef.current || !hostRef.current) return;
+    clearTimeout(resizeTimerRef.current);
+    resizeTimerRef.current=setTimeout(()=>{
+      try{
+        fitAddonRef.current.fit();
+        const cols=termRef.current.cols;
+        const rows=termRef.current.rows;
+        resizeRemote(cols, rows);
+      }catch{}
+    }, 20);
+  }
+
+  React.useEffect(()=>()=>clearTimeout(resizeTimerRef.current),[]);
+
+  // 建立持久会话
+  React.useEffect(()=>{
+    let cancelled=false;
+    setStatus('connecting'); setOutput('');
+    fetch('/api/ssh/term/open/',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Token '+token},
+      body:JSON.stringify({...conn,cols:200,rows:50}),
+    }).then(r=>r.json()).then(d=>{
+      if(cancelled) return;
+      if(d.session_id){ sidRef.current=d.session_id; setStatus('ready'); }
+      else{ setStatus('error'); setErrMsg(d.error||'连接失败'); }
+    }).catch(e=>{ if(!cancelled){setStatus('error');setErrMsg(String(e));} });
+    return ()=>{
+      cancelled=true;
+      streamAbort.current?.abort();
+      resizeObserverRef.current?.disconnect?.();
+      resizeObserverRef.current=null;
+      if(termRef.current){
+        try{termRef.current.dispose();}catch{}
+        termRef.current=null;
+      }
+      const sid=sidRef.current;
+      if(sid) fetch('/api/ssh/term/close/',{
+        method:'POST',
+        headers:{'Content-Type':'application/json','Authorization':'Token '+token},
+        body:JSON.stringify({session_id:sid}),
+      }).catch(()=>{});
+    };
+  },[]);
+
+  React.useEffect(()=>{
+    if(status!=='ready' || !hostRef.current || termRef.current) return;
+    if(!window.Terminal || !window.FitAddon?.FitAddon){
+      setErrMsg('终端组件未加载，无法运行 Claude 这类交互式程序');
+      setStatus('error');
+      return;
+    }
+    const term=new window.Terminal({
+      cursorBlink:true,
+      fontFamily:'JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace',
+      fontSize:12,
+      lineHeight:1.25,
+      scrollback:3000,
+      convertEol:false,
+      theme:{
+        background:'#0a0a0c',
+        foreground:'#e6e1d7',
+        cursor:'#c9a86c',
+        selectionBackground:'rgba(201,168,108,.28)',
+      },
+    });
+    const fitAddon=new window.FitAddon.FitAddon();
+    term.loadAddon(fitAddon);
+    term.open(hostRef.current);
+    termRef.current=term;
+    fitAddonRef.current=fitAddon;
+    term.onData(data=>sendText(data));
+    term.onResize(size=>resizeRemote(size.cols, size.rows));
+    scheduleFit();
+    if(output) term.write(output);
+    const ro=new ResizeObserver(()=>scheduleFit());
+    ro.observe(hostRef.current);
+    resizeObserverRef.current=ro;
+    return ()=>{
+      ro.disconnect();
+      resizeObserverRef.current=null;
+      if(termRef.current===term){
+        try{term.dispose();}catch{}
+        termRef.current=null;
+      }
+      fitAddonRef.current=null;
+    };
+  },[status]);
+
+  // 流式读取输出
+  React.useEffect(()=>{
+    if(status!=='ready'||!sidRef.current) return;
+    const ctrl=new AbortController();
+    streamAbort.current=ctrl;
+    (async()=>{
+      try{
+        const resp=await fetch('/api/ssh/term/stream/'+sidRef.current+'/',{
+          headers:{'Authorization':'Token '+token},
+          signal:ctrl.signal,
+        });
+        const reader=resp.body.getReader();
+        const dec=new TextDecoder();
+        let buf='';
+        while(true){
+          const {done,value}=await reader.read();
+          if(done) break;
+          buf+=dec.decode(value,{stream:true});
+          const parts=buf.split('\n\n');
+          buf=parts.pop()||'';
+          for(const part of parts){
+            const line=part.trim();
+            if(!line.startsWith('data: ')) continue;
+            try{
+              const d=JSON.parse(line.slice(6));
+              if(d.out){
+                if(termRef.current) termRef.current.write(d.out);
+                else setOutput(prev=>applyTermOutput(prev,d.out));
+              }
+              if(d.closed) setStatus('closed');
+            }catch{}
+          }
+        }
+      }catch(e){ if(e?.name!=='AbortError') setStatus('closed'); }
+    })();
+    return ()=>ctrl.abort();
+  },[status]);
+
+  React.useEffect(()=>{
+    if(isActive&&status==='ready'){
+      setTimeout(()=>{
+        try{
+          termRef.current?.focus();
+          scheduleFit();
+        }catch{}
+      },60);
+    }
+  },[isActive,status]);
+
+  if(status==='connecting') return(
+    <div style={{display:isActive?'flex':'none',flex:1,alignItems:'center',
+      justifyContent:'center',color:'var(--fg3)',fontSize:12,background:'#0a0a0c',gap:6}}>
+      <span style={{animation:'blink 1s infinite'}}>▌</span> 正在建立 SSH 会话…
+    </div>
+  );
+  if(status==='error') return(
+    <div style={{display:isActive?'flex':'none',flex:1,alignItems:'center',
+      justifyContent:'center',background:'#0a0a0c'}}>
+      <span style={{color:'var(--red)',fontSize:12}}>{errMsg}</span>
+    </div>
+  );
+
+  return(
+    <div style={{display:isActive?'flex':'none',flexDirection:'column',flex:1,overflow:'hidden'}}>
+      <div ref={hostRef} onClick={()=>termRef.current?.focus()}
+        style={{flex:1,overflow:'hidden',background:'#0a0a0c',padding:'4px 6px'}}/>
+      {!termRef.current&&(
+        <div style={{position:'absolute',left:-99999,top:-99999,opacity:0,pointerEvents:'none'}}>
+          <pre style={{margin:0}}>{output}</pre>
+        </div>
+      )}
+      <div style={{display:'flex',alignItems:'center',padding:'5px 10px',
+        borderTop:'1px solid rgba(255,255,255,.06)',flexShrink:0,gap:6,background:'#0d0d10'}}>
+        <span style={{fontSize:11,color:'var(--fg3)',flex:1}}>
+          {status==='closed'?'会话已断开':isActive?'终端已连接，可直接运行 claude / vim / top 等交互式命令':'终端待激活'}
+        </span>
+        <button onClick={()=>{termRef.current?.clear();setOutput('');}}
+          style={{padding:'3px 9px',borderRadius:3,background:'transparent',border:'1px solid var(--border)',color:'var(--fg2)',cursor:'pointer',fontSize:11,flexShrink:0}}>
+          清屏
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── TerminalPanel ─────────────────────────────────────────────────────────────
+// 多标签容器：+ 新建 · × 关闭标签 · 关闭面板不终止后台任务（sbatch/nohup）
+function TerminalPanel({conn, curPath, token, onClose, height, onResizeStart}){
+  const nextId=React.useRef(2);
+  const [tabs,setTabs]=React.useState(()=>[{id:'1',label:'终端 1'}]);
+  const [activeId,setActiveId]=React.useState('1');
+
+  function addTab(){
+    const id=String(nextId.current++);
+    setTabs(t=>[...t,{id,label:'终端 '+id}]);
+    setActiveId(id);
+  }
+  function removeTab(id){
+    setTabs(prev=>{
+      const idx=prev.findIndex(t=>t.id===id);
+      const next=prev.filter(t=>t.id!==id);
+      if(next.length===0){onClose();return prev;}
+      if(activeId===id) setActiveId(next[Math.max(0,idx-1)].id);
+      return next;
+    });
+  }
+
+  return(
+    <div style={{borderTop:'2px solid var(--border)',display:'flex',flexDirection:'column',
+      background:'#0a0a0c',flexShrink:0,height}}>
+      <div
+        onMouseDown={onResizeStart}
+        title="拖动调整终端高度"
+        style={{height:6,cursor:'row-resize',flexShrink:0,background:'transparent',transition:'background .15s'}}
+        onMouseEnter={e=>e.currentTarget.style.background='rgba(201,168,108,.28)'}
+        onMouseLeave={e=>e.currentTarget.style.background='transparent'}
+      />
+      {/* 标签栏 */}
+      <div style={{display:'flex',alignItems:'stretch',background:'var(--bg2)',
+        borderBottom:'1px solid var(--border)',flexShrink:0,overflow:'hidden'}}>
+        {tabs.map(t=>(
+          <div key={t.id}
+            style={{display:'flex',alignItems:'center',gap:5,padding:'0 10px',cursor:'pointer',
+              flexShrink:0,minWidth:0,borderRight:'1px solid var(--border)',
+              background:t.id===activeId?'#0a0a0c':'transparent'}}
+            onClick={()=>setActiveId(t.id)}>
+            <Icon name="terminal" size={11} color={t.id===activeId?'var(--gold)':'var(--fg3)'}/>
+            <span style={{fontSize:11,color:t.id===activeId?'var(--fg)':'var(--fg3)',whiteSpace:'nowrap',padding:'5px 0'}}>{t.label}</span>
+            <button onClick={e=>{e.stopPropagation();removeTab(t.id);}}
+              style={{background:'none',border:'none',cursor:'pointer',color:'var(--fg3)',
+                padding:'0 2px',fontSize:13,lineHeight:1,marginLeft:2,opacity:.6}}>×</button>
+          </div>
+        ))}
+        {/* 新建标签 */}
+        <button onClick={addTab} title="新建终端 (多标签)"
+          style={{padding:'0 12px',background:'none',border:'none',borderRight:'1px solid var(--border)',
+            cursor:'pointer',color:'var(--fg3)',fontSize:18,lineHeight:1,flexShrink:0}}>+</button>
+        {/* 右侧提示 + 关闭 */}
+        <div style={{flex:1,display:'flex',alignItems:'center',justifyContent:'flex-end',paddingRight:6,gap:8}}>
+          <span style={{fontSize:10,color:'var(--fg3)',opacity:.4}}>
+            关闭面板不影响 sbatch/nohup 任务 · Ctrl+L 清屏
+          </span>
+          <button onClick={onClose}
+            style={{background:'none',border:'none',cursor:'pointer',color:'var(--fg3)',padding:'4px 6px'}}>
+            <Icon name="x" size={12}/>
+          </button>
+        </div>
+      </div>
+      {/* 各标签内容（display:none 保留状态） */}
+      {tabs.map(t=>(
+        <TerminalTabContent key={t.id} isActive={t.id===activeId}
+          conn={conn} curPath={curPath} token={token}/>
+      ))}
+    </div>
+  );
+}
+
+// ─── FileViewer ───────────────────────────────────────────────────────────────
+function FileViewer({entry, conn, token, onClose, onRefresh, onDownloadFile, width=320}){
+  const [content,setContent]=React.useState('');
+  const [loading,setLoading]=React.useState(true);
+  const [tooLarge,setTooLarge]=React.useState(false);
+  const [edited,setEdited]=React.useState(false);
+  const [saving,setSaving]=React.useState(false);
+  const [mdPreview,setMdPreview]=React.useState(true);
+  const [imgUrl,setImgUrl]=React.useState(null);
+  const [tab,setTab]=React.useState('view');
+  const [renameVal,setRenameVal]=React.useState(entry.name);
+  const [opLoading,setOpLoading]=React.useState(false);
+  const [opMsg,setOpMsg]=React.useState(null);
+  const [confirmDel,setConfirmDel]=React.useState(false);
+  const [chmodVal,setChmodVal]=React.useState('');
+  const ftype=sshFileType(entry.name);
+
+  React.useEffect(()=>{
+    setLoading(true);setTooLarge(false);setImgUrl(null);setEdited(false);setContent('');
+    setChmodVal(entry.perm?entry.perm.slice(1):''); // strip first char (type indicator)
+    if(entry.is_dir){setLoading(false);return;}
+    const req={...conn,path:entry.path};
+    if(ftype==='image'){
+      sshBinaryPost('proxy',req,token).then(b=>setImgUrl(URL.createObjectURL(b))).catch(e=>setContent('加载失败: '+e.message)).finally(()=>setLoading(false));
+    }else if(ftype==='text'||ftype==='md'){
+      P('/api/ssh/read/',req).then(d=>{if(d.too_large)setTooLarge(true);else setContent(d.content||'');}).catch(e=>setContent('加载失败: '+e.message)).finally(()=>setLoading(false));
+    }else{setLoading(false);}
+  },[entry.path]);
+
+  async function doSave(){setSaving(true);try{await P('/api/ssh/write/',{...conn,path:entry.path,content});setEdited(false);}catch(e){alert('保存失败: '+e.message);}setSaving(false);}
+  async function doDownload(){
+    if(onDownloadFile){await onDownloadFile(entry,conn);return;}
+    try{const blob=await sshBinaryPost('download',{...conn,path:entry.path},token);triggerBrowserDownload(blob,entry.name);}catch(e){alert('下载失败: '+e.message);}
+  }
+  async function doRename(){
+    if(!renameVal||renameVal===entry.name)return;
+    const dir=entry.path.slice(0,entry.path.lastIndexOf('/'));
+    setOpLoading(true);setOpMsg(null);
+    try{await P('/api/ssh/rename/',{...conn,old_path:entry.path,new_path:dir+'/'+renameVal});setOpMsg({ok:true,text:'重命名成功'});onRefresh();}catch(e){setOpMsg({ok:false,text:String(e)});}
+    setOpLoading(false);
+  }
+  async function doDelete(){
+    setOpLoading(true);
+    try{await P('/api/ssh/delete/',{...conn,path:entry.path,is_dir:entry.is_dir});onClose();onRefresh();}catch(e){setOpMsg({ok:false,text:String(e)});setOpLoading(false);}
+  }
+  async function doChmod(){
+    // convert rwxrwxrwx string to octal
+    const s=chmodVal.replace(/[^rwx-]/g,'').padEnd(9,'-');
+    let oct='';
+    for(let i=0;i<9;i+=3){const r=s[i]!=='-',w=s[i+1]!=='-',x=s[i+2]!=='-';oct+=(r?4:0)+(w?2:0)+(x?1:0);}
+    setOpLoading(true);setOpMsg(null);
+    try{const r=await P('/api/ssh/chmod/',{...conn,path:entry.path,mode:oct});setOpMsg({ok:true,text:'权限已更新 → '+r.perm});}catch(e){setOpMsg({ok:false,text:String(e)});}
+    setOpLoading(false);
+  }
+
+  function copyPath(){navigator.clipboard?.writeText(entry.path).then(()=>setOpMsg({ok:true,text:'路径已复制'})).catch(()=>setOpMsg({ok:false,text:'复制失败'}));}
+
+  const hdr=(
+    <div style={{display:'flex',alignItems:'center',gap:6,padding:'7px 10px',borderBottom:'1px solid var(--border)',flexShrink:0}}>
+      <span style={{fontSize:10,fontFamily:'var(--mono)',color:sshExtColor(entry.name),background:'var(--bg4)',padding:'2px 5px',borderRadius:3}}>{sshExtBadge(entry.name)}</span>
+      <span style={{flex:1,fontSize:12,color:'var(--fg)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={entry.path}>{entry.name}</span>
+      {!entry.is_dir&&<span style={{fontSize:11,color:'var(--fg3)'}}>{fmtSize(entry.size)}</span>}
+      <button onClick={onClose} style={{background:'none',border:'none',cursor:'pointer',color:'var(--fg3)',padding:'2px 4px'}}><Icon name="x" size={13}/></button>
+    </div>
+  );
+  const tabs=(
+    <div style={{display:'flex',borderBottom:'1px solid var(--border)',flexShrink:0}}>
+      {[['view','预览'],['ops','操作']].map(([k,l])=>(
+        <button key={k} onClick={()=>setTab(k)}
+          style={{flex:1,padding:'6px',fontSize:12,cursor:'pointer',border:'none',
+            background:tab===k?'var(--bg3)':'var(--bg2)',color:tab===k?'var(--fg)':'var(--fg3)',
+            borderBottom:tab===k?'2px solid var(--gold)':'2px solid transparent'}}>
+          {l}
+        </button>
+      ))}
+    </div>
+  );
+
+  const viewContent=(()=>{
+    if(entry.is_dir) return <div style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',color:'var(--fg3)',fontSize:12}}>{entry.path}</div>;
+    if(loading) return <div style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',color:'var(--fg3)',fontSize:12}}>加载中…</div>;
+    if(tooLarge) return(
+      <div style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:10}}>
+        <div style={{color:'var(--fg3)',fontSize:12}}>文件过大 ({fmtSize(entry.size)})，仅支持下载</div>
+        <button onClick={doDownload} style={{padding:'6px 14px',borderRadius:4,background:'var(--gold)',border:'none',color:'#000',cursor:'pointer',fontSize:12}}>下载</button>
+      </div>
+    );
+    if(ftype==='image') return imgUrl
+      ?<div style={{flex:1,overflowY:'auto',display:'flex',alignItems:'center',justifyContent:'center',padding:8}}><img src={imgUrl} alt={entry.name} style={{maxWidth:'100%',maxHeight:'100%',objectFit:'contain',borderRadius:4}}/></div>
+      :<div style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',color:'var(--fg3)',fontSize:12}}>图片加载失败</div>;
+    if(ftype==='md') return(
+      <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>
+        <div style={{display:'flex',gap:6,padding:'5px 10px',borderBottom:'1px solid var(--border)',flexShrink:0}}>
+          <button onClick={()=>setMdPreview(true)} style={{padding:'3px 8px',borderRadius:3,fontSize:11,cursor:'pointer',border:'none',background:mdPreview?'var(--gold)':'var(--bg4)',color:mdPreview?'#000':'var(--fg3)'}}>预览</button>
+          <button onClick={()=>setMdPreview(false)} style={{padding:'3px 8px',borderRadius:3,fontSize:11,cursor:'pointer',border:'none',background:!mdPreview?'var(--gold)':'var(--bg4)',color:!mdPreview?'#000':'var(--fg3)'}}>编辑</button>
+          {edited&&!mdPreview&&<span style={{marginLeft:'auto',fontSize:11,color:'var(--gold)'}}>● 未保存</span>}
+          {!mdPreview&&<button onClick={doSave} disabled={saving} style={{marginLeft:edited?'4px':'auto',padding:'3px 10px',borderRadius:3,fontSize:11,cursor:'pointer',background:'var(--gold)',border:'none',color:'#000'}}>{saving?'保存中…':'保存'}</button>}
+        </div>
+        {mdPreview
+          ?<div style={{flex:1,overflowY:'auto',padding:'12px 14px',lineHeight:1.7,fontSize:13}} className="md-body" dangerouslySetInnerHTML={{__html:window.marked?window.marked.parse(content):content.replace(/\n/g,'<br>')}}/>
+          :<textarea style={{flex:1,resize:'none',background:'var(--bg2)',border:'none',color:'var(--fg)',fontFamily:'var(--mono)',fontSize:12,padding:'10px',outline:'none',lineHeight:1.6}} value={content} onChange={e=>{setContent(e.target.value);setEdited(true);}}/>
+        }
+      </div>
+    );
+    if(ftype==='text') return(
+      <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>
+        <div style={{display:'flex',alignItems:'center',padding:'4px 10px',borderBottom:'1px solid var(--border)',flexShrink:0,gap:6}}>
+          {edited&&<span style={{fontSize:11,color:'var(--gold)'}}>● 未保存</span>}
+          <button onClick={doSave} disabled={saving||!edited} style={{marginLeft:'auto',padding:'3px 10px',borderRadius:3,fontSize:11,cursor:'pointer',background:edited?'var(--gold)':'var(--bg4)',border:'none',color:edited?'#000':'var(--fg3)',opacity:edited?1:0.5}}>{saving?'保存中…':'保存'}</button>
+        </div>
+        <textarea style={{flex:1,resize:'none',background:'var(--bg2)',border:'none',color:'var(--fg)',fontFamily:'var(--mono)',fontSize:12,padding:'10px',outline:'none',lineHeight:1.6,tabSize:4}} value={content} onChange={e=>{setContent(e.target.value);setEdited(true);}}/>
+      </div>
+    );
+    return(
+      <div style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:10}}>
+        <div style={{color:'var(--fg3)',fontSize:12}}>二进制文件，不支持预览</div>
+        <button onClick={doDownload} style={{padding:'6px 14px',borderRadius:4,background:'var(--gold)',border:'none',color:'#000',cursor:'pointer',fontSize:12}}>下载</button>
+      </div>
+    );
+  })();
+
+  const opsContent=(
+    <div style={{flex:1,overflowY:'auto',padding:12,display:'flex',flexDirection:'column',gap:12}}>
+      {opMsg&&(
+        <div style={{padding:'6px 10px',borderRadius:4,fontSize:12,display:'flex',alignItems:'center',gap:6,
+          background:opMsg.ok?'rgba(62,184,122,.1)':'rgba(196,90,90,.1)',color:opMsg.ok?'var(--green)':'var(--red)'}}>
+          <Icon name={opMsg.ok?'check':'alert'} size={11}/>{opMsg.text}
+        </div>
+      )}
+      {/* 复制路径 */}
+      <div>
+        <div style={{fontSize:10,color:'var(--fg3)',marginBottom:5,letterSpacing:.5}}>远程路径</div>
+        <div style={{display:'flex',gap:6}}>
+          <div style={{flex:1,background:'var(--bg4)',border:'1px solid var(--border)',borderRadius:4,padding:'5px 8px',fontSize:11,fontFamily:'var(--mono)',color:'var(--fg2)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{entry.path}</div>
+          <button onClick={copyPath} style={{padding:'5px 10px',borderRadius:4,background:'var(--bg4)',border:'1px solid var(--border)',color:'var(--fg2)',cursor:'pointer',fontSize:11,flexShrink:0}}>复制</button>
+        </div>
+      </div>
+      {/* 下载 */}
+      {!entry.is_dir&&(
+        <button onClick={doDownload} style={{width:'100%',padding:'7px',borderRadius:4,background:'var(--bg4)',border:'1px solid var(--border)',color:'var(--fg2)',cursor:'pointer',fontSize:12,display:'flex',alignItems:'center',justifyContent:'center',gap:6}}>
+          <Icon name="download" size={12}/>下载文件
+        </button>
+      )}
+      {/* 重命名 */}
+      <div>
+        <div style={{fontSize:10,color:'var(--fg3)',marginBottom:5,letterSpacing:.5}}>重命名</div>
+        <div style={{display:'flex',gap:6}}>
+          <input value={renameVal} onChange={e=>setRenameVal(e.target.value)} onKeyDown={e=>e.key==='Enter'&&doRename()}
+            style={{flex:1,colorScheme:'dark',background:'var(--bg4)',border:'1px solid var(--border)',borderRadius:4,color:'var(--fg)',padding:'5px 8px',fontSize:12,outline:'none'}}/>
+          <button onClick={doRename} disabled={opLoading} style={{padding:'5px 12px',borderRadius:4,background:'var(--gold)',border:'none',color:'#000',cursor:'pointer',fontSize:12,fontWeight:600}}>确认</button>
+        </div>
+      </div>
+      {/* Chmod */}
+      <div>
+        <div style={{fontSize:10,color:'var(--fg3)',marginBottom:5,letterSpacing:.5}}>权限 (rwxrwxrwx 或 755)</div>
+        <div style={{display:'flex',gap:6}}>
+          <input value={chmodVal} onChange={e=>setChmodVal(e.target.value)} placeholder="755 或 rwxr-xr-x" onKeyDown={e=>e.key==='Enter'&&doChmod()}
+            style={{flex:1,colorScheme:'dark',background:'var(--bg4)',border:'1px solid var(--border)',borderRadius:4,color:'var(--fg)',padding:'5px 8px',fontSize:12,fontFamily:'var(--mono)',outline:'none'}}/>
+          <button onClick={doChmod} disabled={opLoading} style={{padding:'5px 12px',borderRadius:4,background:'var(--bg4)',border:'1px solid var(--border)',color:'var(--fg2)',cursor:'pointer',fontSize:12}}>应用</button>
+        </div>
+      </div>
+      {/* 删除 */}
+      <div style={{marginTop:'auto',paddingTop:8}}>
+        {!confirmDel
+          ?<button onClick={()=>setConfirmDel(true)} style={{width:'100%',padding:'7px',borderRadius:4,background:'rgba(196,90,90,.1)',border:'1px solid var(--red)',color:'var(--red)',cursor:'pointer',fontSize:12}}>
+              删除{entry.is_dir?'目录':'文件'}「{entry.name}」
+            </button>
+          :<div style={{display:'flex',flexDirection:'column',gap:6}}>
+            <div style={{fontSize:11,color:'var(--red)',padding:'6px 8px',background:'rgba(196,90,90,.08)',borderRadius:4,wordBreak:'break-all',lineHeight:1.5}}>
+              确认删除「<b>{entry.name}</b>」{entry.is_dir?'及其全部内容':''} ？<br/>
+              <span style={{opacity:.7}}>此操作不可撤销</span>
+            </div>
+            <div style={{display:'flex',gap:6}}>
+              <button onClick={()=>setConfirmDel(false)} style={{flex:1,padding:'7px',borderRadius:4,background:'var(--bg3)',border:'1px solid var(--border)',color:'var(--fg3)',cursor:'pointer',fontSize:12}}>取消</button>
+              <button onClick={doDelete} disabled={opLoading} style={{flex:1,padding:'7px',borderRadius:4,background:'var(--red)',border:'none',color:'#fff',cursor:'pointer',fontSize:12,fontWeight:600}}>{opLoading?'删除中…':'确认删除'}</button>
+            </div>
+          </div>
+        }
+      </div>
+    </div>
+  );
+
+  return(
+    <div style={{width:width,borderLeft:'1px solid var(--border)',display:'flex',flexDirection:'column',background:'var(--bg2)',flexShrink:0,overflow:'hidden'}}>
+      {hdr}{tabs}
+      {tab==='view'?viewContent:opsContent}
+    </div>
+  );
+}
+
+function SSHFloatWindow({win, showHidden, onClose, onNavigate, onOpenEntry, onRefresh, onDragStart, onDropAt, onDropIntoDir}){
+  const [dragOver,setDragOver]=React.useState(false);
+  const visibleEntries=React.useMemo(()=>{
+    const items=(win.entries||[]).filter(e=>showHidden||!e.name.startsWith('.'));
+    return items.sort((a,b)=>{
+      if(a.is_dir!==b.is_dir) return a.is_dir?-1:1;
+      return a.name.localeCompare(b.name);
+    });
+  },[win.entries,showHidden]);
+
+  function onDropSelf(e){
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(false);
+    onDropAt(win.path,e);
+  }
+
+  return(
+    <div style={{position:'absolute',left:win.x,top:win.y,width:300,height:380,display:'flex',flexDirection:'column',
+      background:'rgba(16,16,22,.98)',border:dragOver?'1px solid var(--gold)':'1px solid var(--border)',borderRadius:10,
+      boxShadow:'0 12px 30px rgba(0,0,0,.42)',overflow:'hidden',zIndex:15}}
+      onDragOver={e=>{e.preventDefault();setDragOver(true);}}
+      onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget))setDragOver(false);}}
+      onDrop={onDropSelf}>
+      <div style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',borderBottom:'1px solid var(--border)',background:'var(--bg3)'}}>
+        <Icon name="folder" size={13} color="var(--gold)"/>
+        <button onClick={()=>onNavigate(win.id,parentPath(win.path))}
+          style={{background:'none',border:'none',cursor:'pointer',color:'var(--fg3)',padding:0,fontSize:13}}>↑</button>
+        <div style={{flex:1,fontSize:11,fontFamily:'var(--mono)',color:'var(--fg2)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={win.path}>
+          {win.path}
+        </div>
+        <button onClick={()=>onRefresh(win.id)} style={{background:'none',border:'none',cursor:'pointer',color:'var(--fg3)',padding:0}}>
+          <Icon name="refresh" size={12}/>
+        </button>
+        <button onClick={()=>onClose(win.id)} style={{background:'none',border:'none',cursor:'pointer',color:'var(--fg3)',padding:0}}>
+          <Icon name="x" size={12}/>
+        </button>
+      </div>
+      <div style={{padding:'6px 10px',fontSize:10,color:'var(--fg3)',borderBottom:'1px solid var(--border)'}}>
+        拖到此窗口可传输到当前目录
+      </div>
+      <div style={{flex:1,overflowY:'auto'}}>
+        {win.loading&&<div style={{padding:18,fontSize:12,color:'var(--fg3)',textAlign:'center'}}>加载中…</div>}
+        {win.error&&<div style={{padding:10,fontSize:12,color:'var(--red)'}}>{win.error}</div>}
+        {!win.loading&&!win.error&&visibleEntries.length===0&&<div style={{padding:18,fontSize:12,color:'var(--fg3)',textAlign:'center'}}>目录为空</div>}
+        {!win.loading&&!win.error&&visibleEntries.map(e=>(
+          <div key={e.path}
+            draggable
+            onDragStart={ev=>onDragStart(ev,win.id,e)}
+            onClick={()=>e.is_dir?onNavigate(win.id,e.path):onOpenEntry(e)}
+            onDragOver={ev=>{if(e.is_dir) ev.preventDefault();}}
+            onDrop={ev=>{if(e.is_dir){ev.preventDefault();ev.stopPropagation();setDragOver(false);onDropIntoDir(win.id,e.path,ev);}}}
+            style={{display:'flex',alignItems:'center',gap:8,padding:'6px 10px',cursor:'pointer',borderBottom:'1px solid rgba(255,255,255,.03)'}}>
+            <span style={{width:16,textAlign:'center',color:e.is_dir?'var(--gold)':sshExtColor(e.name),fontSize:11,flexShrink:0}}>
+              {e.is_dir?'▶':sshExtBadge(e.name)}
+            </span>
+            <span style={{flex:1,fontSize:12,color:e.is_dir?'var(--fg)':'var(--fg2)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+              {e.name}{e.is_dir?'/':''}
+            </span>
+            {!e.is_dir&&<span style={{fontSize:10,color:'var(--fg3)',flexShrink:0}}>{fmtSize(e.size)}</span>}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── SSHManagerApp ────────────────────────────────────────────────────────────
+function SSHManagerApp({user}){
+  const token = localStorage.getItem('mf_token');
+
+  // Connections
+  const [connections,setConnections]=React.useState(loadConns);
+  const [activeConn,setActiveConn]=React.useState(null);
+  const [showForm,setShowForm]=React.useState(false);
+  const [editConn,setEditConn]=React.useState(null);
+
+  // Browser
+  const [curPath,setCurPath]=React.useState('/');
+  const [entries,setEntries]=React.useState([]);
+  const [loading,setLoading]=React.useState(false);
+  const [loadMeta,setLoadMeta]=React.useState(null);
+  const [dirCounts,setDirCounts]=React.useState({});
+  const [lsError,setLsError]=React.useState(null);
+  const [selEntry,setSelEntry]=React.useState(null);
+  const [floatWindows,setFloatWindows]=React.useState([]);
+  const nextWindowId=React.useRef(1);
+  const [pendingTransfer,setPendingTransfer]=React.useState(null);
+  const [transferBusy,setTransferBusy]=React.useState(false);
+
+  // Filters & sort
+  const [showHidden,setShowHidden]=React.useState(false);
+  const [searchQ,setSearchQ]=React.useState('');
+  const [showSearch,setShowSearch]=React.useState(false);
+  const [sortKey,setSortKey]=React.useState('name');
+  const [sortDesc,setSortDesc]=React.useState(false);
+
+  // Multi-select
+  const [selected,setSelected]=React.useState(new Set());
+
+  // Drag & drop
+  const [isDragOver,setIsDragOver]=React.useState(false);
+  function clearDragOverlay(){
+    setIsDragOver(false);
+  }
+
+  // Preview panel resize
+  const [previewWidth,setPreviewWidth]=React.useState(320);
+  const previewResizeRef=React.useRef(null);
+  function onPreviewResizeStart(e){
+    e.preventDefault();
+    const startX=e.clientX, startW=previewWidth;
+    function onMove(ev){ setPreviewWidth(Math.max(200,Math.min(800,startW-(ev.clientX-startX)))); }
+    function onUp(){ window.removeEventListener('mousemove',onMove); window.removeEventListener('mouseup',onUp); document.body.style.cursor=''; document.body.style.userSelect=''; }
+    document.body.style.cursor='col-resize';
+    document.body.style.userSelect='none';
+    window.addEventListener('mousemove',onMove);
+    window.addEventListener('mouseup',onUp);
+  }
+
+  // Upload queue
+  const [uploadQueue,setUploadQueue]=React.useState([]);
+
+  // Batch
+  const [zipping,setZipping]=React.useState(false);
+  const [zipState,setZipState]=React.useState(null);
+  const [downloadState,setDownloadState]=React.useState(null);
+  const [jobModal,setJobModal]=React.useState(null);
+
+  // Toolbar
+  const [showMkdir,setShowMkdir]=React.useState(false);
+  const [mkdirName,setMkdirName]=React.useState('');
+  const [mkdirLoading,setMkdirLoading]=React.useState(false);
+  const uploadRef=React.useRef(null);
+  const folderUploadRef=React.useRef(null);
+
+  // 冲突对话框
+  const [uploadConflict,setUploadConflict]=React.useState(null); // {name, resolve}
+  const uploadConflictResolveRef=React.useRef(null);
+
+  function resolveConflict(action){ // 'skip'|'replace'|'skip-all'|'replace-all'
+    setUploadConflict(null);
+    uploadConflictResolveRef.current?.(action);
+  }
+  function askConflict(name){
+    return new Promise(resolve=>{
+      uploadConflictResolveRef.current=resolve;
+      setUploadConflict({name});
+    });
+  }
+
+  // Clipboard: {entries:[{path,name,is_dir}], op:'cut'|'copy'}
+  const [clipboard,setClipboard]=React.useState(null);
+
+  // Navigation history (ref to avoid stale closures)
+  const navHistRef=React.useRef(['/']);
+  const navIdxRef=React.useRef(0);
+  const [navCanBack,setNavCanBack]=React.useState(false);
+  const [navCanFwd,setNavCanFwd]=React.useState(false);
+
+  // Context menu
+  const [ctxMenu,setCtxMenu]=React.useState(null);
+  const [uiNow,setUiNow]=React.useState(Date.now());
+
+  // Inline rename & new file
+  const [inlineRenameEntry,setInlineRenameEntry]=React.useState(null);
+  const [inlineRenameVal,setInlineRenameVal]=React.useState('');
+  const [showNewFile,setShowNewFile]=React.useState(false);
+  const [newFileName,setNewFileName]=React.useState('');
+  const [newFileLoading,setNewFileLoading]=React.useState(false);
+
+  React.useEffect(()=>{
+    if(!loading && !zipping && !downloadState) return;
+    const id=setInterval(()=>setUiNow(Date.now()),1000);
+    return()=>clearInterval(id);
+  },[loading,zipping,downloadState]);
+
+  // Terminal
+  const [showTerminal,setShowTerminal]=React.useState(false);
+  const [terminalHeight,setTerminalHeight]=React.useState(300);
+  function onTerminalResizeStart(e){
+    e.preventDefault();
+    const startY=e.clientY, startH=terminalHeight;
+    function onMove(ev){ setTerminalHeight(Math.max(160,Math.min(720,startH-(ev.clientY-startY)))); }
+    function onUp(){
+      window.removeEventListener('mousemove',onMove);
+      window.removeEventListener('mouseup',onUp);
+      document.body.style.cursor='';
+      document.body.style.userSelect='';
+    }
+    document.body.style.cursor='row-resize';
+    document.body.style.userSelect='none';
+    window.addEventListener('mousemove',onMove);
+    window.addEventListener('mouseup',onUp);
+  }
+
+  // Bookmarks
+  const [bookmarks,setBookmarks]=React.useState([]);
+  React.useEffect(()=>{
+    if(activeConn) setBookmarks(loadBM(activeConn.id));
+  },[activeConn?.id]);
+
+  // ── Auto-restore ──────────────────────────────────────────────────────────
+  React.useEffect(()=>{
+    const lastId=loadLastConn();
+    if(!lastId) return;
+    const conns=loadConns();
+    const c=conns.find(x=>x.id===lastId);
+    if(c){const d=loadLastDir(lastId);connect(c,d);}
+  },[]);
+
+  // ── Keyboard shortcuts ────────────────────────────────────────────────────
+  React.useEffect(()=>{
+    function onKey(e){
+      if(!activeConn) return;
+      const tag=e.target.tagName;
+      const inInput=['INPUT','TEXTAREA'].includes(tag);
+      // Terminal toggle: backtick
+      if(!inInput&&(e.key==='`'||(e.ctrlKey&&e.key==='`'))){e.preventDefault();setShowTerminal(t=>!t);return;}
+      if(inInput) return;
+      if(e.key==='F5'){e.preventDefault();loadDir(curPath);}
+      if(e.key==='Delete'&&selected.size>0){e.preventDefault();batchDelete();}
+      if(e.key==='Escape'){setSelected(new Set());setCtxMenu(null);setShowSearch(false);setSearchQ('');}
+      if(e.ctrlKey&&e.key==='a'){e.preventDefault();toggleAll();}
+      if(e.ctrlKey&&e.key==='x'&&selected.size>0){e.preventDefault();cutEntries();}
+      if(e.ctrlKey&&e.key==='c'&&selected.size>0){e.preventDefault();copyEntriesClip();}
+      if(e.ctrlKey&&e.key==='v'&&clipboard){e.preventDefault();pasteEntries();}
+      if(e.ctrlKey&&e.key==='j'){e.preventDefault();showQueue();}
+      if((e.altKey||e.metaKey)&&e.key==='ArrowLeft'){e.preventDefault();goBack();}
+      if((e.altKey||e.metaKey)&&e.key==='ArrowRight'){e.preventDefault();goForward();}
+      if(e.ctrlKey&&e.key==='f'){e.preventDefault();setShowSearch(true);}
+    }
+    document.addEventListener('keydown',onKey);
+    return()=>document.removeEventListener('keydown',onKey);
+  },[activeConn,selected,clipboard,curPath]);
+
+  // ── Connection helpers ────────────────────────────────────────────────────
+  function persistConns(list){setConnections(list);saveConns(list);}
+  function saveConn(form){
+    const normalized={...form,home_path:(form.home_path||'').trim()};
+    if(editConn?.id) persistConns(connections.map(c=>c.id===editConn.id?{...normalized,id:editConn.id}:c));
+    else persistConns([...connections,{...normalized,id:Date.now().toString()}]);
+    setShowForm(false);setEditConn(null);
+  }
+  function delConn(id){
+    persistConns(connections.filter(c=>c.id!==id));
+    if(activeConn?.id===id){setActiveConn(null);setEntries([]);setSelEntry(null);setFloatWindows([]);}
+  }
+  function updateNavUI(){
+    setNavCanBack(navIdxRef.current>0);
+    setNavCanFwd(navIdxRef.current<navHistRef.current.length-1);
+  }
+
+  async function connect(conn, startPath){
+    const d=startPath!==undefined?startPath:loadLastDir(conn.id);
+    setActiveConn(conn);setSelEntry(null);setSelected(new Set());
+    setFloatWindows([]);
+    setPendingTransfer(null);
+    saveLastConn(conn.id);
+    navHistRef.current=[d];navIdxRef.current=0;updateNavUI();
+    setBookmarks(loadBM(conn.id));
+    await loadDir(d,conn,true);
+  }
+
+  async function loadDir(path, connOverride, skipHistory=false){
+    const c=connOverride||activeConn;
+    if(!c) return;
+    const pathLabel=path||'/';
+    const knownCount=Object.prototype.hasOwnProperty.call(dirCounts,pathLabel)?dirCounts[pathLabel]:(pathLabel===curPath?entries.length:null);
+    setLoading(true);setLsError(null);setSelEntry(null);setSearchQ('');
+    setLoadMeta({path:pathLabel,startAt:Date.now(),knownCount});
+    try{
+      const r=await P('/api/ssh/ls/',{...c,path});
+      if(r.error){setLsError(r.error);setEntries([]);}
+      else{
+        const rp=r.path||path;
+        setEntries(r.entries||[]);setCurPath(rp);
+        setDirCounts(prev=>({...prev,[rp]:(r.entries||[]).length}));
+        saveLastDir(c.id,rp);
+        if(!skipHistory){
+          const newHist=navHistRef.current.slice(0,navIdxRef.current+1).concat([rp]);
+          navHistRef.current=newHist;navIdxRef.current=newHist.length-1;updateNavUI();
+        }
+      }
+    }catch(e){setLsError(String(e));setEntries([]);}
+    setLoading(false);
+    setLoadMeta(null);
+  }
+
+  async function loadFloatWindowDir(id, path, connOverride){
+    const c=connOverride||activeConn;
+    if(!c) return;
+    setFloatWindows(prev=>prev.map(w=>w.id===id?{...w,loading:true,error:null}:w));
+    try{
+      const r=await P('/api/ssh/ls/',{...c,path});
+      setFloatWindows(prev=>prev.map(w=>w.id===id?{
+        ...w,
+        path:r.path||path,
+        entries:r.entries||[],
+        loading:false,
+        error:r.error||null,
+      }:w));
+    }catch(e){
+      setFloatWindows(prev=>prev.map(w=>w.id===id?{...w,loading:false,error:String(e)}:w));
+    }
+  }
+
+  function openFloatWindow(startPath){
+    const id='w'+(nextWindowId.current++);
+    const idx=floatWindows.length;
+    const path=startPath||curPath||'/';
+    setFloatWindows(prev=>[...prev,{
+      id,
+      path,
+      entries:[],
+      loading:true,
+      error:null,
+      x:90+idx*26,
+      y:72+idx*26,
+    }]);
+    loadFloatWindowDir(id,path);
+  }
+
+  function closeFloatWindow(id){
+    setFloatWindows(prev=>prev.filter(w=>w.id!==id));
+  }
+
+  async function runRemoteCapture(command, cwdOverride){
+    const cwd=cwdOverride||curPath;
+    const resp=await fetch('/api/ssh/exec/',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Token '+token},
+      body:JSON.stringify({...activeConn,command,cwd}),
+    });
+    if(!resp.ok) throw new Error(resp.status+': '+await resp.text().catch(()=>''));
+    const reader=resp.body.getReader();
+    const dec=new TextDecoder();
+    let buf='';
+    let out='';
+    let exitCode=null;
+    let errText='';
+    while(true){
+      const {done,value}=await reader.read();
+      if(done) break;
+      buf+=dec.decode(value,{stream:true});
+      const parts=buf.split('\n\n');
+      buf=parts.pop()||'';
+      for(const part of parts){
+        const line=part.trim();
+        if(!line.startsWith('data: ')) continue;
+        try{
+          const chunk=JSON.parse(line.slice(6));
+          if(chunk.out) out+=stripAnsi(chunk.out);
+          if(chunk.done) exitCode=chunk.exit_code;
+          if(chunk.error) errText=chunk.error;
+        }catch{}
+      }
+    }
+    return {output:out.trim(), exitCode, error:errText};
+  }
+
+  async function showQueue(){
+    setJobModal({title:'任务队列',loading:true,cmd:'正在检测调度器…',output:'正在连接远端并检查可用的任务队列命令…'});
+    setTimeout(async()=>{
+      try{
+        const detectCmd=`bash -lc '
+if command -v squeue >/dev/null 2>&1; then
+  echo "__QUEUE_CMD__:squeue -u \\$USER"
+elif command -v qstat >/dev/null 2>&1; then
+  echo "__QUEUE_CMD__:qstat -u \\$USER"
+elif command -v bjobs >/dev/null 2>&1; then
+  echo "__QUEUE_CMD__:bjobs"
+else
+  echo "__QUEUE_CMD__:NONE"
+fi
+'`;
+        const detect=await runRemoteCapture(detectCmd);
+        const firstLine=(detect.output||'').split('\n').find(Boolean)||'';
+        const prefix='__QUEUE_CMD__:';
+        const queueCmd=firstLine.startsWith(prefix)?firstLine.slice(prefix.length).trim():'NONE';
+        if(queueCmd==='NONE'){
+          setJobModal({
+            title:'任务队列',
+            loading:false,
+            cmd:'未检测到任务调度器',
+            output:'这台机器上没有检测到 `squeue`、`qstat` 或 `bjobs`。通常说明它不是 SLURM / PBS / LSF 登录节点，或者相关命令不在当前 PATH 里。',
+            exitCode:0,
+            error:null,
+          });
+          return;
+        }
+        setJobModal({title:'任务队列',loading:true,cmd:queueCmd,output:'正在获取任务队列…'});
+        const r=await runRemoteCapture(queueCmd);
+        setJobModal({title:'任务队列',loading:false,cmd:queueCmd,output:r.output||'(无输出)',exitCode:r.exitCode,error:r.error||null});
+      }catch(e){
+        setJobModal({title:'任务队列',loading:false,cmd:'任务队列检查失败',output:'',error:String(e)});
+      }
+    },0);
+  }
+
+  async function submitBatchJob(entry){
+    const cwd=parentPath(entry.path);
+    setJobModal({title:'提交作业',loading:true,cmd:`cd ${cwd} && sbatch ${entry.name}`,output:''});
+    try{
+      const r=await runRemoteCapture(`sbatch ${shellQuote(entry.name)}`,cwd);
+      setJobModal({title:'提交作业',loading:false,cmd:`cd ${cwd} && sbatch ${entry.name}`,output:r.output||'(无输出)',exitCode:r.exitCode,error:r.error||null});
+    }catch(e){
+      setJobModal({title:'提交作业',loading:false,cmd:`cd ${cwd} && sbatch ${entry.name}`,output:'',error:String(e)});
+    }
+  }
+
+  async function refreshAllBrowsers(){
+    await loadDir(curPath, activeConn, true);
+    const wins=[...floatWindows];
+    for(const w of wins){
+      await loadFloatWindowDir(w.id,w.path);
+    }
+  }
+
+  function goBack(){
+    if(navIdxRef.current>0){navIdxRef.current--;updateNavUI();loadDir(navHistRef.current[navIdxRef.current],null,true);}
+  }
+  function goForward(){
+    if(navIdxRef.current<navHistRef.current.length-1){navIdxRef.current++;updateNavUI();loadDir(navHistRef.current[navIdxRef.current],null,true);}
+  }
+
+  // ── Bookmark helpers ──────────────────────────────────────────────────────
+  function addBookmark(){
+    if(!activeConn||bookmarks.includes(curPath)) return;
+    const nb=[...bookmarks,curPath];setBookmarks(nb);saveBM(activeConn.id,nb);
+  }
+  function removeBookmark(p){
+    const nb=bookmarks.filter(b=>b!==p);setBookmarks(nb);saveBM(activeConn.id,nb);
+  }
+
+  // ── Select helpers ────────────────────────────────────────────────────────
+  function toggleSelect(path,e){e.stopPropagation();setSelected(prev=>{const n=new Set(prev);n.has(path)?n.delete(path):n.add(path);return n;});}
+  function toggleAll(){selected.size===entries.length?setSelected(new Set()):setSelected(new Set(entries.map(e=>e.path)));}
+
+  // ── Clipboard ─────────────────────────────────────────────────────────────
+  function cutEntries(){
+    const sel=entries.filter(e=>selected.has(e.path));
+    setClipboard({entries:sel,op:'cut'});
+  }
+  function copyEntriesClip(){
+    const sel=entries.filter(e=>selected.has(e.path));
+    setClipboard({entries:sel,op:'copy'});
+  }
+  async function pasteEntries(){
+    if(!clipboard) return;
+    for(const e of clipboard.entries){
+      const dst=joinPath(curPath,e.name);
+      try{
+        if(clipboard.op==='cut') await P('/api/ssh/rename/',{...activeConn,old_path:e.path,new_path:dst});
+        else await P('/api/ssh/copy/',{...activeConn,src:e.path,dst});
+      }catch(err){alert('粘贴失败: '+String(err));}
+    }
+    if(clipboard.op==='cut') setClipboard(null);
+    setSelected(new Set());
+    await loadDir(curPath);
+  }
+
+  // ── File ops ──────────────────────────────────────────────────────────────
+  async function clickEntry(e){
+    if(e.is_dir){setSelected(new Set());await loadDir(e.path);}
+    else{setSelEntry(e);}
+  }
+  async function doMkdir(){
+    if(!mkdirName.trim()) return;
+    setMkdirLoading(true);
+    try{await P('/api/ssh/mkdir/',{...activeConn,path:joinPath(curPath,mkdirName.trim())});setMkdirName('');setShowMkdir(false);await loadDir(curPath);}catch(e){alert('创建失败: '+e);}
+    setMkdirLoading(false);
+  }
+  async function doInlineRename(){
+    if(!inlineRenameEntry||!inlineRenameVal.trim()||inlineRenameVal.trim()===inlineRenameEntry.name){setInlineRenameEntry(null);return;}
+    const dir=inlineRenameEntry.path.slice(0,inlineRenameEntry.path.lastIndexOf('/'));
+    try{await P('/api/ssh/rename/',{...activeConn,old_path:inlineRenameEntry.path,new_path:dir+'/'+inlineRenameVal.trim()});setInlineRenameEntry(null);await loadDir(curPath);}
+    catch(e){alert('重命名失败: '+e);}
+  }
+  async function doNewFile(){
+    if(!newFileName.trim()) return;
+    setNewFileLoading(true);
+    try{await P('/api/ssh/write/',{...activeConn,path:joinPath(curPath,newFileName.trim()),content:''});setNewFileName('');setShowNewFile(false);await loadDir(curPath);}
+    catch(e){alert('创建失败: '+e);}
+    setNewFileLoading(false);
+  }
+  const UPLOAD_DELAY=400; // ms between files，避免 SSH 速率限制
+  function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
+
+  // 上传单文件，失败时自动重试（针对 SSH banner/reset 错误）
+  async function uploadOneFile(remotePath, file, conflictMode, retries=2, onProgress){
+    for(let attempt=0;attempt<=retries;attempt++){
+      try{
+        return await sshUpload(activeConn,remotePath,file,token,conflictMode,onProgress);
+      }catch(err){
+        const s=String(err);
+        const isBanner=s.includes('banner')||s.includes('Connection reset')||s.includes('502');
+        if(isBanner&&attempt<retries){
+          await sleep(2000*(attempt+1)); // 2s, 4s 递增等待
+          continue;
+        }
+        throw err;
+      }
+    }
+  }
+
+  // 统一上传入口：pairs = [{file, relPath}]
+  async function runUploadPairsTo(targetPath, pairs){
+    if(!pairs.length) return;
+    setUploadConflict(null);
+    setUploadQueue(pairs.map(({relPath,file})=>({name:relPath,status:'pending',loaded:0,total:file?.size||null,startedAt:null})));
+
+    let conflictAll=null; // null=逐一询问 | 'skip' | 'replace'
+
+    for(let i=0;i<pairs.length;i++){
+      const {file,relPath}=pairs[i];
+      const remotePath=joinPath(targetPath,relPath);
+      const startedAt=Date.now();
+      setUploadQueue(q=>q.map((x,j)=>j===i?{...x,status:'uploading',startedAt,loaded:0}:x));
+
+      // 进度回调：每次收到 XHR upload progress 事件就更新 queue
+      const onProgress=(prog)=>{
+        setUploadQueue(q=>q.map((x,j)=>j===i?{...x,loaded:prog.loaded,total:prog.total}:x));
+      };
+
+      try{
+        let finalMode=conflictAll||'check'; // 默认先检查冲突
+
+        if(finalMode==='check'){
+          // 检查文件是否存在（不发送文件内容，速度快）
+          const exists=await sshCheckExists(activeConn,remotePath,token);
+          if(exists){
+            // 暂停，等用户选择
+            const choice=await askConflict(relPath);
+            if(choice==='skip-all') conflictAll='skip';
+            if(choice==='replace-all') conflictAll='replace';
+            if(choice==='skip'||choice==='skip-all'){
+              setUploadQueue(q=>q.map((x,j)=>j===i?{...x,status:'skipped'}:x));
+              if(i<pairs.length-1) await sleep(UPLOAD_DELAY);
+              continue;
+            }
+            finalMode='replace'; // 替换
+          } else {
+            finalMode='replace';
+          }
+        } else if(finalMode==='skip'){
+          // 后端一体化：跳过已存在文件（无需先单独检查）
+          const r=await uploadOneFile(remotePath,file,'skip',2,onProgress);
+          if(r.skipped){
+            setUploadQueue(q=>q.map((x,j)=>j===i?{...x,status:'skipped'}:x));
+            if(i<pairs.length-1) await sleep(UPLOAD_DELAY);
+            continue;
+          }
+          setUploadQueue(q=>q.map((x,j)=>j===i?{...x,status:'done'}:x));
+          if(i<pairs.length-1) await sleep(UPLOAD_DELAY);
+          continue;
+        }
+
+        // 实际上传（带进度回调）
+        await uploadOneFile(remotePath,file,finalMode,2,onProgress);
+        setUploadQueue(q=>q.map((x,j)=>j===i?{...x,status:'done',loaded:x.total||x.loaded}:x));
+      }catch(err){
+        setUploadQueue(q=>q.map((x,j)=>j===i?{...x,status:'error',msg:String(err)}:x));
+      }
+
+      if(i<pairs.length-1) await sleep(UPLOAD_DELAY);
+    }
+
+    setUploadConflict(null);
+    await refreshAllBrowsers();
+    setTimeout(()=>setUploadQueue([]),4000);
+  }
+
+  async function runUploadPairs(pairs){
+    return runUploadPairsTo(curPath,pairs);
+  }
+
+  function doUpload(files){
+    if(!files?.length) return;
+    const pairs=Array.from(files).map(f=>({file:f,relPath:f.name}));
+    runUploadPairs(pairs);
+  }
+
+  function doFolderUpload(files){
+    if(!files?.length) return;
+    const pairs=Array.from(files).map(f=>({file:f,relPath:f.webkitRelativePath||f.name}));
+    runUploadPairs(pairs);
+  }
+  async function downloadEntry(entry, connOverride){
+    const conn=connOverride||activeConn;
+    const ctrl=new AbortController();
+    const startedAt=Date.now();
+    setDownloadState({name:entry.name,startedAt,loaded:0,total:null,controller:ctrl});
+    try{
+      const blob=await sshBinaryPost('download',{...conn,path:entry.path},token,{
+        signal:ctrl.signal,
+        onProgress:prog=>setDownloadState(s=>s?{...s,loaded:prog.loaded,total:prog.total}:s),
+      });
+      triggerBrowserDownload(blob,entry.name);
+      setDownloadState(s=>s?{...s,loaded:s.total||s.loaded,total:s.total,done:true}:s);
+      setTimeout(()=>setDownloadState(s=>s?.done?null:s),1500);
+    }catch(e){
+      if(e?.name==='AbortError'){
+        setDownloadState(null);
+      }else{
+        setDownloadState(null);
+        alert('下载失败: '+(e?.message||e));
+      }
+    }
+  }
+  async function quickDownload(entry,ev){
+    ev.stopPropagation();
+    await downloadEntry(entry);
+  }
+
+  async function startZipDownload(paths, baseName){
+    if(!paths?.length) return;
+    const ctrl=new AbortController();
+    const startedAt=Date.now();
+    let meta=null;
+    setZipping(true);
+    setZipState({phase:'preflight',paths,baseName,startedAt,controller:ctrl,meta:null,error:null});
+    try{
+      meta=await P('/api/ssh/zip-meta/',{...activeConn,paths});
+      setZipState({phase:'packing',paths,baseName,startedAt,controller:ctrl,meta,error:null});
+      const blob=await sshBinaryPost('zip',{...activeConn,paths,zip_name:baseName+'.zip'},token,{
+        signal:ctrl.signal,
+        onProgress:prog=>setZipState(s=>s?{...s,phase:'transferring',downloaded:prog.loaded,total:prog.total,percent:prog.percent}:s),
+      });
+      triggerBrowserDownload(blob,baseName+'.zip');
+      setZipState({phase:'done',paths,baseName,startedAt,controller:null,meta,error:null,finishedAt:Date.now()});
+      setTimeout(()=>setZipState(s=>s?.phase==='done'?null:s),1800);
+    }catch(e){
+      if(e?.name==='AbortError'){
+        setZipState(null);
+      }else{
+        const msg=String(e?.message||e);
+        setZipState({phase:'error',paths,baseName,startedAt,controller:null,meta,error:msg});
+        alert('打包下载失败: '+msg);
+      }
+    }
+    setZipping(false);
+  }
+
+  async function batchDownload(){
+    if(!selected.size) return;
+    const paths=[...selected];
+    const baseName=paths.length===1?paths[0].split('/').pop():curPath.split('/').filter(Boolean).pop()||'download';
+    await startZipDownload(paths,baseName);
+  }
+
+  function cancelZip(){
+    zipState?.controller?.abort();
+    setZipping(false);
+    setZipState(null);
+  }
+  async function batchDelete(){
+    if(!selected.size) return;
+    const names=entries.filter(x=>selected.has(x.path)).map(x=>x.name);
+    const msg=names.length===1
+      ?`确认删除「${names[0]}」？此操作不可撤销`
+      :`确认删除以下 ${names.length} 个项目？此操作不可撤销\n\n${names.slice(0,10).join('\n')}${names.length>10?'\n…（共'+names.length+'项）':''}`;
+    if(!confirm(msg)) return;
+    for(const p of selected){
+      const e=entries.find(x=>x.path===p);
+      try{await P('/api/ssh/delete/',{...activeConn,path:p,is_dir:e?.is_dir||false});}catch{}
+    }
+    setSelected(new Set());await loadDir(curPath);
+  }
+
+  function startInternalDrag(e, paneId, entry){
+    const items=(paneId==='main'&&selected.has(entry.path)?entries.filter(x=>selected.has(x.path)):[entry])
+      .map(x=>({path:x.path,name:x.name,is_dir:x.is_dir}));
+    const payload={paneId,items};
+    e.dataTransfer.effectAllowed='copyMove';
+    e.dataTransfer.setData('application/x-mineai-ssh-items', JSON.stringify(payload));
+    e.dataTransfer.setData('text/plain', items.map(x=>x.name).join(', '));
+  }
+
+  function readInternalDrag(e){
+    const raw=e.dataTransfer?.getData('application/x-mineai-ssh-items');
+    if(!raw) return null;
+    try{return JSON.parse(raw);}catch{return null;}
+  }
+
+  async function collectDroppedPairs(e){
+    const items=Array.from(e.dataTransfer.items||[]);
+    let pairs=[];
+    if(items.length&&items[0].webkitGetAsEntry){
+      for(const item of items){
+        const entry=item.webkitGetAsEntry();
+        if(entry){
+          const sub=await _collectEntries(entry,'');
+          pairs.push(...sub);
+        }
+      }
+    }else{
+      pairs=Array.from(e.dataTransfer.files||[]).map(f=>({file:f,relPath:f.name}));
+    }
+    return pairs;
+  }
+
+  async function handleDropAtPath(targetPath, e){
+    clearDragOverlay();
+    const internal=readInternalDrag(e);
+    if(internal?.items?.length){
+      const movable=internal.items.filter(x=>parentPath(x.path)!==targetPath);
+      if(!movable.length) return;
+      setPendingTransfer({sourcePaneId:internal.paneId,targetPath,items:movable});
+      return;
+    }
+    const pairs=await collectDroppedPairs(e);
+    if(pairs.length) runUploadPairsTo(targetPath,pairs);
+  }
+
+  async function confirmPendingTransfer(mode){
+    if(!pendingTransfer||transferBusy) return;
+    setTransferBusy(true);
+    try{
+      for(const item of pendingTransfer.items){
+        const dst=joinPath(pendingTransfer.targetPath,item.name);
+        if(mode==='move') await P('/api/ssh/rename/',{...activeConn,old_path:item.path,new_path:dst});
+        else await P('/api/ssh/copy/',{...activeConn,src:item.path,dst});
+      }
+      setPendingTransfer(null);
+      setSelected(new Set());
+      await refreshAllBrowsers();
+    }catch(e){
+      alert((mode==='move'?'移动':'复制')+'失败: '+e);
+    }
+    setTransferBusy(false);
+  }
+
+  // ── Drag & drop ───────────────────────────────────────────────────────────
+  function onDragOver(e){
+    e.preventDefault();
+    const internal=readInternalDrag(e);
+    e.dataTransfer.dropEffect=internal?'move':'copy';
+    setIsDragOver(true);
+  }
+  function onDragLeave(e){if(!e.currentTarget.contains(e.relatedTarget))clearDragOverlay();}
+
+  // 递归遍历拖入的 FileSystemEntry，收集所有 {file, relPath} 对
+  async function _collectEntries(entry, prefix){
+    if(entry.isFile){
+      const file=await new Promise((res,rej)=>entry.file(res,rej));
+      const relPath=prefix?prefix+'/'+entry.name:entry.name;
+      return [{file,relPath}];
+    }
+    if(entry.isDirectory){
+      const dirPath=prefix?prefix+'/'+entry.name:entry.name;
+      const reader=entry.createReader();
+      const results=[];
+      let batch;
+      // readEntries 每次最多返回 100 条，需循环读完
+      do{
+        batch=await new Promise((res,rej)=>reader.readEntries(res,rej));
+        for(const child of batch){
+          const sub=await _collectEntries(child,dirPath);
+          results.push(...sub);
+        }
+      }while(batch.length>0);
+      return results;
+    }
+    return [];
+  }
+
+  async function onDrop(e){
+    e.preventDefault();
+    clearDragOverlay();
+    if(!activeConn) return;
+    await handleDropAtPath(curPath,e);
+  }
+
+  // ── Sort & filter ─────────────────────────────────────────────────────────
+  function toggleSort(key){if(sortKey===key){setSortDesc(d=>!d);}else{setSortKey(key);setSortDesc(false);}}
+  function sortArrow(key){if(sortKey!==key)return null;return sortDesc?'↓':'↑';}
+
+  const visibleEntries=React.useMemo(()=>{
+    let r=entries.filter(e=>showHidden||!e.name.startsWith('.'));
+    if(searchQ) r=r.filter(e=>e.name.toLowerCase().includes(searchQ.toLowerCase()));
+    r=[...r].sort((a,b)=>{
+      if(a.is_dir!==b.is_dir) return a.is_dir?-1:1;
+      let cmp=0;
+      if(sortKey==='name') cmp=a.name.localeCompare(b.name);
+      else if(sortKey==='size') cmp=(a.size||0)-(b.size||0);
+      else if(sortKey==='mtime') cmp=(a.mtime||0)-(b.mtime||0);
+      return sortDesc?-cmp:cmp;
+    });
+    return r;
+  },[entries,showHidden,searchQ,sortKey,sortDesc]);
+
+  const loadElapsed=loading&&loadMeta?.startAt?fmtDuration(uiNow-loadMeta.startAt):'';
+  const loadCountText=loadMeta?.knownCount===null||loadMeta?.knownCount===undefined
+    ?'项目数未知，数量越多加载越久'
+    :`预计读取 ${loadMeta.knownCount} 项，数量越多加载越久`;
+  const zipElapsed=zipping&&zipState?.startedAt?fmtDuration(uiNow-zipState.startedAt):'';
+  const zipMetaText=zipState?.meta
+    ?`${zipState.meta.files} 个文件 · ${zipState.meta.dirs} 个目录 · ${zipState.meta.bytes_str||fmtSize(zipState.meta.bytes)}`
+    :'正在统计打包内容…';
+  const zipTransferText=zipState?.phase==='transferring'
+    ?(zipState.total?`${fmtSize(zipState.downloaded||0)} / ${fmtSize(zipState.total)} · ${fmtPercent(zipState.percent)}`:`已下载 ${fmtSize(zipState.downloaded||0)}`)
+    :'';
+  const downloadElapsed=downloadState?.startedAt?fmtDuration(uiNow-downloadState.startedAt):'';
+  const downloadPercent=downloadState?.total?fmtPercent((downloadState.loaded||0)/downloadState.total):'';
+  const downloadText=downloadState
+    ?(downloadState.total?`${fmtSize(downloadState.loaded||0)} / ${fmtSize(downloadState.total)}${downloadPercent?` · ${downloadPercent}`:''}`:`已下载 ${fmtSize(downloadState.loaded||0)}`)
+    :'';
+
+  // ── Context menu ──────────────────────────────────────────────────────────
+  function onContextMenu(e,entry){
+    e.preventDefault();e.stopPropagation();
+    setCtxMenu({x:e.clientX,y:e.clientY,entry});
+    if(!selected.has(entry.path)){setSelected(new Set([entry.path]));}
+  }
+  function ctxActions(){
+    const e=ctxMenu?.entry;
+    // ── 背景右键（空白区域）──
+    if(!e){
+      return [
+        {icon:'folder',label:'新建文件夹',action:()=>{setShowMkdir(true);setMkdirName('');}},
+        {icon:'pen',label:'新建文件',action:()=>{setShowNewFile(true);setNewFileName('');}},
+        null,
+        {icon:'terminal',label:'查看任务队列',hint:'Ctrl+J',action:showQueue},
+        null,
+        {icon:'clipboard',label:'复制当前路径',action:()=>navigator.clipboard?.writeText(curPath)},
+        null,
+        clipboard&&{icon:'download',label:`粘贴 (${clipboard.entries.length} 项)`,hint:'Ctrl+V',action:pasteEntries},
+        null,
+        {icon:'check',label:'全选',hint:'Ctrl+A',action:toggleAll},
+        {icon:'refresh',label:'刷新',hint:'F5',action:()=>loadDir(curPath)},
+        {icon:'terminal',label:'在此打开终端',action:()=>setShowTerminal(true)},
+      ].filter(Boolean);
+    }
+    // ── 多选右键 ──
+    if(selected.size>1){
+      return [
+        {icon:'download',label:`下载 ${selected.size} 项 (ZIP)`,action:batchDownload},
+        null,
+        {icon:'copy',label:`复制 ${selected.size} 项`,hint:'Ctrl+C',action:copyEntriesClip},
+        {icon:'clipboard',label:`剪切 ${selected.size} 项`,hint:'Ctrl+X',action:cutEntries},
+        null,
+        {icon:'trash',label:`删除 ${selected.size} 项`,danger:true,hint:'Del',action:batchDelete},
+      ].filter(Boolean);
+    }
+    // ── 单文件/目录右键 ──
+    return [
+      {icon:'eye',label:e.is_dir?'打开目录':'打开文件',action:()=>clickEntry(e)},
+      !e.is_dir&&{icon:'download',label:'下载',action:()=>quickDownload(e,{stopPropagation:()=>{}})},
+      !e.is_dir&&isBatchScript(e.name)&&{icon:'terminal',label:'sbatch 提交',action:()=>submitBatchJob(e)},
+      e.is_dir&&{icon:'download',label:'下载为 ZIP',action:()=>startZipDownload([e.path],e.name)},
+      null,
+      {icon:'clipboard',label:'复制路径',action:()=>navigator.clipboard?.writeText(e.path)},
+      null,
+      {icon:'copy',label:'复制',hint:'Ctrl+C',action:()=>{setClipboard({entries:[e],op:'copy'});}},
+      {icon:'clipboard',label:'剪切',hint:'Ctrl+X',action:()=>{setClipboard({entries:[e],op:'cut'});}},
+      clipboard&&{icon:'download',label:'粘贴到此',hint:'Ctrl+V',action:pasteEntries},
+      null,
+      {icon:'pen',label:'重命名',action:()=>{setInlineRenameEntry(e);setInlineRenameVal(e.name);}},
+      null,
+      {icon:'folder',label:'新建文件夹（当前目录）',action:()=>{setShowMkdir(true);setMkdirName('');}},
+      {icon:'pen',label:'新建文件（当前目录）',action:()=>{setShowNewFile(true);setNewFileName('');}},
+      null,
+      {icon:'trash',label:'删除',danger:true,hint:'Del',action:()=>{setSelected(new Set([e.path]));batchDelete();}},
+    ].filter(Boolean);
+  }
+
+  // ── Sidebar ───────────────────────────────────────────────────────────────
+  const sidebar=(
+    <div style={{width:210,borderRight:'1px solid var(--border)',display:'flex',flexDirection:'column',background:'var(--bg2)',flexShrink:0}}>
+      <div style={{padding:'11px 12px 8px',borderBottom:'1px solid var(--border)',flexShrink:0}}>
+        <div style={{display:'flex',alignItems:'center',gap:8}}>
+          <Icon name="terminal" size={14} color="var(--gold)"/>
+          <span style={{fontSize:13,fontWeight:600,color:'var(--fg)'}}>SSH Manager</span>
+        </div>
+        <div style={{fontSize:10,color:'var(--fg3)',marginTop:2}}>凭据仅存本地</div>
+      </div>
+
+      <div style={{flex:1,overflowY:'auto',padding:'4px 0'}}>
+        {/* 连接列表 */}
+        {connections.length===0&&<div style={{padding:'16px 12px',color:'var(--fg3)',fontSize:12,textAlign:'center'}}>暂无连接<br/><span style={{fontSize:10,opacity:.6}}>点击下方添加</span></div>}
+        {connections.map(c=>{
+          const isActive=activeConn?.id===c.id;
+          const lastDir=loadLastDir(c.id);
+          const hasHist=lastDir&&lastDir!=='/';
+          return(
+            <div key={c.id} style={{borderRadius:4,margin:'2px 4px',overflow:'hidden',
+              background:isActive?'var(--bg4)':'transparent',border:isActive?'1px solid var(--border)':'1px solid transparent'}}>
+              <div style={{display:'flex',alignItems:'center',gap:6,padding:'7px 8px',cursor:'pointer'}} onClick={()=>connect(c)}>
+                <div style={{width:7,height:7,borderRadius:'50%',flexShrink:0,
+                  background:isActive?'var(--green)':'var(--border)',
+                  boxShadow:isActive?'0 0 5px var(--green)':'none',transition:'all .3s'}}/>
+                <div style={{flex:1,overflow:'hidden'}}>
+                  <div style={{fontSize:12,fontWeight:isActive?600:400,color:isActive?'var(--fg)':'var(--fg2)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c.label||c.host}</div>
+                  <div style={{fontSize:10,color:'var(--fg3)'}}>{c.username}@{c.host}:{c.port||22}</div>
+                </div>
+                <button onClick={e=>{e.stopPropagation();setEditConn(c);setShowForm(true);}} style={{background:'none',border:'none',cursor:'pointer',color:'var(--fg3)',padding:'2px',opacity:.6}}><Icon name="pen" size={11}/></button>
+                <button onClick={e=>{e.stopPropagation();delConn(c.id);}} style={{background:'none',border:'none',cursor:'pointer',color:'var(--fg3)',padding:'2px',opacity:.6}}><Icon name="x" size={11}/></button>
+              </div>
+              {hasHist&&(
+                <div style={{padding:'0 8px 6px 21px',display:'flex',alignItems:'center',gap:4}}>
+                  <span style={{fontSize:10,color:'var(--fg3)',flexShrink:0}}>↩</span>
+                  <button onClick={()=>connect(c,lastDir)} title={'恢复: '+lastDir}
+                    style={{background:'none',border:'none',cursor:'pointer',padding:0,fontSize:10,color:'var(--gold)',fontFamily:'var(--mono)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:150,textAlign:'left'}}>
+                    {lastDir}
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+        {/* 书签 */}
+        {activeConn&&bookmarks.length>0&&(
+          <div style={{marginTop:8,padding:'0 4px'}}>
+            <div style={{fontSize:10,color:'var(--fg3)',padding:'4px 8px',letterSpacing:.5}}>书签</div>
+            {bookmarks.map(bm=>(
+              <div key={bm} style={{display:'flex',alignItems:'center',gap:4,padding:'4px 8px',borderRadius:3,cursor:'pointer'}}
+                onClick={()=>loadDir(bm)}>
+                <span style={{fontSize:12,color:'var(--gold)',flexShrink:0}}>★</span>
+                <span style={{flex:1,fontSize:11,color:'var(--fg2)',fontFamily:'var(--mono)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{bm}</span>
+                <button onClick={e=>{e.stopPropagation();removeBookmark(bm);}} style={{background:'none',border:'none',cursor:'pointer',color:'var(--fg3)',padding:'1px 3px',fontSize:10,opacity:.5}}>×</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div style={{padding:'7px 8px',borderTop:'1px solid var(--border)',flexShrink:0}}>
+        <button onClick={()=>{setEditConn(null);setShowForm(true);}}
+          style={{width:'100%',padding:'7px',borderRadius:4,background:'var(--bg4)',border:'1px solid var(--border)',color:'var(--gold)',cursor:'pointer',fontSize:12,display:'flex',alignItems:'center',justifyContent:'center',gap:6}}>
+          <Icon name="pen" size={12}/> 新建连接
+        </button>
+      </div>
+    </div>
+  );
+
+  // ── No connection ─────────────────────────────────────────────────────────
+  const noConn=(
+    <div style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:12,color:'var(--fg3)'}}>
+      <Icon name="terminal" size={40} color="var(--fg3)"/>
+      <div style={{fontSize:13}}>从左侧选择或新建 SSH 连接</div>
+      <div style={{fontSize:11,opacity:.5}}>快捷键：Alt+← 后退  Alt+→ 前进  ` 终端  Ctrl+F 搜索</div>
+    </div>
+  );
+
+  // ── Browser ───────────────────────────────────────────────────────────────
+  const tbBtn=(props,children)=>(
+    <button {...props} style={{padding:'4px 8px',borderRadius:4,background:'var(--bg4)',border:'1px solid var(--border)',
+      color:'var(--fg2)',cursor:'pointer',fontSize:12,display:'flex',alignItems:'center',gap:4,...props.style}}>
+      {children}
+    </button>
+  );
+  const tbIconBtn=(props,icon)=>(
+    <button {...props} style={{width:34,height:34,padding:0,borderRadius:8,background:'var(--bg4)',border:'1px solid var(--border)',
+      color:'var(--fg2)',cursor:'pointer',display:'inline-flex',alignItems:'center',justifyContent:'center',flexShrink:0,...props.style}}>
+      {icon}
+    </button>
+  );
+
+  const browser=!activeConn?noConn:(
+    <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',position:'relative'}}>
+
+      {/* Toolbar row 1: nav + path */}
+      <div style={{display:'flex',alignItems:'center',gap:6,padding:'6px 10px',borderBottom:'1px solid var(--border)',flexShrink:0}}>
+        <button onClick={goBack} disabled={!navCanBack} title="后退 Alt+←"
+          style={{padding:'3px 6px',borderRadius:4,background:'none',border:'none',cursor:navCanBack?'pointer':'default',
+            color:navCanBack?'var(--fg2)':'var(--border)',fontSize:14,flexShrink:0}}>‹</button>
+        <button onClick={goForward} disabled={!navCanFwd} title="前进 Alt+→"
+          style={{padding:'3px 6px',borderRadius:4,background:'none',border:'none',cursor:navCanFwd?'pointer':'default',
+            color:navCanFwd?'var(--fg2)':'var(--border)',fontSize:14,flexShrink:0}}>›</button>
+        <button onClick={()=>loadDir(getConnHomePath(activeConn))} title={`Home 目录: ${getConnHomePath(activeConn)}`}
+          style={{padding:'3px 6px',borderRadius:4,background:'none',border:'none',cursor:'pointer',color:'var(--gold)',fontSize:13,flexShrink:0,fontFamily:'var(--mono)'}}>⌂</button>
+        <button onClick={()=>loadDir(parentPath(curPath))} title="上级目录"
+          style={{padding:'3px 6px',borderRadius:4,background:'none',border:'none',cursor:'pointer',color:'var(--fg3)',fontSize:14,flexShrink:0}}>↑</button>
+        <div style={{flex:1,minWidth:0,display:'flex',alignItems:'center'}}>
+          <PathBar path={curPath} onNavigate={p=>{setSelected(new Set());loadDir(p);}}/>
+        </div>
+        <button onClick={addBookmark} title="收藏当前目录"
+          style={{padding:'3px 6px',borderRadius:4,background:'none',border:'none',cursor:'pointer',
+            color:bookmarks.includes(curPath)?'var(--gold)':'var(--fg3)',fontSize:14,flexShrink:0}}>
+          {bookmarks.includes(curPath)?'★':'☆'}
+        </button>
+        <button onClick={()=>loadDir(curPath)} title="刷新 F5"
+          style={{padding:'3px 6px',borderRadius:4,background:'none',border:'none',cursor:'pointer',color:'var(--fg3)',flexShrink:0}}>
+          <Icon name="refresh" size={13}/>
+        </button>
+      </div>
+
+      {/* Toolbar row 2: actions */}
+      <div style={{display:'flex',alignItems:'center',gap:6,padding:'5px 10px',borderBottom:'1px solid var(--border)',flexShrink:0,flexWrap:'wrap'}}>
+        <input ref={uploadRef} type="file" multiple style={{display:'none'}} onChange={e=>doUpload(e.target.files)}/>
+        <input ref={folderUploadRef} type="file" webkitdirectory="true" multiple style={{display:'none'}} onChange={e=>doFolderUpload(e.target.files)}/>
+        {tbBtn({onClick:()=>uploadRef.current?.click()},<><Icon name="upload" size={12}/>上传文件</>)}
+        {tbBtn({onClick:()=>folderUploadRef.current?.click()},<><Icon name="folder" size={12}/>上传文件夹</>)}
+        {tbBtn({onClick:()=>openFloatWindow(curPath),title:'打开一个新的目录窗口'},<><Icon name="grid" size={12}/>新窗口</>)}
+        {tbBtn({onClick:showQueue,title:'查看任务队列 (Ctrl+J)'},<><Icon name="terminal" size={12}/>任务队列</>)}
+
+        {showMkdir
+          ?<div style={{display:'flex',gap:4,alignItems:'center'}}>
+            <input autoFocus value={mkdirName} onChange={e=>setMkdirName(e.target.value)}
+              onKeyDown={e=>{if(e.key==='Enter')doMkdir();if(e.key==='Escape'){setShowMkdir(false);setMkdirName('');}}}
+              placeholder="目录名" autoComplete="off"
+              style={{width:100,colorScheme:'dark',background:'var(--bg4)',border:'1px solid var(--border)',borderRadius:4,color:'var(--fg)',padding:'4px 7px',fontSize:12,outline:'none'}}/>
+            <button onClick={doMkdir} disabled={mkdirLoading} style={{padding:'4px 8px',borderRadius:4,background:'var(--gold)',border:'none',color:'#000',cursor:'pointer',fontSize:12}}>{mkdirLoading?'…':'创建'}</button>
+            <button onClick={()=>{setShowMkdir(false);setMkdirName('');}} style={{padding:'4px',borderRadius:4,background:'none',border:'none',color:'var(--fg3)',cursor:'pointer'}}><Icon name="x" size={12}/></button>
+          </div>
+          :tbBtn({onClick:()=>setShowMkdir(true)},<><Icon name="folder" size={12}/>新建目录</>)
+        }
+
+        {/* Clipboard paste button */}
+        {clipboard&&tbBtn({onClick:pasteEntries,style:{color:'var(--gold)',borderColor:'var(--gold)'}},
+          <>{clipboard.op==='cut'?'✂':'⧉'} 粘贴 ({clipboard.entries.length})</>
+        )}
+
+        {/* Search toggle */}
+        <div style={{marginLeft:'auto',display:'flex',gap:4,alignItems:'center'}}>
+          {showSearch&&(
+            <input autoFocus value={searchQ} onChange={e=>setSearchQ(e.target.value)}
+              onKeyDown={e=>{if(e.key==='Escape'){setShowSearch(false);setSearchQ('');} }}
+              placeholder="过滤文件名…" autoComplete="off"
+              style={{width:140,colorScheme:'dark',background:'var(--bg4)',border:'1px solid var(--border)',borderRadius:4,color:'var(--fg)',padding:'4px 7px',fontSize:12,outline:'none'}}/>
+          )}
+          {tbIconBtn(
+            {onClick:()=>{setShowSearch(s=>{if(s){setSearchQ('');}return!s;});},title:'搜索文件名 (Ctrl+F)',style:showSearch?{color:'var(--gold)',borderColor:'var(--gold)'}:{}},
+            <Icon name="search" size={15}/>
+          )}
+          {tbIconBtn(
+            {onClick:()=>setShowHidden(h=>!h),title:showHidden?'关闭隐藏文件显示':'显示隐藏文件',style:showHidden?{color:'var(--gold)',borderColor:'var(--gold)'}:{}},
+            <Icon name="eye" size={15}/>
+          )}
+          {tbIconBtn(
+            {onClick:()=>setShowTerminal(t=>!t),title:'打开终端 (`)',style:showTerminal?{color:'var(--gold)',borderColor:'var(--gold)'}:{}},
+            <Icon name="terminal" size={15}/>
+          )}
+        </div>
+      </div>
+
+      {/* Batch action bar */}
+      {selected.size>0&&(
+        <div style={{display:'flex',alignItems:'center',gap:8,padding:'5px 10px',background:'var(--bg4)',borderBottom:'1px solid var(--border)',flexShrink:0}}>
+          <span style={{fontSize:12,color:'var(--fg2)'}}>已选 <b style={{color:'var(--gold)'}}>{selected.size}</b> 项</span>
+          <button onClick={batchDownload} disabled={zipping}
+            style={{padding:'4px 10px',borderRadius:4,background:'var(--gold)',border:'none',color:'#000',cursor:'pointer',fontSize:12,display:'flex',alignItems:'center',gap:4,fontWeight:600}}>
+            <Icon name="download" size={12}/>{zipping?(zipState?.phase==='preflight'?'统计中…':'打包中…'):'下载 ZIP'}
+          </button>
+          <button onClick={cutEntries}
+            style={{padding:'4px 10px',borderRadius:4,background:'var(--bg3)',border:'1px solid var(--border)',color:'var(--fg2)',cursor:'pointer',fontSize:12}}>✂ 剪切</button>
+          <button onClick={copyEntriesClip}
+            style={{padding:'4px 10px',borderRadius:4,background:'var(--bg3)',border:'1px solid var(--border)',color:'var(--fg2)',cursor:'pointer',fontSize:12}}>⧉ 复制</button>
+          <button onClick={batchDelete}
+            style={{padding:'4px 10px',borderRadius:4,background:'rgba(196,90,90,.12)',border:'1px solid var(--red)',color:'var(--red)',cursor:'pointer',fontSize:12}}>
+            <Icon name="trash" size={12}/> 删除
+          </button>
+          <button onClick={()=>setSelected(new Set())} style={{marginLeft:'auto',padding:'4px 8px',borderRadius:4,background:'none',border:'none',color:'var(--fg3)',cursor:'pointer',fontSize:12}}>取消</button>
+        </div>
+      )}
+
+      {/* File listing (drag zone) */}
+      <div style={{flex:1,overflowY:'auto',position:'relative',outline:isDragOver?'2px dashed var(--gold)':'2px solid transparent',outlineOffset:'-4px',transition:'outline .15s'}}
+        onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}
+        onClick={()=>setCtxMenu(null)}
+        onContextMenu={e=>{if(e.defaultPrevented)return;e.preventDefault();setCtxMenu({x:e.clientX,y:e.clientY,entry:null});}}>
+
+        {isDragOver&&(
+          <div style={{position:'absolute',inset:0,zIndex:10,pointerEvents:'none',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:8,background:'rgba(0,0,0,.6)',backdropFilter:'blur(2px)'}}>
+            <Icon name="upload" size={32} color="var(--gold)"/>
+            <span style={{fontSize:14,color:'var(--gold)',fontWeight:600}}>松开上传文件 / 文件夹</span>
+            <span style={{fontSize:12,color:'var(--fg3)',fontFamily:'var(--mono)'}}>{curPath}</span>
+            <span style={{fontSize:11,color:'var(--fg3)',opacity:.7}}>目录结构将完整保留</span>
+          </div>
+        )}
+
+        {/* Column headers */}
+        {!loading&&visibleEntries.length>0&&(
+          <div style={{display:'flex',alignItems:'center',gap:8,padding:'3px 10px 3px',
+            borderBottom:'1px solid var(--border)',background:'var(--bg3)',position:'sticky',top:0,zIndex:1,userSelect:'none'}}>
+            <input type="checkbox" style={{colorScheme:'dark',cursor:'pointer',flexShrink:0,accentColor:'var(--gold)'}}
+              checked={selected.size===visibleEntries.length&&visibleEntries.length>0} onChange={toggleAll}/>
+            <span style={{width:16,flexShrink:0}}/>
+            <button onClick={()=>toggleSort('name')} style={{flex:1,background:'none',border:'none',cursor:'pointer',padding:0,textAlign:'left',fontSize:10,color:'var(--fg3)',letterSpacing:.5}}>
+              名称 {sortArrow('name')}
+            </button>
+            <button onClick={()=>toggleSort('size')} style={{background:'none',border:'none',cursor:'pointer',padding:0,fontSize:10,color:'var(--fg3)',minWidth:52,textAlign:'right',letterSpacing:.5}}>
+              大小 {sortArrow('size')}
+            </button>
+            <button onClick={()=>toggleSort('mtime')} style={{background:'none',border:'none',cursor:'pointer',padding:0,fontSize:10,color:'var(--fg3)',minWidth:92,textAlign:'right',letterSpacing:.5}}>
+              修改时间 {sortArrow('mtime')}
+            </button>
+            <span style={{fontSize:10,color:'var(--fg3)',minWidth:82,textAlign:'right',letterSpacing:.5}}>权限</span>
+            <span style={{width:20}}/>
+          </div>
+        )}
+
+        {loading&&(
+          <div style={{padding:24,color:'var(--fg3)',fontSize:12,textAlign:'center',display:'flex',flexDirection:'column',gap:8}}>
+            <div style={{color:'var(--fg)',fontSize:13}}>正在打开目录</div>
+            <div style={{fontFamily:'var(--mono)',color:'var(--gold)'}}>{loadMeta?.path||curPath}</div>
+            <div>{loadCountText}</div>
+            <div style={{fontSize:11,opacity:.75}}>已等待 {loadElapsed}</div>
+          </div>
+        )}
+        {lsError&&<div style={{margin:10,padding:'8px 12px',color:'var(--red)',fontSize:12,background:'rgba(196,90,90,.08)',borderRadius:4,border:'1px solid rgba(196,90,90,.2)'}}>{lsError}</div>}
+        {!loading&&!lsError&&visibleEntries.length===0&&(
+          <div style={{padding:32,color:'var(--fg3)',fontSize:12,textAlign:'center'}}>
+            {searchQ?'无匹配文件':'目录为空'}<br/>
+            <span style={{fontSize:11,opacity:.5}}>可拖拽文件到此处上传</span>
+          </div>
+        )}
+
+        {!loading&&visibleEntries.map(e=>{
+          const isSel=selEntry?.path===e.path;
+          const isChk=selected.has(e.path);
+          const isCut=clipboard?.op==='cut'&&clipboard.entries.some(x=>x.path===e.path);
+          return(
+            <div key={e.path}
+              draggable
+              style={{display:'flex',alignItems:'center',gap:8,padding:'4px 10px',cursor:'pointer',
+                opacity:isCut?0.5:1,
+                background:isChk?'rgba(201,168,108,.09)':isSel?'var(--bg4)':'transparent',
+                borderLeft:isSel?'2px solid var(--gold)':isChk?'2px solid rgba(201,168,108,.4)':'2px solid transparent',
+                transition:'background .1s'}}
+              onDragStart={ev=>startInternalDrag(ev,'main',e)}
+              onDragOver={ev=>{if(e.is_dir) ev.preventDefault();}}
+              onDrop={ev=>{if(e.is_dir){ev.preventDefault();ev.stopPropagation();clearDragOverlay();handleDropAtPath(e.path,ev);}}}
+              onMouseEnter={ev=>{if(!isChk&&!isSel)ev.currentTarget.style.background='var(--bg3)';}}
+              onMouseLeave={ev=>{if(!isChk&&!isSel)ev.currentTarget.style.background='transparent';}}
+              onClick={()=>clickEntry(e)}
+              onContextMenu={ev=>onContextMenu(ev,e)}>
+              <input type="checkbox" style={{colorScheme:'dark',cursor:'pointer',flexShrink:0,accentColor:'var(--gold)'}}
+                checked={isChk} onChange={()=>{}} onClick={ev=>toggleSelect(e.path,ev)}/>
+              {e.is_dir
+                ?<span style={{width:16,textAlign:'center',color:'var(--gold)',fontSize:13,flexShrink:0}}>{e.is_link?'↩':'▶'}</span>
+                :<span style={{width:16,textAlign:'center',fontFamily:'var(--mono)',fontSize:10,color:sshExtColor(e.name),background:'var(--bg4)',padding:'1px 2px',borderRadius:2,flexShrink:0}}>{sshExtBadge(e.name)}</span>
+              }
+              <span style={{flex:1,fontSize:12,color:e.is_dir?'var(--fg)':'var(--fg2)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',fontWeight:e.is_dir?500:400}}>
+                {e.name}{e.is_dir?'/':''}
+              </span>
+              <span style={{fontSize:11,color:'var(--fg3)',flexShrink:0,minWidth:52,textAlign:'right'}}>{!e.is_dir?fmtSize(e.size):''}</span>
+              <span style={{fontSize:11,color:'var(--fg3)',flexShrink:0,minWidth:92,textAlign:'right',fontFamily:'var(--mono)'}}>{fmtTime(e.mtime)}</span>
+              <span style={{fontSize:10,color:'var(--fg3)',flexShrink:0,fontFamily:'var(--mono)',minWidth:82,textAlign:'right'}}>{e.perm}</span>
+              <button title={e.is_dir?'下载目录':'下载文件'}
+                onClick={ev=>e.is_dir
+                  ?(ev.stopPropagation(),startZipDownload([e.path],e.name))
+                  :quickDownload(e,ev)}
+                style={{width:20,height:20,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',background:'none',border:'none',cursor:'pointer',color:'var(--fg3)',borderRadius:3,padding:0,opacity:.45}}>
+                <Icon name="download" size={11}/>
+              </button>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Status bar */}
+      <div style={{padding:'3px 10px',borderTop:'1px solid var(--border)',flexShrink:0,display:'flex',gap:10,fontSize:11,color:'var(--fg3)'}}>
+        <span>{visibleEntries.length}/{entries.length} 项</span>
+        {selected.size>0&&<span style={{color:'var(--gold)'}}>选中 {selected.size}</span>}
+        {loading&&<span style={{color:'var(--gold)'}}>读取中 · {loadElapsed}</span>}
+        {zipping&&<span style={{color:'var(--gold)'}}>{zipState?.phase==='preflight'?'统计打包内容中':zipState?.phase==='transferring'?'下载 ZIP 中':'打包 ZIP 中'} · {zipElapsed}</span>}
+        {downloadState&&<span style={{color:'var(--gold)'}}>下载中 · {downloadElapsed}</span>}
+        {clipboard&&<span style={{color:'var(--fg3)'}}>{clipboard.op==='cut'?'✂':'⧉'} {clipboard.entries.length} 待{clipboard.op==='cut'?'移动':'复制'}</span>}
+        {showHidden&&<span style={{color:'var(--fg3)'}}>含隐藏</span>}
+        <span style={{marginLeft:'auto',fontFamily:'var(--mono)'}}>{activeConn.username}@{activeConn.host}</span>
+      </div>
+
+      {zipping&&zipState&&(
+        <div style={{position:'absolute',right:12,bottom:42,width:300,zIndex:25,background:'rgba(18,18,24,.96)',border:'1px solid var(--gold)',borderRadius:8,boxShadow:'0 8px 24px rgba(0,0,0,.45)',padding:'12px 13px',display:'flex',flexDirection:'column',gap:8}}>
+          <div style={{display:'flex',alignItems:'center',gap:8}}>
+            <Icon name="download" size={13} color="var(--gold)"/>
+            <span style={{fontSize:12,color:'var(--fg)',fontWeight:600}}>
+              {zipState.phase==='preflight'?'正在统计打包内容':zipState.phase==='transferring'?'正在传输 ZIP':'正在打包下载'}
+            </span>
+            <span style={{marginLeft:'auto',fontSize:11,color:'var(--gold)'}}>{zipElapsed}</span>
+          </div>
+          <div style={{fontSize:11,color:'var(--fg2)',lineHeight:1.6,display:'flex',gap:6,flexWrap:'wrap'}}>
+            <span>{zipState.phase==='transferring'?zipTransferText:zipMetaText}</span>
+            {zipState.phase==='transferring'&&zipState.downloaded>0&&zipState.startedAt&&(
+              <span style={{color:'var(--fg)',fontWeight:600}}>{fmtSpeed(zipState.downloaded,zipState.startedAt)}</span>
+            )}
+            {zipState.phase==='transferring'&&zipState.total&&zipState.downloaded>0&&zipState.startedAt&&(
+              <span style={{color:'var(--fg3)',marginLeft:'auto'}}>{fmtEta(zipState.downloaded,zipState.total,zipState.startedAt)}</span>
+            )}
+          </div>
+          <div style={{fontSize:11,color:'var(--fg3)',fontFamily:'var(--mono)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+            {zipState.baseName}.zip
+          </div>
+          <div style={{height:5,borderRadius:999,background:'var(--bg4)',overflow:'hidden'}}>
+            <div style={{width:zipState.phase==='preflight'?'35%':zipState.phase==='transferring'?(zipState.percent?`${Math.max(6,Math.round(zipState.percent*100))}%`:'55%'):'72%',height:'100%',background:'linear-gradient(90deg,var(--gold),#f3d67b)'}}/>
+          </div>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+            <span style={{fontSize:10,color:'var(--fg3)'}}>
+              {zipState.phase==='preflight'?'先统计文件数量和大小，再开始打包':zipState.phase==='transferring'?'正在传输到浏览器':'打包完成后会自动开始下载'}
+            </span>
+            <button onClick={cancelZip} style={{padding:'4px 10px',borderRadius:4,background:'transparent',border:'1px solid var(--border)',color:'var(--fg2)',cursor:'pointer',fontSize:11}}>
+              取消
+            </button>
+          </div>
+        </div>
+      )}
+
+      {downloadState&&(()=>{
+        const dlPct=downloadState.total?(downloadState.loaded||0)/downloadState.total:null;
+        const dlSpeed=fmtSpeed(downloadState.loaded||0,downloadState.startedAt);
+        const dlEta=fmtEta(downloadState.loaded||0,downloadState.total,downloadState.startedAt);
+        const pctPx=dlPct?`${Math.max(4,Math.round(dlPct*100))}%`:'50%';
+        return(
+          <div style={{position:'absolute',right:12,bottom:zipping?186:42,width:310,zIndex:24,background:'rgba(18,18,24,.96)',border:'1px solid var(--border)',borderRadius:8,boxShadow:'0 8px 24px rgba(0,0,0,.45)',padding:'12px 14px',display:'flex',flexDirection:'column',gap:8}}>
+            {/* 标题行 */}
+            <div style={{display:'flex',alignItems:'center',gap:8}}>
+              <Icon name="download" size={13} color="var(--gold)"/>
+              <span style={{fontSize:12,color:'var(--fg)',fontWeight:600,flex:1}}>
+                {downloadState.done?'下载完成':'正在下载'}
+              </span>
+              <span style={{fontSize:11,color:'var(--gold)',fontWeight:600}}>{downloadElapsed}</span>
+            </div>
+            {/* 文件名 */}
+            <div style={{fontSize:11,color:'var(--fg3)',fontFamily:'var(--mono)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+              {downloadState.name}
+            </div>
+            {/* 进度条 */}
+            <div style={{height:6,borderRadius:3,background:'var(--bg4)',overflow:'hidden'}}>
+              <div style={{
+                width:pctPx,height:'100%',borderRadius:3,
+                background:'linear-gradient(90deg,var(--gold),#f3d67b)',
+                transition:dlPct?'width .3s':'none',
+                animation:!dlPct&&!downloadState.done?'indeterminate 1.5s ease infinite':undefined
+              }}/>
+            </div>
+            {/* 数据行：速度 + 量 + 百分比 + ETA */}
+            <div style={{display:'flex',alignItems:'center',gap:6,fontSize:11}}>
+              {dlSpeed&&<span style={{color:'var(--fg)',fontWeight:600,flexShrink:0}}>{dlSpeed}</span>}
+              <span style={{color:'var(--fg2)',flex:1}}>
+                {fmtSize(downloadState.loaded||0)}
+                {downloadState.total?` / ${fmtSize(downloadState.total)}`:''}
+                {dlPct!==null?` · ${fmtPercent(dlPct)}`:''}
+              </span>
+              {dlEta&&!downloadState.done&&<span style={{color:'var(--fg3)',flexShrink:0}}>{dlEta}</span>}
+            </div>
+            {/* 取消按钮 */}
+            {!downloadState.done&&(
+              <div style={{display:'flex',justifyContent:'flex-end'}}>
+                <button onClick={()=>{downloadState.controller?.abort();setDownloadState(null);}}
+                  style={{padding:'4px 12px',borderRadius:4,background:'transparent',border:'1px solid var(--border)',color:'var(--fg2)',cursor:'pointer',fontSize:11}}>
+                  取消
+                </button>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* Upload progress */}
+      {uploadQueue.length>0&&(()=>{
+        const done=uploadQueue.filter(x=>x.status==='done').length;
+        const errs=uploadQueue.filter(x=>x.status==='error').length;
+        const total=uploadQueue.length;
+        const pct=Math.round(done/total*100);
+        // 当前正在上传的那条
+        const active=uploadQueue.find(x=>x.status==='uploading');
+        const activePct=active?.total?active.loaded/active.total:null;
+        const activeSpeed=active?.startedAt&&active?.loaded?fmtSpeed(active.loaded,active.startedAt):'';
+        const activeEta=active?.startedAt&&active?.total?fmtEta(active.loaded,active.total,active.startedAt):'';
+        // 只显示最近 6 条
+        const visible=uploadQueue.slice(-6);
+        return(
+          <div style={{position:'absolute',bottom:30,right:12,width:290,zIndex:20,background:'rgba(18,18,24,.96)',border:'1px solid var(--border)',borderRadius:8,boxShadow:'0 6px 20px rgba(0,0,0,.5)',overflow:'hidden'}}>
+            {/* 总进度头 */}
+            <div style={{padding:'7px 12px',borderBottom:'1px solid var(--border)',display:'flex',alignItems:'center',gap:8}}>
+              <Icon name="upload" size={12} color="var(--gold)"/>
+              <span style={{fontSize:11,color:'var(--fg)',fontWeight:600,flex:1}}>上传 {done}/{total} 个文件</span>
+              {errs>0&&<span style={{fontSize:10,color:'var(--red)'}}>{errs} 失败</span>}
+              <span style={{fontSize:10,color:'var(--gold)',fontWeight:600}}>{pct}%</span>
+            </div>
+            {/* 总进度条 */}
+            <div style={{height:3,background:'var(--bg4)'}}>
+              <div style={{height:'100%',background:errs>0?'var(--red)':'var(--gold)',width:pct+'%',transition:'width .4s'}}/>
+            </div>
+            {/* 当前文件进度（当有正在上传的文件时展开） */}
+            {active&&(
+              <div style={{padding:'8px 12px',borderBottom:'1px solid var(--border)',background:'rgba(201,168,108,.05)'}}>
+                <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:4}}>
+                  <span style={{fontSize:11,color:'var(--gold)',flexShrink:0,animation:'blink 1s infinite'}}>↑</span>
+                  <span style={{flex:1,fontSize:10,color:'var(--fg)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={active.name}>{active.name}</span>
+                  <span style={{fontSize:10,color:'var(--gold)',flexShrink:0,fontWeight:600}}>{activePct!==null?fmtPercent(activePct):''}</span>
+                </div>
+                {/* 当前文件进度条 */}
+                <div style={{height:4,borderRadius:2,background:'var(--bg4)',overflow:'hidden',marginBottom:3}}>
+                  <div style={{height:'100%',borderRadius:2,background:'linear-gradient(90deg,var(--gold),#f3d67b)',width:activePct!==null?`${Math.max(2,Math.round(activePct*100))}%`:'100%',transition:activePct?'width .3s':'none',animation:activePct===null?'indeterminate 1.5s ease infinite':undefined}}/>
+                </div>
+                <div style={{display:'flex',gap:8,fontSize:10,color:'var(--fg3)'}}>
+                  {activeSpeed&&<span style={{color:'var(--fg2)',fontWeight:600}}>{activeSpeed}</span>}
+                  {active.total&&<span>{fmtSize(active.loaded)} / {fmtSize(active.total)}</span>}
+                  {activeEta&&<span style={{marginLeft:'auto'}}>{activeEta}</span>}
+                </div>
+              </div>
+            )}
+            {/* 文件列表 */}
+            {visible.map((item,i)=>(
+              <div key={i} style={{padding:'3px 12px'}}>
+                <div style={{display:'flex',alignItems:'center',gap:6}}>
+                  <span style={{fontSize:11,flexShrink:0,width:14,textAlign:'center',
+                    color:item.status==='done'?'#3eb87a':item.status==='error'?'var(--red)':item.status==='skipped'?'var(--fg3)':item.status==='uploading'?'var(--gold)':'var(--fg3)'}}>
+                    {item.status==='done'?'✓':item.status==='error'?'✗':item.status==='skipped'?'⊘':item.status==='uploading'?'↑':'·'}
+                  </span>
+                  <span style={{flex:1,fontSize:10,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',
+                    color:item.status==='error'?'var(--red)':item.status==='uploading'?'var(--fg)':'var(--fg3)'}}
+                    title={item.msg||item.name}>
+                    {item.name}
+                  </span>
+                  {item.status==='done'&&item.total&&(
+                    <span style={{fontSize:9,color:'var(--fg3)',flexShrink:0}}>{fmtSize(item.total)}</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        );
+      })()}
+
+      {floatWindows.map(win=>(
+        <SSHFloatWindow key={win.id} win={win} showHidden={showHidden}
+          onClose={closeFloatWindow}
+          onNavigate={loadFloatWindowDir}
+          onOpenEntry={setSelEntry}
+          onRefresh={id=>{
+            const cur=floatWindows.find(w=>w.id===id);
+            if(cur) loadFloatWindowDir(id,cur.path);
+          }}
+          onDragStart={startInternalDrag}
+          onDropAt={handleDropAtPath}
+          onDropIntoDir={(id,path,e)=>handleDropAtPath(path,e)}
+        />
+      ))}
+    </div>
+  );
+
+  // ── Render ────────────────────────────────────────────────────────────────
+  return(
+    <div style={{display:'flex',height:'100vh',overflow:'hidden',background:'var(--bg)'}}
+      onClick={()=>setCtxMenu(null)}>
+
+      {/* Sidebar */}
+      {!showForm&&sidebar}
+      {showForm&&(
+        <div style={{width:260,borderRight:'1px solid var(--border)',background:'var(--bg2)',flexShrink:0}}>
+          <ConnForm initial={editConn} onSave={saveConn} onCancel={()=>{setShowForm(false);setEditConn(null);}}/>
+        </div>
+      )}
+
+      {/* Main column */}
+      <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',minWidth:0}}>
+        {browser}
+        {showTerminal&&activeConn&&(
+          <TerminalPanel
+            conn={activeConn}
+            curPath={curPath}
+            token={token}
+            height={terminalHeight}
+            onResizeStart={onTerminalResizeStart}
+            onClose={()=>setShowTerminal(false)}
+          />
+        )}
+      </div>
+
+      {/* File viewer with resize handle */}
+      {selEntry&&(<>
+        <div
+          onMouseDown={onPreviewResizeStart}
+          style={{width:5,cursor:'col-resize',flexShrink:0,background:'transparent',position:'relative',zIndex:10,transition:'background .15s'}}
+          onMouseEnter={e=>e.currentTarget.style.background='var(--gold)'}
+          onMouseLeave={e=>e.currentTarget.style.background='transparent'}
+        />
+        <FileViewer entry={selEntry} conn={activeConn} token={token}
+          width={previewWidth}
+          onClose={()=>setSelEntry(null)} onRefresh={()=>loadDir(curPath)} onDownloadFile={downloadEntry}/>
+      </>)}
+
+      {/* Context menu */}
+      <ContextMenu menu={ctxMenu} onClose={()=>setCtxMenu(null)} actions={ctxActions()}/>
+
+      {pendingTransfer&&(
+        <div style={{position:'fixed',inset:0,zIndex:2600,background:'rgba(0,0,0,.52)',display:'flex',alignItems:'center',justifyContent:'center'}}
+          onClick={()=>!transferBusy&&setPendingTransfer(null)}>
+          <div onClick={e=>e.stopPropagation()} style={{width:420,maxWidth:'92vw',background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:12,boxShadow:'0 16px 40px rgba(0,0,0,.45)',padding:18,display:'flex',flexDirection:'column',gap:14}}>
+            <div style={{display:'flex',alignItems:'center',gap:8}}>
+              <Icon name="folder" size={14} color="var(--gold)"/>
+              <span style={{fontSize:14,color:'var(--fg)',fontWeight:600}}>传输到目标目录</span>
+            </div>
+            <div style={{fontSize:12,color:'var(--fg2)',lineHeight:1.6}}>
+              目标目录：<span style={{fontFamily:'var(--mono)',color:'var(--gold)'}}>{pendingTransfer.targetPath}</span>
+            </div>
+            <div style={{maxHeight:180,overflowY:'auto',padding:'8px 10px',background:'var(--bg3)',borderRadius:8,border:'1px solid var(--border)'}}>
+              {pendingTransfer.items.map(item=>(
+                <div key={item.path} style={{fontSize:12,color:'var(--fg2)',padding:'3px 0',fontFamily:'var(--mono)'}}>
+                  {item.is_dir?'[目录] ':'[文件] '}{item.name}
+                </div>
+              ))}
+            </div>
+            <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}>
+              <button onClick={()=>setPendingTransfer(null)} disabled={transferBusy}
+                style={{padding:'7px 12px',borderRadius:6,background:'transparent',border:'1px solid var(--border)',color:'var(--fg3)',cursor:'pointer',fontSize:12}}>
+                取消
+              </button>
+              <button onClick={()=>confirmPendingTransfer('copy')} disabled={transferBusy}
+                style={{padding:'7px 12px',borderRadius:6,background:'var(--bg4)',border:'1px solid var(--border)',color:'var(--fg2)',cursor:'pointer',fontSize:12}}>
+                {transferBusy?'处理中…':'复制'}
+              </button>
+              <button onClick={()=>confirmPendingTransfer('move')} disabled={transferBusy}
+                style={{padding:'7px 14px',borderRadius:6,background:'var(--gold)',border:'none',color:'#000',cursor:'pointer',fontSize:12,fontWeight:600}}>
+                {transferBusy?'处理中…':'移动'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {jobModal&&(
+        <div style={{position:'fixed',inset:0,zIndex:2550,background:'rgba(0,0,0,.5)',display:'flex',alignItems:'center',justifyContent:'center'}}
+          onClick={()=>!jobModal.loading&&setJobModal(null)}>
+          <div onClick={e=>e.stopPropagation()} style={{width:720,maxWidth:'94vw',maxHeight:'82vh',display:'flex',flexDirection:'column',
+            background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:12,boxShadow:'0 18px 48px rgba(0,0,0,.45)',overflow:'hidden'}}>
+            <div style={{display:'flex',alignItems:'center',gap:8,padding:'12px 14px',borderBottom:'1px solid var(--border)'}}>
+              <Icon name="terminal" size={14} color="var(--gold)"/>
+              <span style={{fontSize:14,color:'var(--fg)',fontWeight:600,flex:1}}>{jobModal.title}</span>
+              {!jobModal.loading&&<button onClick={()=>setJobModal(null)} style={{background:'none',border:'none',cursor:'pointer',color:'var(--fg3)',padding:0}}><Icon name="x" size={13}/></button>}
+            </div>
+            <div style={{padding:'10px 14px',borderBottom:'1px solid var(--border)',fontSize:11,color:'var(--fg3)',fontFamily:'var(--mono)',wordBreak:'break-all'}}>
+              {jobModal.cmd}
+            </div>
+            <div style={{flex:1,overflowY:'auto',padding:'14px 16px',background:'#0b0b0e'}}>
+              {jobModal.loading
+                ?<div style={{fontSize:12,color:'var(--gold)'}}>执行中…</div>
+                :<pre style={{margin:0,whiteSpace:'pre-wrap',wordBreak:'break-word',fontFamily:'var(--mono)',fontSize:12,lineHeight:1.55,color:jobModal.error?'#f29a9a':'var(--fg2)'}}>
+                  {jobModal.error?`[错误] ${jobModal.error}\n\n${jobModal.output||''}`:jobModal.output}
+                </pre>}
+            </div>
+            {!jobModal.loading&&(
+              <div style={{display:'flex',alignItems:'center',gap:10,padding:'10px 14px',borderTop:'1px solid var(--border)'}}>
+                <span style={{fontSize:11,color:jobModal.error||jobModal.exitCode>0?'var(--red)':'var(--fg3)'}}>
+                  {jobModal.error?'执行失败':`退出码: ${jobModal.exitCode??'-'}`}
+                </span>
+                {jobModal.title==='提交作业'&&<button onClick={showQueue} style={{marginLeft:'auto',padding:'6px 10px',borderRadius:6,background:'var(--bg4)',border:'1px solid var(--border)',color:'var(--fg2)',cursor:'pointer',fontSize:12}}>查看任务队列</button>}
+                <button onClick={()=>setJobModal(null)} style={{padding:'6px 12px',borderRadius:6,background:'var(--gold)',border:'none',color:'#000',cursor:'pointer',fontSize:12,fontWeight:600}}>关闭</button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 行内重命名对话框 */}
+      {inlineRenameEntry&&(
+        <div style={{position:'fixed',inset:0,zIndex:3000,background:'rgba(0,0,0,.55)',display:'flex',alignItems:'center',justifyContent:'center'}}
+          onClick={()=>setInlineRenameEntry(null)}>
+          <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:8,padding:20,width:340,boxShadow:'0 8px 32px rgba(0,0,0,.6)'}}
+            onClick={e=>e.stopPropagation()}>
+            <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
+              <Icon name="pen" size={14} color="var(--gold)"/>
+              <span style={{fontSize:13,fontWeight:600,color:'var(--fg)'}}>重命名</span>
+            </div>
+            <div style={{fontSize:11,color:'var(--fg3)',marginBottom:10,fontFamily:'var(--mono)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{inlineRenameEntry.path}</div>
+            <input autoFocus value={inlineRenameVal} onChange={e=>setInlineRenameVal(e.target.value)}
+              onKeyDown={e=>{if(e.key==='Enter')doInlineRename();if(e.key==='Escape')setInlineRenameEntry(null);}}
+              style={{width:'100%',colorScheme:'dark',background:'var(--bg4)',border:'1px solid var(--gold)',borderRadius:4,color:'var(--fg)',padding:'7px 10px',fontSize:13,outline:'none',boxSizing:'border-box'}}/>
+            <div style={{display:'flex',gap:8,marginTop:12,justifyContent:'flex-end'}}>
+              <button onClick={()=>setInlineRenameEntry(null)} style={{padding:'6px 14px',borderRadius:4,background:'var(--bg3)',border:'1px solid var(--border)',color:'var(--fg3)',cursor:'pointer',fontSize:12}}>取消</button>
+              <button onClick={doInlineRename} style={{padding:'6px 16px',borderRadius:4,background:'var(--gold)',border:'none',color:'#000',cursor:'pointer',fontSize:12,fontWeight:600}}>确认</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 新建文件对话框 */}
+      {showNewFile&&(
+        <div style={{position:'fixed',inset:0,zIndex:3000,background:'rgba(0,0,0,.55)',display:'flex',alignItems:'center',justifyContent:'center'}}
+          onClick={()=>setShowNewFile(false)}>
+          <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:8,padding:20,width:340,boxShadow:'0 8px 32px rgba(0,0,0,.6)'}}
+            onClick={e=>e.stopPropagation()}>
+            <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
+              <Icon name="pen" size={14} color="var(--gold)"/>
+              <span style={{fontSize:13,fontWeight:600,color:'var(--fg)'}}>新建文件</span>
+            </div>
+            <div style={{fontSize:11,color:'var(--fg3)',marginBottom:10,fontFamily:'var(--mono)'}}>{curPath}/</div>
+            <input autoFocus value={newFileName} onChange={e=>setNewFileName(e.target.value)}
+              onKeyDown={e=>{if(e.key==='Enter')doNewFile();if(e.key==='Escape'){setShowNewFile(false);setNewFileName('');}}}
+              placeholder="文件名（如 readme.txt）" autoComplete="off"
+              style={{width:'100%',colorScheme:'dark',background:'var(--bg4)',border:'1px solid var(--gold)',borderRadius:4,color:'var(--fg)',padding:'7px 10px',fontSize:13,outline:'none',boxSizing:'border-box'}}/>
+            <div style={{display:'flex',gap:8,marginTop:12,justifyContent:'flex-end'}}>
+              <button onClick={()=>{setShowNewFile(false);setNewFileName('');}} style={{padding:'6px 14px',borderRadius:4,background:'var(--bg3)',border:'1px solid var(--border)',color:'var(--fg3)',cursor:'pointer',fontSize:12}}>取消</button>
+              <button onClick={doNewFile} disabled={newFileLoading} style={{padding:'6px 16px',borderRadius:4,background:'var(--gold)',border:'none',color:'#000',cursor:'pointer',fontSize:12,fontWeight:600}}>{newFileLoading?'创建中…':'创建'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 上传冲突对话框 */}
+      {uploadConflict&&(
+        <div style={{position:'fixed',inset:0,zIndex:3000,background:'rgba(0,0,0,.65)',display:'flex',alignItems:'center',justifyContent:'center'}}
+          onClick={e=>e.stopPropagation()}>
+          <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:8,padding:20,width:340,boxShadow:'0 8px 32px rgba(0,0,0,.6)'}}>
+            <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:12}}>
+              <Icon name="alert" size={16} color="var(--gold)"/>
+              <span style={{fontSize:13,fontWeight:600,color:'var(--fg)'}}>文件已存在</span>
+            </div>
+            <div style={{fontSize:12,color:'var(--fg2)',marginBottom:16,wordBreak:'break-all',
+              fontFamily:'var(--mono)',background:'var(--bg4)',padding:'7px 10px',borderRadius:4,lineHeight:1.6}}>
+              {uploadConflict.name}
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+              <button onClick={()=>resolveConflict('skip')}
+                style={{padding:'9px',borderRadius:5,background:'var(--bg4)',border:'1px solid var(--border)',color:'var(--fg2)',cursor:'pointer',fontSize:12}}>
+                跳过此文件
+              </button>
+              <button onClick={()=>resolveConflict('replace')}
+                style={{padding:'9px',borderRadius:5,background:'var(--gold)',border:'none',color:'#000',cursor:'pointer',fontSize:12,fontWeight:600}}>
+                替换
+              </button>
+              <button onClick={()=>resolveConflict('skip-all')}
+                style={{padding:'9px',borderRadius:5,background:'var(--bg3)',border:'1px solid var(--border)',color:'var(--fg3)',cursor:'pointer',fontSize:11}}>
+                全部跳过
+              </button>
+              <button onClick={()=>resolveConflict('replace-all')}
+                style={{padding:'9px',borderRadius:5,background:'var(--bg3)',border:'1px solid var(--border)',color:'var(--fg3)',cursor:'pointer',fontSize:11}}>
+                全部替换
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+{% endverbatim %}

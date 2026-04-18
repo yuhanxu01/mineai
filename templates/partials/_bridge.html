@@ -129,6 +129,7 @@ function ToolResultCard({content}) {
 
 // ── Permission request card ──
 function PermissionCard({content, onRespond}) {
+  const lang = getLang();
   const [responded, setResponded] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
   const meta = toolMeta(content.tool_name);
@@ -146,8 +147,8 @@ function PermissionCard({content, onRespond}) {
       <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:10}}>
         <span style={{display:'inline-flex',alignItems:'center'}}><Icon name="alert" size={16} /></span>
         <div>
-          <div style={{fontSize:12,fontWeight:700,color:'var(--gold)'}}>权限请求</div>
-          <div style={{fontSize:11,color:'var(--fg3)'}}>Claude Code 请求使用工具</div>
+          <div style={{fontSize:12,fontWeight:700,color:'var(--gold)'}}>{lang === 'en' ? 'Permission Request' : '权限请求'}</div>
+          <div style={{fontSize:11,color:'var(--fg3)'}}>{lang === 'en' ? 'Claude Code is requesting tool access' : 'Claude Code 请求使用工具'}</div>
         </div>
       </div>
       <div style={{display:'flex',alignItems:'center',gap:8,padding:'8px 12px',background:'var(--bg3)',borderRadius:6,marginBottom:10}}>
@@ -164,18 +165,18 @@ function PermissionCard({content, onRespond}) {
             <button disabled={loading}
               onClick={()=>respond('approved')}
               className="btn" style={{flex:1,background:'var(--green)',color:'#000',fontWeight:700,fontSize:12,display:'inline-flex',alignItems:'center',justifyContent:'center',gap:6}}>
-              <Icon name="check" size={12} /> 批准
+              <Icon name="check" size={12} /> {lang === 'en' ? 'Approve' : '批准'}
             </button>
             <button disabled={loading}
               onClick={()=>respond('denied')}
               className="btn" style={{flex:1,background:'var(--red)',color:'#fff',fontWeight:700,fontSize:12,display:'inline-flex',alignItems:'center',justifyContent:'center',gap:6}}>
-              <Icon name="x" size={12} /> 拒绝
+              <Icon name="x" size={12} /> {lang === 'en' ? 'Deny' : '拒绝'}
             </button>
           </div>
         : <div style={{textAlign:'center',fontSize:12,color:responded==='approved'?'var(--green)':'var(--red)',fontWeight:600,padding:'4px 0'}}>
             {responded==='approved'
-              ? <span style={{display:'inline-flex',alignItems:'center',gap:4}}><Icon name="check" size={12} /> 已批准</span>
-              : <span style={{display:'inline-flex',alignItems:'center',gap:4}}><Icon name="x" size={12} /> 已拒绝</span>}
+              ? <span style={{display:'inline-flex',alignItems:'center',gap:4}}><Icon name="check" size={12} /> {lang === 'en' ? 'Approved' : '已批准'}</span>
+              : <span style={{display:'inline-flex',alignItems:'center',gap:4}}><Icon name="x" size={12} /> {lang === 'en' ? 'Denied' : '已拒绝'}</span>}
           </div>
       }
     </div>

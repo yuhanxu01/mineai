@@ -15,6 +15,12 @@
   onerror="this.onerror=null;this.src='/static/vendor/marked.min.js'"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"
   onerror="this.onerror=null;this.src='/static/vendor/cytoscape.min.js'"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.min.css"
+  onerror="this.onerror=null;this.href='https://unpkg.com/@xterm/xterm@5.5.0/css/xterm.min.css'">
+<script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.min.js"
+  onerror="this.onerror=null;this.src='https://unpkg.com/@xterm/xterm@5.5.0/lib/xterm.min.js'"></script>
+<script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.min.js"
+  onerror="this.onerror=null;this.src='https://unpkg.com/@xterm/addon-fit@0.10.0/lib/addon-fit.min.js'"></script>
 <script>
 window.MathJax = {
   tex: { inlineMath: [['$','$'],['\\(','\\)']], displayMath: [['$$','$$'],['\\[','\\]']], processEscapes: true },
@@ -95,6 +101,15 @@ window.MathJax = {
 </script>
 <script type="text/babel-lazy" data-apps="plugin">
 {% include "partials/_plugin.html" %}
+</script>
+<script type="text/babel-lazy" data-apps="format_converter">
+{% include "partials/_converter.html" %}
+</script>
+<script type="text/babel-lazy" data-apps="ssh_manager">
+{% include "partials/_ssh.html" %}
+</script>
+<script type="text/babel-lazy" data-apps="silly_tavern">
+{% include "partials/_tavern.html" %}
 </script>
 
 <!-- 懒加载器：按需 Babel 编译并 eval 到全局作用域 -->

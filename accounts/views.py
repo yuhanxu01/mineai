@@ -41,7 +41,7 @@ class UserAPIKeyView(APIView):
     permission_classes = [IsAuthenticated]
     def get(self, request):
         if not request.user.is_authenticated:
-            return Response({'error': '未登录'}, status=401)
+            return Response({'error': 'Not logged in'}, status=401)
         has_key = bool(request.user.user_api_key)
         return Response({
             'has_key': has_key,
@@ -50,17 +50,17 @@ class UserAPIKeyView(APIView):
 
     def post(self, request):
         if not request.user.is_authenticated:
-            return Response({'error': '未登录'}, status=401)
+            return Response({'error': 'Not logged in'}, status=401)
         key = request.data.get('api_key', '').strip()
         if not key:
-            return Response({'error': 'API密钥不能为空'}, status=400)
+            return Response({'error': 'API key cannot be empty'}, status=400)
         request.user.user_api_key = key
         request.user.save(update_fields=['user_api_key'])
         return Response({'ok': True, 'preview': key[:8] + '...'})
 
     def delete(self, request):
         if not request.user.is_authenticated:
-            return Response({'error': '未登录'}, status=401)
+            return Response({'error': 'Not logged in'}, status=401)
         request.user.user_api_key = ''
         request.user.save(update_fields=['user_api_key'])
         return Response({'ok': True})
@@ -73,16 +73,16 @@ class SendCodeView(APIView):
     def post(self, request):
         email = request.data.get('email', '').strip().lower()
         if not email:
-            return Response({'error': '邮箱不能为空'}, status=400)
+            return Response({'error': 'Email cannot be empty'}, status=400)
 
         # 同一邮箱冷却检查
         remaining = VerificationCode.cooldown_remaining(email)
         if remaining > 0:
             cfg = SiteConfig.get()
             m, s = divmod(remaining, 60)
-            tip = f'{m} 分 {s} 秒' if m else f'{s} 秒'
+            tip = f'{m}m {s}s' if m else f'{s}s'
             return Response(
-                {'error': f'请 {tip} 后再试', 'remaining_seconds': remaining},
+                {'error': f'Please try again in {tip}', 'remaining_seconds': remaining},
                 status=429,
             )
 
@@ -95,19 +95,19 @@ class SendCodeView(APIView):
         cfg = SiteConfig.get()
         try:
             send_mail(
-                subject='【MineAI】邮箱验证码',
+                subject='[MineAI] Email verification code',
                 message=(
-                    f'您好！\n\n'
-                    f'您的注册验证码为：{code}\n\n'
-                    f'验证码 {cfg.code_expire_minutes} 分钟内有效，请勿泄露给他人。\n\n'
-                    f'若非本人操作，请忽略此邮件。'
+                    f'Hello!\n\n'
+                    f'Your verification code is: {code}\n\n'
+                    f'This code is valid for {cfg.code_expire_minutes} minutes. Please do not share it.\n\n'
+                    f'If you did not request this, please ignore this email.'
                 ),
                 from_email=settings.EMAIL_HOST_USER,
                 recipient_list=[email],
                 fail_silently=False,
             )
         except Exception as e:
-            return Response({'error': f'邮件发送失败，请检查邮箱是否正确（{e}）'}, status=500)
+            return Response({'error': f'Email sending failed. Please check the address ({e})'}, status=500)
 
         return Response({'ok': True, 'cooldown_seconds': cfg.code_cooldown_seconds})
 
@@ -122,13 +122,13 @@ class RegisterView(APIView):
         code = request.data.get('code', '').strip()
 
         if not email or not password or not code:
-            return Response({'error': '请填写邮箱、验证码和密码'}, status=400)
+            return Response({'error': 'Please provide email, verification code, and password'}, status=400)
         if len(password) < 6:
-            return Response({'error': '密码至少 6 位'}, status=400)
+            return Response({'error': 'Password must be at least 6 characters'}, status=400)
         if User.objects.filter(email=email).exists():
-            return Response({'error': '该邮箱已注册'}, status=400)
+            return Response({'error': 'This email is already registered'}, status=400)
         if not VerificationCode.verify(email, code):
-            return Response({'error': '验证码无效或已过期'}, status=400)
+            return Response({'error': 'Invalid or expired verification code'}, status=400)
 
         user = User.objects.create_user(email=email, password=password)
         token, _ = Token.objects.get_or_create(user=user)
@@ -144,7 +144,7 @@ class LoginView(APIView):
         password = request.data.get('password', '')
         user = authenticate(request, username=email, password=password)
         if not user:
-            return Response({'error': '邮箱或密码错误'}, status=401)
+            return Response({'error': 'Invalid email or password'}, status=401)
         token, _ = Token.objects.get_or_create(user=user)
         return Response({'token': token.key, 'email': user.email})
 
@@ -184,7 +184,7 @@ class ForgotPasswordView(APIView):
     def post(self, request):
         email = request.data.get('email', '').strip().lower()
         if not email:
-            return Response({'error': '邮箱不能为空'}, status=400)
+            return Response({'error': 'Email cannot be empty'}, status=400)
 
         # 不暴露邮箱是否存在
         try:
@@ -197,19 +197,19 @@ class ForgotPasswordView(APIView):
 
         try:
             send_mail(
-                subject='【MineAI】密码重置',
+                subject='[MineAI] Password reset',
                 message=(
-                    f'您好！\n\n'
-                    f'请点击以下链接重置您的密码（30 分钟内有效）：\n\n'
+                    f'Hello!\n\n'
+                    f'Click the link below to reset your password (valid for 30 minutes):\n\n'
                     f'{reset_url}\n\n'
-                    f'若非本人操作，请忽略此邮件。'
+                    f'If you did not request this, please ignore this email.'
                 ),
                 from_email=settings.EMAIL_HOST_USER,
                 recipient_list=[email],
                 fail_silently=False,
             )
         except Exception as e:
-            return Response({'error': f'邮件发送失败（{e}）'}, status=500)
+            return Response({'error': f'Email sending failed ({e})'}, status=500)
 
         return Response({'ok': True})
 
@@ -223,17 +223,17 @@ class ResetPasswordView(APIView):
         new_password = request.data.get('password', '')
 
         if not token_str or not new_password:
-            return Response({'error': '参数不完整'}, status=400)
+            return Response({'error': 'Incomplete parameters'}, status=400)
         if len(new_password) < 6:
-            return Response({'error': '密码至少 6 位'}, status=400)
+            return Response({'error': 'Password must be at least 6 characters'}, status=400)
 
         try:
             token = PasswordResetToken.objects.select_related('user').get(token=token_str)
         except (PasswordResetToken.DoesNotExist, ValueError):
-            return Response({'error': '链接无效或已过期'}, status=400)
+            return Response({'error': 'Invalid or expired link'}, status=400)
 
         if not token.is_valid():
-            return Response({'error': '链接已过期或已使用，请重新申请'}, status=400)
+            return Response({'error': 'Link expired or already used. Please request a new one.'}, status=400)
 
         token.user.set_password(new_password)
         token.user.save(update_fields=['password'])

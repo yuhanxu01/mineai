@@ -1,29 +1,31 @@
 {% verbatim %}
 function Settings({cfg, onSave}) {
+  const lang = getLang();
+  const tr = (key, vars) => t(lang, key, vars);
   const [newKey, setNewKey] = useState('');
   const [saving, setSaving] = useState(false);
   const [removing, setRemoving] = useState(false);
 
   const saveUserKey = async () => {
-    if (!newKey.trim()) return showAlert('请输入API密钥', '提示');
+    if (!newKey.trim()) return showAlert(lang === 'en' ? 'Please enter an API key' : '请输入API密钥', lang === 'en' ? 'Tip' : '提示');
 
     // 先显示免责声明
     showDialog({
-      title: 'API 密钥使用免责声明',
+      title: lang === 'en' ? 'API Key Disclaimer' : 'API 密钥使用免责声明',
       message: `<div style="line-height:1.8">
-        <p style="margin-bottom:12px"><strong style="color:var(--gold)">重要提示：</strong></p>
+        <p style="margin-bottom:12px"><strong style="color:var(--gold)">${lang === 'en' ? 'Important:' : '重要提示：'}</strong></p>
         <ul style="margin:0;padding-left:20px;">
-          <li style="margin-bottom:8px">本平台<strong>不对</strong>您的 API 调用和费用支出承担任何责任</li>
-          <li style="margin-bottom:8px">所有 API 消耗均由您的 API 密钥所属账户直接计费</li>
-          <li style="margin-bottom:8px"><strong style="color:var(--gold)">强烈建议</strong>您使用<strong style="color:var(--gold)">月付套餐</strong>而非按量付费，以避免意外高额账单</li>
-          <li style="margin-bottom:8px">请妥善保管您的 API 密钥，不要泄露给他人</li>
+          <li style="margin-bottom:8px">${lang === 'en' ? 'This platform is <strong>not responsible</strong> for your API usage or charges.' : '本平台<strong>不对</strong>您的 API 调用和费用支出承担任何责任'}</li>
+          <li style="margin-bottom:8px">${lang === 'en' ? 'All API usage is billed directly to the account that owns the key.' : '所有 API 消耗均由您的 API 密钥所属账户直接计费'}</li>
+          <li style="margin-bottom:8px"><strong style="color:var(--gold)">${lang === 'en' ? 'We strongly recommend' : '强烈建议'}</strong>${lang === 'en' ? ' using a <strong style="color:var(--gold)">monthly plan</strong> instead of pay-as-you-go to avoid unexpected large bills.' : '您使用<strong style="color:var(--gold)">月付套餐</strong>而非按量付费，以避免意外高额账单'}</li>
+          <li style="margin-bottom:8px">${lang === 'en' ? 'Keep your API key secure and never share it with others.' : '请妥善保管您的 API 密钥，不要泄露给他人'}</li>
         </ul>
         <p style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border2)">
-          点击"我已了解并同意"即表示您接受以上条款
+          ${lang === 'en' ? 'Click "I understand and agree" to accept these terms.' : '点击"我已了解并同意"即表示您接受以上条款'}
         </p>
       </div>`,
-      confirmText: '我已了解并同意',
-      cancelText: '取消',
+      confirmText: lang === 'en' ? 'I understand and agree' : '我已了解并同意',
+      cancelText: lang === 'en' ? 'Cancel' : '取消',
       showCancel: true,
       type: 'warning',
       onConfirm: async () => {
@@ -32,9 +34,9 @@ function Settings({cfg, onSave}) {
           await F(`${API}/auth/user-api-key/`, {method:'POST', body:JSON.stringify({api_key:newKey.trim()})});
           setNewKey('');
           onSave();
-          showAlert('API 密钥已保存', '成功');
+          showAlert(lang === 'en' ? 'API key saved' : 'API 密钥已保存', lang === 'en' ? 'Success' : '成功');
         } catch(e) {
-          showAlert(e.message, '保存失败');
+          showAlert(e.message, lang === 'en' ? 'Save failed' : '保存失败');
         }
         setSaving(false);
       }
@@ -42,16 +44,16 @@ function Settings({cfg, onSave}) {
   };
 
   const removeUserKey = async () => {
-    const confirmed = await showConfirm('确定要移除您的API密钥吗？移除后将使用平台密钥（如有）', '确认移除');
+    const confirmed = await showConfirm(lang === 'en' ? 'Remove your API key? The platform key will be used if available.' : '确定要移除您的API密钥吗？移除后将使用平台密钥（如有）', lang === 'en' ? 'Confirm removal' : '确认移除');
     if (!confirmed) return;
 
     setRemoving(true);
     try {
       await F(`${API}/auth/user-api-key/`, {method:'DELETE'});
       onSave();
-      showAlert('API 密钥已移除', '成功');
+      showAlert(lang === 'en' ? 'API key removed' : 'API 密钥已移除', lang === 'en' ? 'Success' : '成功');
     } catch(e) {
-      showAlert(e.message, '移除失败');
+      showAlert(e.message, lang === 'en' ? 'Removal failed' : '移除失败');
     }
     setRemoving(false);
   };
@@ -63,109 +65,105 @@ function Settings({cfg, onSave}) {
 
   return (
     <div style={{maxWidth:560}}>
-      <h2 style={{fontFamily:'var(--serif)',fontSize:22,marginBottom:16}}>API 密钥设置</h2>
+      <h2 style={{fontFamily:'var(--serif)',fontSize:22,marginBottom:16}}>{tr('keySettings')}</h2>
 
       {/* Current status */}
       <div className="card" style={{marginBottom:20,borderColor: usingUserKey?'var(--blue)': platformOk?'var(--green)':'var(--red)'}}>
         <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:6}}>
           <Icon name={usingUserKey ? 'key' : platformOk ? 'check' : 'alert'} size={16} />
           <span style={{fontWeight:500,fontSize:13,color: usingUserKey?'var(--blue)': platformOk?'var(--green)':'var(--red)'}}>
-            {usingUserKey?'使用您的专属密钥': platformOk?'使用平台密钥':'未配置任何密钥'}
+            {usingUserKey ? (lang === 'en' ? 'Using your own key' : '使用您的专属密钥') : platformOk ? (lang === 'en' ? 'Using platform key' : '使用平台密钥') : (lang === 'en' ? 'No key configured' : '未配置任何密钥')}
           </span>
         </div>
-        {usingUserKey && <p style={{fontSize:12,color:'var(--fg3)'}}>当前密钥: {cfg.api_key_preview} &nbsp;·&nbsp; 对话模型: {cfg.chat_model}</p>}
-        {!usingUserKey && platformOk && <p style={{fontSize:12,color:'var(--fg3)'}}>平台提供 · 对话模型: {cfg.chat_model}</p>}
+        {usingUserKey && <p style={{fontSize:12,color:'var(--fg3)'}}>{lang === 'en' ? 'Current key' : '当前密钥'}: {cfg.api_key_preview} &nbsp;·&nbsp; {lang === 'en' ? 'Chat model' : '对话模型'}: {cfg.chat_model}</p>}
+        {!usingUserKey && platformOk && <p style={{fontSize:12,color:'var(--fg3)'}}>{tr('platformProvided')} · {lang === 'en' ? 'Chat model' : '对话模型'}: {cfg.chat_model}</p>}
         {!usingUserKey && !platformOk && (
           <p style={{fontSize:12,color:'var(--fg3)'}}>
-            {platformConfigured ? '平台密钥仅对登录用户可用，请添加您的API密钥或登录使用平台额度' : '请添加您的API密钥以使用本应用'}
+            {platformConfigured ? (lang === 'en' ? 'The platform key is only available to logged-in users. Add your own API key or log in to use platform quota.' : '平台密钥仅对登录用户可用，请添加您的API密钥或登录使用平台额度') : (lang === 'en' ? 'Add your API key to use this app.' : '请添加您的API密钥以使用本应用')}
           </p>
         )}
       </div>
 
       {/* User key management */}
       <h3 style={{fontFamily:'var(--serif)',fontSize:15,marginBottom:10,color:'var(--fg2)'}}>
-        {usingUserKey ? '更换 / 移除您的密钥' : '添加您的专属密钥'}
+        {usingUserKey ? tr('changeRemoveKey') : tr('addYourKey')}
       </h3>
       <p style={{fontSize:12,color:'var(--fg3)',marginBottom:12,lineHeight:1.7}}>
-        使用自己的密钥可独立计费，不受平台配额限制。获取密钥请访问&nbsp;
+        {lang === 'en' ? 'Using your own key is billed independently and is not limited by platform quota. Get a key at ' : '使用自己的密钥可独立计费，不受平台配额限制。获取密钥请访问'}&nbsp;
         <a href="https://open.bigmodel.cn" target="_blank" style={{color:'var(--blue)'}}>open.bigmodel.cn</a>。
       </p>
       <div className="fg">
-        <label>{usingUserKey ? '输入新密钥（留空则不更换）' : '您的 API 密钥'}</label>
-        <input type="password" value={newKey} onChange={e=>setNewKey(e.target.value)} placeholder="输入密钥..."/>
+        <label>{usingUserKey ? tr('newKeyLabel') : tr('ownKeyLabel')}</label>
+        <input type="password" value={newKey} onChange={e=>setNewKey(e.target.value)} placeholder={tr('inputKeyPlaceholder')}/>
       </div>
       <div style={{display:'flex',gap:8,marginBottom:24}}>
-        <button className="btn btn-p" onClick={saveUserKey} disabled={saving||!newKey.trim()}>{saving?'保存中...':'保存密钥'}</button>
-        {usingUserKey && <button className="btn btn-d btn-sm" onClick={removeUserKey} disabled={removing} style={{alignSelf:'center'}}>{removing?'移除中...':'移除密钥'}</button>}
+        <button className="btn btn-p" onClick={saveUserKey} disabled={saving||!newKey.trim()}>{saving ? tr('saveKeying') : tr('saveKey')}</button>
+        {usingUserKey && <button className="btn btn-d btn-sm" onClick={removeUserKey} disabled={removing} style={{alignSelf:'center'}}>{removing ? tr('removeKeying') : tr('removeKey')}</button>}
       </div>
 
       {/* Platform key info */}
       <div className="card" style={{borderColor:'var(--border2)',marginBottom:24}}>
         <p style={{fontSize:12,color:'var(--fg2)',lineHeight:1.7}}>
-          <b style={{color:'var(--fg)'}}>平台密钥：</b>
+          <b style={{color:'var(--fg)'}}>{tr('platformKey')}：</b>
           {platformConfigured ? (
             <span style={{color:'var(--green)'}}>
               <span className="with-ic">
                 <Icon name="check" size={12} />
-                已配置（由管理员管理）
+                {lang === 'en' ? 'Configured by admin' : '已配置（由管理员管理）'}
               </span>
             </span>
           ) : (
-            <span style={{color:'var(--fg3)'}}>未配置</span>
+            <span style={{color:'var(--fg3)'}}>{tr('notConfigured')}</span>
           )}
-          <br/>平台密钥由管理员在后台统一设置，您无需额外配置即可使用平台额度。
-          {platformConfigured && !platformAllowed && <span style={{color:'var(--fg3)'}}> 访客模式下需要登录后才能使用平台额度。</span>}
-          {usingUserKey && <span style={{color:'var(--fg3)'}}> 当您设置了专属密钥后，系统优先使用您的密钥。</span>}
+          <br/>{lang === 'en' ? 'The platform key is set centrally by admins, so no extra configuration is needed to use the platform quota.' : '平台密钥由管理员在后台统一设置，您无需额外配置即可使用平台额度。'}
+          {platformConfigured && !platformAllowed && <span style={{color:'var(--fg3)'}}>{lang === 'en' ? ' Guest mode requires login to use platform quota.' : ' 访客模式下需要登录后才能使用平台额度。'}</span>}
+          {usingUserKey && <span style={{color:'var(--fg3)'}}>{lang === 'en' ? ' When you set your own key, the system will prefer it.' : ' 当您设置了专属密钥后，系统优先使用您的密钥。'}</span>}
         </p>
       </div>
 
       <div style={{marginTop:32}}>
-        <h3 style={{fontFamily:'var(--serif)',fontSize:16,marginBottom:10}}>关于记忆熔炉</h3>
+        <h3 style={{fontFamily:'var(--serif)',fontSize:16,marginBottom:10}}>{tr('about')}</h3>
         <div className="card">
           <p style={{fontSize:12,lineHeight:1.8,color:'var(--fg2)'}}>
-            记忆熔炉实现了基于 H-MEM 和 MemGPT 研究的分层记忆金字塔系统，
-            专为中文网络小说长篇创作设计。核心特性：
+            {tr('aboutDesc')}
           </p>
           <div style={{fontSize:12,lineHeight:1.8,color:'var(--fg2)',marginTop:8}}>
             <p>
               <span className="with-ic">
                 <Icon name="triangle" size={12} />
-                <b style={{color:'var(--gold)'}}>L0 世界</b> — 全局故事概览、主题基调
+                <b style={{color:'var(--gold)'}}>L0</b> — {lang === 'en' ? 'World - global story overview and theme tone' : '世界 — 全局故事概览、主题基调'}
               </span>
             </p>
             <p>
               <span className="with-ic">
                 <Icon name="triangle" size={12} />
-                <b style={{color:'var(--purple)'}}>L1 大陆</b> — 主要故事线/篇章
+                <b style={{color:'var(--purple)'}}>L1</b> — {lang === 'en' ? 'Continent - main story arcs / chapters' : '大陆 — 主要故事线/篇章'}
               </span>
             </p>
             <p>
               <span className="with-ic">
                 <Icon name="triangle" size={12} />
-                <b style={{color:'var(--blue)'}}>L2 王国</b> — 章节摘要
+                <b style={{color:'var(--blue)'}}>L2</b> — {lang === 'en' ? 'Kingdom - chapter summaries' : '王国 — 章节摘要'}
               </span>
             </p>
             <p>
               <span className="with-ic">
                 <Icon name="triangle" size={12} />
-                <b style={{color:'var(--green)'}}>L3 城池</b> — 场景级细节
+                <b style={{color:'var(--green)'}}>L3</b> — {lang === 'en' ? 'City - scene-level details' : '城池 — 场景级细节'}
               </span>
             </p>
             <p>
               <span className="with-ic">
                 <Icon name="triangle" size={12} />
-                <b style={{color:'var(--red)'}}>L4 街巷</b> — 原始文本块 + 向量嵌入
+                <b style={{color:'var(--red)'}}>L4</b> — {lang === 'en' ? 'Street - raw text chunks + vector embeddings' : '街巷 — 原始文本块 + 向量嵌入'}
               </span>
             </p>
           </div>
           <p style={{fontSize:12,lineHeight:1.8,color:'var(--fg2)',marginTop:10}}>
-            <b>动态记忆演变：</b>每个记忆节点都有版本历史，角色有成长快照。
-            Agent在写作时不仅检索当前记忆，还能追溯信念、目标、关系的变化轨迹——
-            就像人类回忆自己理念和观点的动态变化。
+            <b>{tr('dynamicMemory')}</b>{tr('dynamicMemoryDesc')}
           </p>
           <p style={{fontSize:12,lineHeight:1.8,color:'var(--fg2)',marginTop:6}}>
-            <b>时间线系统：</b>自动从文本提取剧情事件、角色变化、转折点、伏笔，
-            构建完整的故事时间线。让Agent对故事的演变脉络有全局视野。
+            <b>{tr('timeline')}</b>{tr('timelineDesc')}
           </p>
         </div>
       </div>
@@ -175,13 +173,13 @@ function Settings({cfg, onSave}) {
 
 // ── Theme System ──
 const THEMES = [
-  {id:'dark_gold', name:'暗金', swatches:['#08080b','#c9a86c','#5a8ac4'],
+  {id:'dark_gold', name:'暗金', nameEn:'Dark Gold', swatches:['#08080b','#c9a86c','#5a8ac4'],
    vars:{bg:'#08080b',bg2:'#0f1014',bg3:'#181820',bg4:'#22222c',bg5:'#2c2c38',gold:'#c9a86c','gold2':'#dbb97a','gold-dim':'#8a7548'}},
-  {id:'dark_blue', name:'深蓝', swatches:['#07090f','#5a8ac4','#5ac4b4'],
+  {id:'dark_blue', name:'深蓝', nameEn:'Dark Blue', swatches:['#07090f','#5a8ac4','#5ac4b4'],
    vars:{bg:'#07090f',bg2:'#0c1220',bg3:'#131a2e',bg4:'#1c2540',bg5:'#243050',gold:'#5a8ac4','gold2':'#6a9ad4','gold-dim':'#3a5a94'}},
-  {id:'dark_green', name:'暗翠', swatches:['#06100a','#3eb87a','#5ac4b4'],
+  {id:'dark_green', name:'暗翠', nameEn:'Dark Teal', swatches:['#06100a','#3eb87a','#5ac4b4'],
    vars:{bg:'#06100a',bg2:'#0c1810',bg3:'#142218',bg4:'#1c2e22',bg5:'#243a2c',gold:'#3eb87a','gold2':'#4ec88a','gold-dim':'#1e884a'}},
-  {id:'dark_purple', name:'紫夜', swatches:['#09070e','#9a6ac4','#c45a9a'],
+  {id:'dark_purple', name:'紫夜', nameEn:'Dark Purple', swatches:['#09070e','#9a6ac4','#c45a9a'],
    vars:{bg:'#09070e',bg2:'#110e1a',bg3:'#1a1428',bg4:'#221c36',bg5:'#2c2444',gold:'#9a6ac4','gold2':'#aa7ad4','gold-dim':'#6a3a94'}},
 ];
 
@@ -191,15 +189,62 @@ const ACCENT_PRESETS = [
 ];
 
 const STATIC_APPS = [
-  {name:'学术研究站', slug:'paper_lab', description:'论文深度阅读 · 零幻觉检索 · 精确引用 · 知识探索 · 辅助写作', icon:'search', color:'#5ac4b4'},
-  {name:'知识图谱', slug:'knowledge_graph', description:'LLM自动提取 · 图谱可视化 · 跨应用知识链接 · PageRank · 路径探索', icon:'share-2', color:'#c9a86c'},
-  {name:'代码助手', slug:'code_agent', description:'AI辅助代码重构 · 行级Diff审查 · 记忆金字塔 · 版本历史 · 跨文件理解', icon:'code', color:'#5a8ac4'},
-  {name:'Claude Bridge', slug:'claude_bridge', description:'本地 Claude Code 远程接入 · 全工具可视化 · 权限管控 · Diff预览 · 多端同步', icon:'zap', color:'#e85d2f'},
-  {name:'扫描增强', slug:'scan_enhance', description:'浏览器端处理 · 曲面平整化 · 透视校正 · CLAHE增强 · 自适应二值化 · 纠偏 · 降噪 · 零服务器CPU', icon:'scan', color:'#5ac480'},
-  {name:'AI 题库', slug:'question_bank', description:'拍题OCR识别 · GLM-4.7解答 · 视觉模型几何题 · 最终答案沉淀 · 共享题库 · 点赞收藏评论', icon:'book', color:'#e8a05a'},
-  {name:'文档阅读器', slug:'doc_reader', description:'PDF/MD阅读 · GLM-OCR解析 · 可视化分段 · 多选交互 · 智能问答 · 翻译总结', icon:'file-text', color:'#c9a86c'},
-  {name:'放逐之城', slug:'banished', description:'Canvas 2D城市建造 · 资源链 · 村民AI · 水源系统 · 季节循环 · 全球交易市场 · AI协同托管', icon:'home', color:'#5ac480'},
-  {name:'MineAI Chat', slug:'chat', description:'原生集成的对标ChatGPT界面的全能AI对话，支持切换模型与渲染LaTeX、代码', icon:'chat', color:'#5a8ac4'},
+  {name:'学术研究站', nameEn:'Paper Lab', slug:'paper_lab',
+   description:'论文深度阅读 · 零幻觉检索 · 精确引用 · 知识探索 · 辅助写作',
+   descEn:'Deep paper reading · Zero-hallucination retrieval · Exact citations · Knowledge exploration · Writing assist',
+   icon:'search', color:'#5ac4b4'},
+  {name:'知识图谱', nameEn:'Knowledge Graph', slug:'knowledge_graph',
+   description:'LLM自动提取 · 图谱可视化 · 跨应用知识链接 · PageRank · 路径探索',
+   descEn:'LLM extraction · Graph visualization · Cross-app knowledge links · PageRank · Path exploration',
+   icon:'share-2', color:'#c9a86c'},
+  {name:'代码助手', nameEn:'Code Agent', slug:'code_agent',
+   description:'AI辅助代码重构 · 行级Diff审查 · 记忆金字塔 · 版本历史 · 跨文件理解',
+   descEn:'AI-assisted refactoring · Line-level diff review · Memory pyramid · Version history · Cross-file understanding',
+   icon:'code', color:'#5a8ac4'},
+  {name:'记忆熔炉', nameEn:'Memory Forge', slug:'memoryforge',
+   description:'AI长篇小说创作引擎 · 无限层级记忆系统 · 世界观 · 角色 · 章节 · 记忆管理',
+   descEn:'AI long-form novel engine · infinite-layer memory system · worldbuilding · characters · chapters · memory management',
+   icon:'layers', color:'#9a6ac4'},
+  {name:'OCR 工作室', nameEn:'OCR Studio', slug:'ocr_studio',
+   description:'图片/文档识别 · 公式 OCR · 批量处理 · 历史记录 · 结果导出',
+   descEn:'Image/document recognition · formula OCR · batch processing · history · export',
+   icon:'scan', color:'#5ac480'},
+  {name:'Claude Bridge', nameEn:'Claude Bridge', slug:'claude_bridge',
+   description:'本地 Claude Code 远程接入 · 全工具可视化 · 权限管控 · Diff预览 · 多端同步',
+   descEn:'Remote access to local Claude Code · Full tool visualization · Permission control · Diff preview · Multi-device sync',
+   icon:'zap', color:'#e85d2f'},
+  {name:'扫描增强', nameEn:'Scan Enhance', slug:'scan_enhance',
+   description:'浏览器端处理 · 曲面平整化 · 透视校正 · CLAHE增强 · 自适应二值化 · 纠偏 · 降噪 · 零服务器CPU',
+   descEn:'Browser-side processing · Curve flattening · Perspective correction · CLAHE · Adaptive binarization · Deskew · Denoising · Zero server CPU',
+   icon:'scan', color:'#5ac480'},
+  {name:'AI 题库', nameEn:'AI Question Bank', slug:'question_bank',
+   description:'拍题OCR识别 · GLM-4.7解答 · 视觉模型几何题 · 最终答案沉淀 · 共享题库 · 点赞收藏评论',
+   descEn:'Photo OCR · GLM-4.7 solutions · Vision model geometry · Answer archive · Shared bank · Likes, favorites & comments',
+   icon:'book', color:'#e8a05a'},
+  {name:'文档阅读器', nameEn:'Doc Reader', slug:'doc_reader',
+   description:'PDF/MD阅读 · GLM-OCR解析 · 可视化分段 · 多选交互 · 智能问答 · 翻译总结',
+   descEn:'PDF/MD reading · GLM-OCR parsing · Visual segmentation · Multi-select · Smart Q&A · Translation & summary',
+   icon:'file-text', color:'#c9a86c'},
+  {name:'放逐之城', nameEn:'Banished City', slug:'banished',
+   description:'Canvas 2D城市建造 · 资源链 · 村民AI · 水源系统 · 季节循环 · 全球交易市场 · AI协同托管',
+   descEn:'Canvas 2D city builder · Resource chains · Villager AI · Water system · Season cycle · Global market · AI co-management',
+   icon:'home', color:'#5ac480'},
+  {name:'MineAI Chat', nameEn:'MineAI Chat', slug:'chat',
+   description:'原生集成的对标ChatGPT界面的全能AI对话，支持切换模型与渲染LaTeX、代码',
+   descEn:'Native ChatGPT-style AI chat with model switching, LaTeX rendering and code highlighting',
+   icon:'chat', color:'#5a8ac4'},
+  {name:'格式转换', nameEn:'Format Converter', slug:'format_converter',
+   description:'音频/视频/图片互转 · FFmpeg.wasm · 浏览器端处理 · 零服务器CPU · 批量转换',
+   descEn:'Audio/video/image conversion · FFmpeg.wasm · Browser-side · Zero server CPU · Batch',
+   icon:'refresh', color:'#d49a5a'},
+  {name:'SSH 文件管理', nameEn:'SSH Manager', slug:'ssh_manager',
+   description:'SSH/SFTP文件浏览 · 在线编辑 · 上传下载 · 图片预览 · MD渲染 · 凭据仅存本地',
+   descEn:'SSH/SFTP file browser · Online edit · Upload/download · Image preview · MD render · Local-only credentials',
+   icon:'terminal', color:'#5ac4b4'},
+  {name:'SillyTavern', nameEn:'SillyTavern', slug:'silly_tavern',
+   description:'AI角色扮演 · 多用户多账号 · 兼容所有主流AI接口 · 角色卡/世界书/记忆 · 扩展插件',
+   descEn:'AI roleplay · Multi-user · All major AI APIs · Character cards / World books / Memory · Extensions',
+   icon:'message-circle', color:'#e87060'},
 ];
 
 function applyTheme(vars) {
@@ -215,6 +260,8 @@ const isLight = (hex) => {
 };
 
 function ThemeSettings({onClose}) {
+  const lang = getLang();
+  const tr = (key, vars) => t(lang, key, vars);
   const [tid, setTid] = useState(() => localStorage.getItem('mf_tid') || 'dark_gold');
   const [accent, setAccent] = useState(() => localStorage.getItem('mf_accent') || '');
 
@@ -247,46 +294,46 @@ function ThemeSettings({onClose}) {
     <div className="modal-ov" onClick={e => e.target===e.currentTarget && onClose()}>
       <div className="modal" style={{maxWidth:400}}>
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:20}}>
-          <h2 style={{margin:0,fontSize:18}}>个性化设置</h2>
+          <h2 style={{margin:0,fontSize:18}}>{tr('personalize')}</h2>
           <button className="btn btn-s btn-sm" onClick={onClose} style={{padding:'4px 8px'}}><Icon name="refresh" size={14} /></button>
         </div>
-        
+
         <div style={{marginBottom:24}}>
-          <div className="sec-title" style={{marginBottom:12,fontSize:10,opacity:0.6}}>主题视觉</div>
+          <div className="sec-title" style={{marginBottom:12,fontSize:10,opacity:0.6}}>{tr('themeVisual')}</div>
           <div className="tp-presets" style={{gridTemplateColumns:'repeat(2, 1fr)',gap:10}}>
-            {THEMES.map(t => (
-              <div key={t.id} className={`tp-preset${tid===t.id&&!accent?' on':''}`} 
-                onClick={() => selTheme(t)}
+            {THEMES.map(th => (
+              <div key={th.id} className={`tp-preset${tid===th.id&&!accent?' on':''}`}
+                onClick={() => selTheme(th)}
                 style={{padding:'12px',borderRadius:10,border:'1px solid var(--border)'}}>
                 <div className="tp-swatches" style={{marginBottom:8}}>
-                  {t.swatches.map((c,i) => <div key={i} className="tp-sw" style={{background:c,width:16,height:16,borderRadius:4}} />)}
+                  {th.swatches.map((c,i) => <div key={i} className="tp-sw" style={{background:c,width:16,height:16,borderRadius:4}} />)}
                 </div>
-                <div className="tp-pn" style={{fontSize:12}}>{t.name}</div>
+                <div className="tp-pn" style={{fontSize:12}}>{lang === 'en' ? th.nameEn : th.name}</div>
               </div>
             ))}
           </div>
         </div>
 
         <div>
-          <div className="sec-title" style={{marginBottom:12,fontSize:10,opacity:0.6}}>强调色</div>
+          <div className="sec-title" style={{marginBottom:12,fontSize:10,opacity:0.6}}>{tr('accentColor')}</div>
           <div className="csw-grid" style={{gridTemplateColumns:'repeat(5, 1fr)',gap:8}}>
             {ACCENT_PRESETS.map(c => (
-              <div key={c} className={`csw${accent===c?' on':''}`} 
-                style={{background:c,height:32,borderRadius:8}} 
+              <div key={c} className={`csw${accent===c?' on':''}`}
+                style={{background:c,height:32,borderRadius:8}}
                 onClick={() => selAccent(c)} />
             ))}
           </div>
           <div className="tp-row" style={{marginTop:16,display:'flex',alignItems:'center',gap:12}}>
-            <label style={{fontSize:12,color:'var(--fg2)'}}>自定义色值</label>
-            <input type="color" value={accent||'#c9a86c'} 
+            <label style={{fontSize:12,color:'var(--fg2)'}}>{tr('customColor')}</label>
+            <input type="color" value={accent||'#c9a86c'}
               onChange={e => selAccent(e.target.value)}
               style={{width:40,height:28,padding:2,borderRadius:4,background:'var(--bg3)',border:'1px solid var(--border2)'}} />
           </div>
         </div>
 
         <div style={{marginTop:32,display:'flex',justifyContent:'space-between'}}>
-          <button className="btn btn-s btn-sm" onClick={reset}>恢复默认</button>
-          <button className="btn btn-p btn-sm" onClick={onClose}>完成</button>
+          <button className="btn btn-s btn-sm" onClick={reset}>{tr('resetDefault')}</button>
+          <button className="btn btn-p btn-sm" onClick={onClose}>{tr('done')}</button>
         </div>
       </div>
     </div>
@@ -294,23 +341,26 @@ function ThemeSettings({onClose}) {
 }
 
 function AppColorModal({app, appColors, onSave, onClose}) {
+  const lang = getLang();
+  const tr = (key, vars) => t(lang, key, vars);
   const [color, setColor] = useState(appColors[app.slug] || app.color || '#c9a86c');
+  const displayName = lang === 'en' ? (app.nameEn || app.name) : app.name;
   return (
     <div className="modal-ov" onClick={e => e.target===e.currentTarget && onClose()}>
       <div className="modal" style={{maxWidth:300}}>
-        <h2 style={{fontSize:16,marginBottom:14}}>自定义「{app.name}」颜色</h2>
+        <h2 style={{fontSize:16,marginBottom:14}}>{tr('editAppColorTitle', {name: displayName})}</h2>
         <div className="csw-grid">
           {ACCENT_PRESETS.map(c => (
             <div key={c} className={`csw${color===c?' on':''}`} style={{background:c}} onClick={() => setColor(c)} />
           ))}
         </div>
         <div className="tp-row" style={{marginTop:10}}>
-          <label>自定义颜色</label>
+          <label>{tr('customColor')}</label>
           <input type="color" value={color} onChange={e => setColor(e.target.value)} />
         </div>
         <div style={{display:'flex',gap:8,marginTop:16,justifyContent:'flex-end'}}>
-          <button className="btn btn-s btn-sm" onClick={onClose}>取消</button>
-          <button className="btn btn-p btn-sm" onClick={() => { onSave(app.slug, color); onClose(); }}>保存</button>
+          <button className="btn btn-s btn-sm" onClick={onClose}>{tr('cancel')}</button>
+          <button className="btn btn-p btn-sm" onClick={() => { onSave(app.slug, color); onClose(); }}>{tr('save')}</button>
         </div>
       </div>
     </div>
@@ -320,9 +370,29 @@ function AppColorModal({app, appColors, onSave, onClose}) {
 // ── 功能导航图谱 ─────────────────────────────────────────────────
 const KG_API_BASE = '/api/kg';
 const SLUG_MAP = {
-  '网文写作':'memoryforge','学术研究站':'paper_lab','知识图谱':'knowledge_graph',
-  '代码助手':'code_agent','Claude Bridge':'claude_bridge','OCR 工作室':'ocr_studio',
-  '扫描增强':'scan_enhance','AI 题库':'question_bank','放逐之城':'banished','MineAI Chat':'chat',
+  '网文写作':'memoryforge',
+  '记忆熔炉':'memoryforge',
+  'Memory Forge':'memoryforge',
+  '学术研究站':'paper_lab',
+  'Paper Lab':'paper_lab',
+  '知识图谱':'knowledge_graph',
+  'Knowledge Graph':'knowledge_graph',
+  '代码助手':'code_agent',
+  'Code Agent':'code_agent',
+  'Claude Bridge':'claude_bridge',
+  'OCR 工作室':'ocr_studio',
+  'OCR Studio':'ocr_studio',
+  '扫描增强':'scan_enhance',
+  'Scan Enhance':'scan_enhance',
+  'AI 题库':'question_bank',
+  'AI Question Bank':'question_bank',
+  '放逐之城':'banished',
+  'MineAI Chat':'chat',
+  'MineAI 聊天':'chat',
+  '格式转换':'format_converter',
+  'Format Converter':'format_converter',
+  'SillyTavern':'silly_tavern',
+  'AI角色扮演':'silly_tavern',
 };
 
 {% endverbatim %}

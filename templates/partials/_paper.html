@@ -29,6 +29,7 @@ function MdRender({content, className='', style={}}) {
 
 // ── 文献阅读器（带行号、高亮、公式渲染）──
 function LiteratureViewer({lit, highlightLines=null, onLineClick, onCreateNote}) {
+  const lang = getLang();
   const containerRef = useRef(null);
   const [lines, setLines] = useState([]);
   const [selRange, setSelRange] = useState(null);
@@ -49,7 +50,7 @@ function LiteratureViewer({lit, highlightLines=null, onLineClick, onCreateNote})
     }
   }, [highlightLines]);
 
-  if (!lit) return <div className="empty"><h3>选择文献开始阅读</h3></div>;
+  if (!lit) return <div className="empty"><h3>{lang === 'en' ? 'Select a literature item to start reading' : '选择文献开始阅读'}</h3></div>;
 
   const isHighlighted = (i) => {
     if (!highlightLines) return false;
@@ -62,9 +63,9 @@ function LiteratureViewer({lit, highlightLines=null, onLineClick, onCreateNote})
         <h2 style={{fontFamily:'var(--serif)',fontSize:20,color:'var(--gold2)',marginBottom:4}}>{lit.title}</h2>
         {lit.authors && <div style={{fontSize:12,color:'var(--fg2)'}}>{lit.authors} {lit.year ? `(${lit.year})` : ''} {lit.journal ? `· ${lit.journal}` : ''}</div>}
         <div style={{display:'flex',gap:8,marginTop:8,flexWrap:'wrap'}}>
-          <span style={{fontSize:10,padding:'2px 7px',borderRadius:4,background:'var(--bg4)',color:'var(--fg3)'}}>{lit.language === 'en' ? '英文' : lit.language === 'zh' ? '中文' : '混合'}</span>
-          <span style={{fontSize:10,padding:'2px 7px',borderRadius:4,background:'var(--bg4)',color:'var(--fg3)'}}>{lit.total_lines} 行</span>
-          {lit.is_indexed && <span style={{fontSize:10,padding:'2px 7px',borderRadius:4,background:'rgba(94,184,122,.15)',color:'var(--green)',display:'inline-flex',alignItems:'center',gap:4}}><Icon name="check" size={10} /> 已索引</span>}
+          <span style={{fontSize:10,padding:'2px 7px',borderRadius:4,background:'var(--bg4)',color:'var(--fg3)'}}>{lit.language === 'en' ? (lang === 'en' ? 'English' : '英文') : lit.language === 'zh' ? (lang === 'en' ? 'Chinese' : '中文') : (lang === 'en' ? 'Mixed' : '混合')}</span>
+          <span style={{fontSize:10,padding:'2px 7px',borderRadius:4,background:'var(--bg4)',color:'var(--fg3)'}}>{lit.total_lines} {lang === 'en' ? 'lines' : '行'}</span>
+          {lit.is_indexed && <span style={{fontSize:10,padding:'2px 7px',borderRadius:4,background:'rgba(94,184,122,.15)',color:'var(--green)',display:'inline-flex',alignItems:'center',gap:4}}><Icon name="check" size={10} /> {lang === 'en' ? 'Indexed' : '已索引'}</span>}
         </div>
       </div>
       {lines.map((line, i) => {
@@ -94,6 +95,7 @@ function LiteratureViewer({lit, highlightLines=null, onLineClick, onCreateNote})
 
 // ── Token 统计迷你面板 ──
 function TokenMiniPanel({onRefresh}) {
+  const lang = getLang();
   const [stats, setStats] = useState(null);
   const load = () => F(`${PA}/token-stats/`).then(setStats).catch(()=>{});
   useEffect(() => { load(); }, []);
@@ -102,25 +104,25 @@ function TokenMiniPanel({onRefresh}) {
   return (
     <div style={{padding:'8px 12px',borderTop:'1px solid var(--border)',background:'var(--bg2)'}}>
       <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}>
-        <span style={{fontSize:10,color:'var(--fg3)',letterSpacing:1}}>TOKEN 用量</span>
-        <button onClick={load} style={{background:'none',color:'var(--fg3)',fontSize:9,padding:'1px 5px',border:'1px solid var(--border)',borderRadius:3,cursor:'pointer'}}>刷新</button>
+        <span style={{fontSize:10,color:'var(--fg3)',letterSpacing:1}}>{lang === 'en' ? 'Token Usage' : 'TOKEN 用量'}</span>
+        <button onClick={load} style={{background:'none',color:'var(--fg3)',fontSize:9,padding:'1px 5px',border:'1px solid var(--border)',borderRadius:3,cursor:'pointer'}}>{lang === 'en' ? 'Refresh' : '刷新'}</button>
       </div>
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:4}}>
         <div style={{background:'var(--bg3)',borderRadius:4,padding:'4px 6px',textAlign:'center'}}>
           <div style={{fontFamily:'var(--mono)',fontSize:13,color:'var(--gold2)',fontWeight:500}}>{((stats.total_tokens||0)/1000).toFixed(1)}K</div>
-          <div style={{fontSize:9,color:'var(--fg3)'}}>总Token</div>
+          <div style={{fontSize:9,color:'var(--fg3)'}}>{lang === 'en' ? 'Total tokens' : '总Token'}</div>
         </div>
         <div style={{background:'var(--bg3)',borderRadius:4,padding:'4px 6px',textAlign:'center'}}>
           <div style={{fontFamily:'var(--mono)',fontSize:13,color:'var(--cyan)',fontWeight:500}}>{stats.prompt_count||0}</div>
-          <div style={{fontSize:9,color:'var(--fg3)'}}>提交次数</div>
+          <div style={{fontSize:9,color:'var(--fg3)'}}>{lang === 'en' ? 'Requests' : '提交次数'}</div>
         </div>
         <div style={{background:'var(--bg3)',borderRadius:4,padding:'4px 6px',textAlign:'center'}}>
           <div style={{fontFamily:'var(--mono)',fontSize:11,color:'var(--blue)',fontWeight:500}}>{((stats.daily_input||0)/1000).toFixed(1)}K</div>
-          <div style={{fontSize:9,color:'var(--fg3)'}}>今日输入</div>
+          <div style={{fontSize:9,color:'var(--fg3)'}}>{lang === 'en' ? 'Today input' : '今日输入'}</div>
         </div>
         <div style={{background:'var(--bg3)',borderRadius:4,padding:'4px 6px',textAlign:'center'}}>
           <div style={{fontFamily:'var(--mono)',fontSize:11,color:'var(--green)',fontWeight:500}}>{((stats.daily_output||0)/1000).toFixed(1)}K</div>
-          <div style={{fontSize:9,color:'var(--fg3)'}}>今日输出</div>
+          <div style={{fontSize:9,color:'var(--fg3)'}}>{lang === 'en' ? 'Today output' : '今日输出'}</div>
         </div>
       </div>
     </div>
@@ -158,12 +160,12 @@ function LiteratureLibrary({project, onOpenLit, onRefresh}) {
   };
 
   const importFromOcr = async () => {
-    if (!ocrForm.ocr_project_id) return showAlert('请选择OCR项目', '提示');
+    if (!ocrForm.ocr_project_id) return showAlert(lang === 'en' ? 'Please choose an OCR project' : '请选择OCR项目', lang === 'en' ? 'Tip' : '提示');
     setLoading(true);
     try {
       await P(`${PA}/projects/${project.id}/literatures/import-ocr/`, ocrForm);
       setShowImport(false); load(); onRefresh && onRefresh();
-    } catch(e) { showAlert('导入失败: ' + e.message, '错误'); }
+    } catch(e) { showAlert((lang === 'en' ? 'Import failed: ' : '导入失败: ') + e.message, lang === 'en' ? 'Error' : '错误'); }
     setLoading(false);
   };
 
@@ -189,7 +191,7 @@ function LiteratureLibrary({project, onOpenLit, onRefresh}) {
           <button className="btn btn-sm btn-s" onClick={() => { setShowImport(true); loadOcrProjects(); }}>
             <span style={{display:'inline-flex',alignItems:'center',gap:6}}>
               <Icon name="download" size={12} />
-              从OCR导入
+              {lang === 'en' ? 'Import from OCR' : '从OCR导入'}
             </span>
           </button>
           <button className="btn btn-sm btn-p" onClick={() => setShowAdd(true)}>+ 添加文献</button>
@@ -197,7 +199,7 @@ function LiteratureLibrary({project, onOpenLit, onRefresh}) {
       </div>
 
       {lits.length === 0 ? (
-        <div className="empty"><h3>暂无文献</h3><p>请添加文献或从OCR工作室导入</p></div>
+        <div className="empty"><h3>{lang === 'en' ? 'No literature yet' : '暂无文献'}</h3><p>{lang === 'en' ? 'Add literature or import from OCR Studio' : '请添加文献或从OCR工作室导入'}</p></div>
       ) : lits.map(lit => (
         <div key={lit.id} className="card" style={{cursor:'pointer',marginBottom:10}}
           onClick={() => onOpenLit(lit)}>
@@ -258,17 +260,17 @@ function LiteratureLibrary({project, onOpenLit, onRefresh}) {
       {showImport && (
         <div className="modal-ov" onClick={() => setShowImport(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
-            <h2>从OCR工作室导入</h2>
-            <p style={{fontSize:12,color:'var(--fg2)',marginBottom:12}}>选择已完成OCR的项目，系统将自动合并所有页面内容并建立索引</p>
-            <div className="fg"><label>OCR项目 *</label>
+            <h2>{lang === 'en' ? 'Import from OCR Studio' : '从OCR工作室导入'}</h2>
+            <p style={{fontSize:12,color:'var(--fg2)',marginBottom:12}}>{lang === 'en' ? 'Choose a completed OCR project; the system will merge all page content and build the index automatically.' : '选择已完成OCR的项目，系统将自动合并所有页面内容并建立索引'}</p>
+            <div className="fg"><label>{lang === 'en' ? 'OCR project *' : 'OCR项目 *'}</label>
               <select value={ocrForm.ocr_project_id} onChange={e=>setOcrForm({...ocrForm,ocr_project_id:e.target.value})}>
-                <option value="">-- 选择OCR项目 --</option>
+                <option value="">{lang === 'en' ? '-- Select OCR project --' : '-- 选择OCR项目 --'}</option>
                 {ocrProjects.filter(p=>p.can_import).map(p => (
                   <option key={p.id} value={p.id}>{p.name} ({p.done_pages}/{p.total_pages}页)</option>
                 ))}
               </select>
             </div>
-            <div className="fg"><label>文献标题（留空则使用文件名）</label><input value={ocrForm.title} onChange={e=>setOcrForm({...ocrForm,title:e.target.value})} /></div>
+            <div className="fg"><label>{lang === 'en' ? 'Literature title (leave blank to use filename)' : '文献标题（留空则使用文件名）'}</label><input value={ocrForm.title} onChange={e=>setOcrForm({...ocrForm,title:e.target.value})} /></div>
             <div className="g2">
               <div className="fg"><label>作者</label><input value={ocrForm.authors} onChange={e=>setOcrForm({...ocrForm,authors:e.target.value})} /></div>
               <div className="fg"><label>年份</label><input value={ocrForm.year} onChange={e=>setOcrForm({...ocrForm,year:e.target.value})} /></div>
@@ -279,8 +281,8 @@ function LiteratureLibrary({project, onOpenLit, onRefresh}) {
               </select>
             </div>
             <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}>
-              <button className="btn btn-s" onClick={() => setShowImport(false)}>取消</button>
-              <button className="btn btn-p" onClick={importFromOcr} disabled={loading}>{loading?'导入中...':'导入文献'}</button>
+              <button className="btn btn-s" onClick={() => setShowImport(false)}>{lang === 'en' ? 'Cancel' : '取消'}</button>
+              <button className="btn btn-p" onClick={importFromOcr} disabled={loading}>{loading ? (lang === 'en' ? 'Importing...' : '导入中...') : (lang === 'en' ? 'Import Literature' : '导入文献')}</button>
             </div>
           </div>
         </div>
@@ -340,8 +342,8 @@ function ReadingDesk({project, lit, onCiteJump, user}) {
 
   if (!lit) return (
     <div className="empty" style={{paddingTop:80}}>
-      <h3>请先选择文献</h3>
-      <p>从文献库中选择一篇文献开始阅读</p>
+      <h3>{lang === 'en' ? 'Please select a literature item first' : '请先选择文献'}</h3>
+      <p>{lang === 'en' ? 'Choose a literature item from the library to start reading' : '从文献库中选择一篇文献开始阅读'}</p>
     </div>
   );
 
@@ -354,7 +356,7 @@ function ReadingDesk({project, lit, onCiteJump, user}) {
           {hlLines && (
             <span className="cite-chip" style={{cursor:'default'}}>L{hlLines[0]}-{hlLines[1]}</span>
           )}
-          {hlLines && <button className="btn btn-sm btn-s" onClick={() => setHlLines(null)}>清除高亮</button>}
+          {hlLines && <button className="btn btn-sm btn-s" onClick={() => setHlLines(null)}>{lang === 'en' ? 'Clear highlight' : '清除高亮'}</button>}
         </div>
         <LiteratureViewer
           lit={litDetail}
@@ -369,13 +371,13 @@ function ReadingDesk({project, lit, onCiteJump, user}) {
         <div style={{padding:'12px 14px',borderBottom:'1px solid var(--border)',fontWeight:500,fontSize:13,color:'var(--fg2)'}}>
           <span style={{display:'inline-flex',alignItems:'center',gap:6}}>
             <Icon name="note" size={12} />
-            笔记 ({notes.length})
+            {lang === 'en' ? `Notes (${notes.length})` : `笔记 (${notes.length})`}
           </span>
         </div>
         <div style={{flex:1,overflow:'auto',padding:12}}>
           {notes.length === 0 && (
             <div style={{textAlign:'center',padding:30,color:'var(--fg3)',fontSize:12}}>
-              点击文献行号 (①) 创建标注笔记
+              {lang === 'en' ? 'Click a literature line number (①) to create an annotation note' : '点击文献行号 (①) 创建标注笔记'}
             </div>
           )}
           {notes.map(note => (
@@ -402,25 +404,25 @@ function ReadingDesk({project, lit, onCiteJump, user}) {
       {noteModal && (
         <div className="modal-ov" onClick={() => setNoteModal(null)}>
           <div className="modal" onClick={e => e.stopPropagation()} style={{maxWidth:480}}>
-            <h2>创建笔记</h2>
+            <h2>{lang === 'en' ? 'Create note' : '创建笔记'}</h2>
             {noteModal.text && (
               <div style={{background:'var(--bg3)',borderRadius:6,padding:'8px 12px',marginBottom:12,fontSize:12,color:'var(--fg2)',borderLeft:'3px solid var(--gold)',fontStyle:'italic'}}>
                 {noteModal.text.slice(0,200)}
               </div>
             )}
             <div style={{fontSize:11,color:'var(--fg3)',marginBottom:12,fontFamily:'var(--mono)'}}>
-              引用位置: L{noteModal.lineStart}{noteModal.lineEnd !== noteModal.lineStart ? `-${noteModal.lineEnd}` : ''}
+              {lang === 'en' ? 'Reference location: ' : '引用位置: '}L{noteModal.lineStart}{noteModal.lineEnd !== noteModal.lineStart ? `-${noteModal.lineEnd}` : ''}
             </div>
-            <div className="fg"><label>笔记类型</label>
+            <div className="fg"><label>{lang === 'en' ? 'Note type' : '笔记类型'}</label>
               <select value={noteForm.note_type} onChange={e=>setNoteForm({...noteForm,note_type:e.target.value})}>
                 {Object.entries(NOTE_TYPE_LABELS).map(([k,v]) => <option key={k} value={k}>{v}</option>)}
               </select>
             </div>
-            <div className="fg"><label>标题（可选）</label><input value={noteForm.title} onChange={e=>setNoteForm({...noteForm,title:e.target.value})} /></div>
-            <div className="fg"><label>笔记内容</label><textarea value={noteForm.content} onChange={e=>setNoteForm({...noteForm,content:e.target.value})} rows={5} placeholder="写下你的思考、理解或问题..." autoFocus /></div>
+            <div className="fg"><label>{lang === 'en' ? 'Title (optional)' : '标题（可选）'}</label><input value={noteForm.title} onChange={e=>setNoteForm({...noteForm,title:e.target.value})} /></div>
+            <div className="fg"><label>{lang === 'en' ? 'Note content' : '笔记内容'}</label><textarea value={noteForm.content} onChange={e=>setNoteForm({...noteForm,content:e.target.value})} rows={5} placeholder={lang === 'en' ? 'Write your thoughts, understanding, or questions...' : '写下你的思考、理解或问题...'} autoFocus /></div>
             <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}>
-              <button className="btn btn-s" onClick={() => setNoteModal(null)}>取消</button>
-              <button className="btn btn-p" onClick={saveNote}>保存笔记</button>
+              <button className="btn btn-s" onClick={() => setNoteModal(null)}>{lang === 'en' ? 'Cancel' : '取消'}</button>
+              <button className="btn btn-p" onClick={saveNote}>{lang === 'en' ? 'Save note' : '保存笔记'}</button>
             </div>
           </div>
         </div>
@@ -442,7 +444,7 @@ function KnowledgeSearch({project, onJumpToLit}) {
     try {
       const res = await P(`${PA}/projects/${project.id}/search/`, {query, top_k: topK});
       setResults(res.results || []);
-    } catch(e) { showAlert('检索失败: ' + e.message, '错误'); }
+    } catch(e) { showAlert((lang === 'en' ? 'Search failed: ' : '检索失败: ') + e.message, lang === 'en' ? 'Error' : '错误'); }
     setLoading(false);
   };
 
@@ -455,8 +457,8 @@ function KnowledgeSearch({project, onJumpToLit}) {
       const chunks = [];
       (res.layers||[]).forEach(l => l.chunks && chunks.push(...l.chunks.map(c => ({...c, score: c.score||0.5, preview: c.preview||''}))));
       setResults(chunks);
-      if (res.summary) showAlert('探索摘要:\n\n' + res.summary, '探索结果');
-    } catch(e) { showAlert('探索失败: ' + e.message, '错误'); }
+      if (res.summary) showAlert((lang === 'en' ? 'Exploration summary:\n\n' : '探索摘要:\n\n') + res.summary, lang === 'en' ? 'Exploration result' : '探索结果');
+    } catch(e) { showAlert((lang === 'en' ? 'Exploration failed: ' : '探索失败: ') + e.message, lang === 'en' ? 'Error' : '错误'); }
     setLoading(false);
   };
 
@@ -464,28 +466,28 @@ function KnowledgeSearch({project, onJumpToLit}) {
 
   return (
     <div className="pl-fade">
-      <h3 style={{fontFamily:'var(--serif)',fontSize:18,marginBottom:16}}>知识检索</h3>
+      <h3 style={{fontFamily:'var(--serif)',fontSize:18,marginBottom:16}}>{lang === 'en' ? 'Knowledge Search' : '知识检索'}</h3>
       <div style={{display:'flex',gap:8,marginBottom:16}}>
         <input value={query} onChange={e=>setQuery(e.target.value)}
           onKeyDown={e=>e.key==='Enter'&&search()}
-          placeholder="输入研究问题或关键词..."
+          placeholder={lang === 'en' ? 'Enter research question or keyword...' : '输入研究问题或关键词...'}
           style={{flex:1}} />
         <select value={topK} onChange={e=>setTopK(Number(e.target.value))} style={{width:80}}>
-          {[5,10,20,30].map(k=><option key={k} value={k}>{k}条</option>)}
+          {[5,10,20,30].map(k=><option key={k} value={k}>{lang === 'en' ? `${k} items` : `${k}条`}</option>)}
         </select>
               <button className="btn btn-p" onClick={search} disabled={loading} style={{display:'inline-flex',alignItems:'center',gap:6}}>
                 <Icon name="search" size={12} />
-                {loading?'检索中...':'检索'}
+                {loading ? (lang === 'en' ? 'Searching...' : '检索中...') : (lang === 'en' ? 'Search' : '检索')}
               </button>
               <button className="btn btn-s" onClick={explore} disabled={loading} title="深度探索：从查询出发，逐层展开相关概念"
                 style={{display:'inline-flex',alignItems:'center',gap:6}}>
                 <Icon name="map" size={12} />
-                探索
+                {lang === 'en' ? 'Explore' : '探索'}
               </button>
       </div>
 
       {results.length > 0 && (
-        <div style={{marginBottom:8,fontSize:12,color:'var(--fg3)'}}>找到 {results.length} 个相关片段</div>
+        <div style={{marginBottom:8,fontSize:12,color:'var(--fg3)'}}>{lang === 'en' ? `Found ${results.length} relevant passages` : `找到 ${results.length} 个相关片段`}</div>
       )}
 
       {results.map((r, i) => (
@@ -509,7 +511,7 @@ function KnowledgeSearch({project, onJumpToLit}) {
       ))}
 
       {!loading && results.length === 0 && query && (
-        <div className="empty"><h3>未找到结果</h3><p>尝试换一个查询词，或先确认文献已建立索引</p></div>
+        <div className="empty"><h3>{lang === 'en' ? 'No results found' : '未找到结果'}</h3><p>{lang === 'en' ? 'Try another query, or make sure the literature has been indexed' : '尝试换一个查询词，或先确认文献已建立索引'}</p></div>
       )}
     </div>
   );
@@ -701,6 +703,7 @@ function ResearchChat({project, user, onTokenRefresh}) {
 
 // ── 写作台 ──
 function WritingDesk({project, user, onTokenRefresh}) {
+  const lang = getLang();
   const [drafts, setDrafts] = useState([]);
   const [curDraft, setCurDraft] = useState(null);
   const [content, setContent] = useState('');
@@ -720,7 +723,7 @@ function WritingDesk({project, user, onTokenRefresh}) {
   };
 
   const newDraft = async () => {
-    const title = prompt('草稿标题:');
+    const title = prompt(lang === 'en' ? 'Draft title:' : '草稿标题:');
     if (!title?.trim()) return;
     const d = await P(`${PA}/projects/${project.id}/drafts/`, {title: title.trim()});
     setCurDraft(d); setContent(''); setDirty(false); loadDrafts();
@@ -763,7 +766,7 @@ function WritingDesk({project, user, onTokenRefresh}) {
           else if(ev.type==='done') { onTokenRefresh && onTokenRefresh(); }
         }
       }
-    } catch(e) { setAssistResult('错误: ' + e.message); }
+    } catch(e) { setAssistResult((lang === 'en' ? 'Error: ' : '错误: ') + e.message); }
     setAssisting(false);
   };
 
@@ -778,7 +781,7 @@ function WritingDesk({project, user, onTokenRefresh}) {
       {/* 草稿列表 */}
       <div style={{width:180,borderRight:'1px solid var(--border)',display:'flex',flexDirection:'column',flexShrink:0}}>
         <div style={{padding:'10px 8px',borderBottom:'1px solid var(--border)'}}>
-          <button className="btn btn-p btn-sm" style={{width:'100%'}} onClick={newDraft}>+ 新草稿</button>
+          <button className="btn btn-p btn-sm" style={{width:'100%'}} onClick={newDraft}>{lang === 'en' ? '+ New Draft' : '+ 新草稿'}</button>
         </div>
         <div style={{flex:1,overflow:'auto',padding:'6px 4px'}}>
           {drafts.map(d => (
@@ -794,8 +797,8 @@ function WritingDesk({project, user, onTokenRefresh}) {
       {/* 写作区 */}
       {!curDraft ? (
         <div className="empty" style={{flex:1,paddingTop:80}}>
-          <h3>写作台</h3>
-          <p>创建或选择草稿，AI 辅助写作将自动附带文献引用</p>
+          <h3>{lang === 'en' ? 'Writing Desk' : '写作台'}</h3>
+          <p>{lang === 'en' ? 'Create or select a draft; AI-assisted writing will automatically include literature citations.' : '创建或选择草稿，AI 辅助写作将自动附带文献引用。'}</p>
         </div>
       ) : (
         <div style={{flex:1,display:'flex',overflow:'hidden'}}>
@@ -803,9 +806,9 @@ function WritingDesk({project, user, onTokenRefresh}) {
           <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>
             <div style={{padding:'8px 14px',borderBottom:'1px solid var(--border)',display:'flex',alignItems:'center',gap:8,background:'var(--bg2)',flexShrink:0}}>
               <span style={{flex:1,fontSize:13,fontWeight:500}}>{curDraft.title}</span>
-              {dirty && <span style={{fontSize:11,color:'var(--gold)'}}>● 未保存</span>}
-              <button className="btn btn-sm btn-s" onClick={() => setPreview(p=>!p)}>{preview?'编辑':'预览'}</button>
-              <button className="btn btn-sm btn-p" onClick={saveDraft}>保存</button>
+              {dirty && <span style={{fontSize:11,color:'var(--gold)'}}>{lang === 'en' ? '● Unsaved' : '● 未保存'}</span>}
+              <button className="btn btn-sm btn-s" onClick={() => setPreview(p=>!p)}>{preview?(lang === 'en' ? 'Edit' : '编辑'):(lang === 'en' ? 'Preview' : '预览')}</button>
+              <button className="btn btn-sm btn-p" onClick={saveDraft}>{lang === 'en' ? 'Save' : '保存'}</button>
             </div>
             {preview ? (
               <div ref={previewRef} className="pl-viewer" style={{flex:1,overflow:'auto',padding:24}}>
@@ -814,7 +817,7 @@ function WritingDesk({project, user, onTokenRefresh}) {
             ) : (
               <textarea className="pl-draft-ed" style={{flex:1,borderRadius:0,border:'none',borderBottom:'1px solid var(--border)'}}
                 value={content} onChange={e=>{setContent(e.target.value);setDirty(true);}}
-                placeholder="在此写作... 支持 Markdown 和 LaTeX 公式（$ ... $ 或 $$ ... $$）" />
+                placeholder={lang === 'en' ? 'Write here... Supports Markdown and LaTeX ($ ... $ or $$ ... $$)' : '在此写作... 支持 Markdown 和 LaTeX 公式（$ ... $ 或 $$ ... $$）'} />
             )}
           </div>
 
@@ -823,23 +826,23 @@ function WritingDesk({project, user, onTokenRefresh}) {
             <div style={{padding:'12px 14px',borderBottom:'1px solid var(--border)',fontSize:13,fontWeight:500,color:'var(--fg2)'}}>
               <span style={{display:'inline-flex',alignItems:'center',gap:6}}>
                 <Icon name="bot" size={13} />
-                AI写作辅助
+                {lang === 'en' ? 'AI Writing Assistant' : 'AI 写作辅助'}
               </span>
             </div>
             <div style={{flex:1,overflow:'auto',padding:12}}>
               <div style={{fontSize:12,color:'var(--fg3)',marginBottom:12,lineHeight:1.6}}>
-                AI 将从文献库检索相关内容，生成带精确引用的写作建议
+                {lang === 'en' ? 'AI will retrieve relevant content from the literature library and generate writing suggestions with precise citations.' : 'AI 将从文献库检索相关内容，生成带精确引用的写作建议。'}
               </div>
               <textarea value={assistInp} onChange={e=>setAssistInp(e.target.value)}
-                placeholder="例：分析XX方法的优缺点，或：概述目前研究现状..."
+                placeholder={lang === 'en' ? 'e.g. analyze the pros and cons of method X, or summarize the current research status...' : '例：分析XX方法的优缺点，或：概述目前研究现状...'}
                 style={{width:'100%',minHeight:80,fontSize:12,resize:'vertical',marginBottom:8}} />
               <button className={`btn btn-p btn-sm${assisting?' generating':''}`} onClick={requestAssist} disabled={assisting} style={{width:'100%',marginBottom:12}}>
-                {assisting ? '生成中...' : '生成带引用的内容'}
+                {assisting ? (lang === 'en' ? 'Generating...' : '生成中...') : (lang === 'en' ? 'Generate with citations' : '生成带引用的内容')}
               </button>
 
               {citations.length > 0 && (
                 <div style={{marginBottom:10}}>
-                  <div style={{fontSize:10,color:'var(--fg3)',marginBottom:4}}>检索到的引用:</div>
+                  <div style={{fontSize:10,color:'var(--fg3)',marginBottom:4}}>{lang === 'en' ? 'Citations found:' : '检索到的引用:'}</div>
                   <div style={{display:'flex',flexWrap:'wrap',gap:4}}>
                     {citations.map((c,i) => <CitationChip key={i} cite={c} />)}
                   </div>
@@ -848,11 +851,11 @@ function WritingDesk({project, user, onTokenRefresh}) {
 
               {assistResult && (
                 <div>
-                  <div style={{fontSize:10,color:'var(--green)',marginBottom:6,display:'inline-flex',alignItems:'center',gap:4}}><Icon name="check" size={10} /> 生成结果</div>
+                  <div style={{fontSize:10,color:'var(--green)',marginBottom:6,display:'inline-flex',alignItems:'center',gap:4}}><Icon name="check" size={10} /> {lang === 'en' ? 'Result' : '生成结果'}</div>
                   <div style={{background:'var(--bg3)',borderRadius:6,padding:10,fontSize:12,lineHeight:1.6,marginBottom:8,maxHeight:300,overflow:'auto',color:'var(--fg)'}}>
                     <MdRender content={assistResult} />
                   </div>
-                  <button className="btn btn-s btn-sm" style={{width:'100%'}} onClick={insertResult}>↓ 插入到草稿</button>
+                  <button className="btn btn-s btn-sm" style={{width:'100%'}} onClick={insertResult}>{lang === 'en' ? '↓ Insert into draft' : '↓ 插入到草稿'}</button>
                 </div>
               )}
             </div>
@@ -865,6 +868,7 @@ function WritingDesk({project, user, onTokenRefresh}) {
 
 // ── 启发灯塔 ──
 function IdeaLighthouse({project, user, onTokenRefresh}) {
+  const lang = getLang();
   const [ideas, setIdeas] = useState([]);
   const [generating, setGenerating] = useState(false);
   const [focusQuery, setFocusQuery] = useState('');
@@ -884,7 +888,7 @@ function IdeaLighthouse({project, user, onTokenRefresh}) {
       const res = await P(`${PA}/projects/${project.id}/ideas/generate/`, {focus_query: focusQuery});
       setIdeas(prev => [...(res.ideas||[]).map(i=>({...i})), ...prev]);
       onTokenRefresh && onTokenRefresh();
-    } catch(e) { showAlert('生成失败: ' + e.message, '错误'); }
+    } catch(e) { showAlert((lang === 'en' ? 'Generation failed: ' : '生成失败: ') + e.message, lang === 'en' ? 'Error' : '错误'); }
     setGenerating(false);
   };
 
@@ -905,33 +909,35 @@ function IdeaLighthouse({project, user, onTokenRefresh}) {
   return (
     <div className="pl-fade">
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
-        <h3 style={{fontFamily:'var(--serif)',fontSize:18}}>启发灯塔</h3>
-        <span style={{fontSize:12,color:'var(--fg3)'}}>基于文献库的研究灵感（必须有文献依据）</span>
+        <h3 style={{fontFamily:'var(--serif)',fontSize:18}}>{lang === 'en' ? 'Idea Lighthouse' : '启发灯塔'}</h3>
+        <span style={{fontSize:12,color:'var(--fg3)'}}>{lang === 'en' ? 'Research ideas grounded in the literature library (must have evidence)' : '基于文献库的研究灵感（必须有文献依据）'}</span>
       </div>
 
       <div className="card" style={{marginBottom:20,borderColor:'var(--gold-dim)'}}>
         <div style={{fontSize:13,color:'var(--gold2)',fontWeight:500,marginBottom:8,display:'inline-flex',alignItems:'center',gap:6}}>
           <Icon name="alert" size={12} />
-          设计原则
+          {lang === 'en' ? 'Design Principles' : '设计原则'}
         </div>
         <div style={{fontSize:12,color:'var(--fg2)',lineHeight:1.7}}>
-          启发灯塔的所有灵感均来自您的文献库，每条灵感必须附带具体的文献依据。Agent 不会天马行空，只会在现有文献基础上发现研究机会。
+          {lang === 'en'
+            ? 'All ideas come from your literature library, and each one must include concrete evidence. The Agent will not speculate; it only discovers research opportunities grounded in existing literature.'
+            : '启发灯塔的所有灵感均来自您的文献库，每条灵感必须附带具体的文献依据。Agent 不会天马行空，只会在现有文献基础上发现研究机会。'}
         </div>
       </div>
 
       <div style={{display:'flex',gap:8,marginBottom:20}}>
         <input value={focusQuery} onChange={e=>setFocusQuery(e.target.value)}
-          placeholder="聚焦方向（留空则基于整个项目）..."
+          placeholder={lang === 'en' ? 'Focus area (leave blank to use the whole project)...' : '聚焦方向（留空则基于整个项目）...'}
           style={{flex:1}} />
         <button className={`btn btn-p${generating?' generating':''}`} onClick={generate} disabled={generating}
           style={{display:'inline-flex',alignItems:'center',gap:6}}>
           <Icon name="spark" size={12} />
-          {generating ? '分析中...' : '生成灵感'}
+          {generating ? (lang === 'en' ? 'Analyzing...' : '分析中...') : (lang === 'en' ? 'Generate ideas' : '生成灵感')}
         </button>
       </div>
 
       {ideas.length === 0 && !generating && (
-        <div className="empty"><h3>暂无灵感</h3><p>点击「生成灵感」，Agent 将分析文献库寻找研究机会</p></div>
+        <div className="empty"><h3>{lang === 'en' ? 'No ideas yet' : '暂无灵感'}</h3><p>{lang === 'en' ? 'Click "Generate ideas" and the Agent will analyze the literature library for research opportunities.' : '点击「生成灵感」，Agent 将分析文献库寻找研究机会'}</p></div>
       )}
 
       {ideas.map(idea => (
@@ -955,7 +961,7 @@ function IdeaLighthouse({project, user, onTokenRefresh}) {
           <div style={{fontSize:13,color:'var(--fg2)',lineHeight:1.7,marginBottom:8}}>{idea.description}</div>
           {idea.evidence_summary && (
             <div style={{fontSize:11,color:'var(--fg3)',borderTop:'1px solid var(--border)',paddingTop:8,marginTop:4,lineHeight:1.6}}>
-              <span style={{color:'var(--gold-dim)'}}>文献依据: </span>
+              <span style={{color:'var(--gold-dim)'}}>{lang === 'en' ? 'Evidence: ' : '文献依据: '}</span>
               {idea.evidence_summary}
             </div>
           )}
@@ -974,6 +980,7 @@ function IdeaLighthouse({project, user, onTokenRefresh}) {
 
 // ── 项目笔记汇总 ──
 function NotesOverview({project, onJumpToLit}) {
+  const lang = getLang();
   const [notes, setNotes] = useState([]);
   const NOTE_TYPE_LABELS = {annotation:'标注',summary:'摘要',comment:'评论',question:'疑问',insight:'洞见',connection:'关联'};
   useEffect(() => {
@@ -982,8 +989,8 @@ function NotesOverview({project, onJumpToLit}) {
 
   return (
     <div className="pl-fade">
-      <h3 style={{fontFamily:'var(--serif)',fontSize:18,marginBottom:16}}>研究笔记 ({notes.length})</h3>
-      {notes.length === 0 && <div className="empty"><h3>暂无笔记</h3><p>在阅读台中点击行号创建标注</p></div>}
+      <h3 style={{fontFamily:'var(--serif)',fontSize:18,marginBottom:16}}>{lang === 'en' ? 'Research Notes' : '研究笔记'} ({notes.length})</h3>
+      {notes.length === 0 && <div className="empty"><h3>{lang === 'en' ? 'No notes yet' : '暂无笔记'}</h3><p>{lang === 'en' ? 'Click a line number in the reading desk to create an annotation.' : '在阅读台中点击行号创建标注'}</p></div>}
       {notes.map(note => (
         <div key={note.id} className="card" style={{marginBottom:10,cursor:'pointer'}}
           onClick={() => note.lit_id && onJumpToLit && onJumpToLit(note.lit_id, note.cited_line_start, note.cited_line_end)}>
@@ -1005,6 +1012,7 @@ function NotesOverview({project, onJumpToLit}) {
 
 // ── 主 PaperLabApp ──
 function PaperLabApp({user, onLogout, onUpdateUser}) {
+  const lang = getLang();
   const [v, setV] = useState('projects');
   const [projects, setProjects] = useState([]);
   const [curProject, setCurProject] = useState(null);
@@ -1022,13 +1030,13 @@ function PaperLabApp({user, onLogout, onUpdateUser}) {
   };
 
   const createProject = async () => {
-    if (!newProjForm.title.trim()) return showAlert('请输入项目标题', '提示');
+    if (!newProjForm.title.trim()) return showAlert(lang === 'en' ? 'Please enter a project title' : '请输入项目标题', lang === 'en' ? 'Tip' : '提示');
     try {
       const p = await P(`${PA}/projects/`, newProjForm);
       setShowNewProject(false);
       setNewProjForm({title:'',description:'',domain:'',research_questions:''});
       loadProjects();
-    } catch(e) { showAlert('创建失败: ' + e.message, '错误'); }
+    } catch(e) { showAlert((lang === 'en' ? 'Create failed: ' : '创建失败: ') + e.message, lang === 'en' ? 'Error' : '错误'); }
   };
 
   const selectProject = (p) => {
@@ -1057,37 +1065,37 @@ function PaperLabApp({user, onLogout, onUpdateUser}) {
 
   const NAV_GROUPS = [
     {
-      label: '导航',
-      items: [
-        {id:'projects', icon:'grid', label:'研究项目'},
-      ]
-    },
+        label: lang === 'en' ? 'Navigation' : '导航',
+        items: [
+        {id:'projects', icon:'grid', label: lang === 'en' ? 'Projects' : '研究项目'},
+        ]
+      },
     ...(curProject ? [{
       label: curProject.title,
       items: [
-        {id:'library', icon:'book', label:'文献库'},
-        {id:'reading', icon:'eye', label:'阅读台'},
-        {id:'search', icon:'search', label:'知识检索'},
-        {id:'chat', icon:'chat', label:'研究讨论'},
-        {id:'notes', icon:'note', label:'研究笔记'},
-        {id:'writing', icon:'pen', label:'写作台'},
-        {id:'ideas', icon:'spark', label:'启发灯塔'},
+        {id:'library', icon:'book', label: lang === 'en' ? 'Library' : '文献库'},
+        {id:'reading', icon:'eye', label: lang === 'en' ? 'Reading Desk' : '阅读台'},
+        {id:'search', icon:'search', label: lang === 'en' ? 'Knowledge Search' : '知识检索'},
+        {id:'chat', icon:'chat', label: lang === 'en' ? 'Research Chat' : '研究讨论'},
+        {id:'notes', icon:'note', label: lang === 'en' ? 'Notes' : '研究笔记'},
+        {id:'writing', icon:'pen', label: lang === 'en' ? 'Writing Desk' : '写作台'},
+        {id:'ideas', icon:'spark', label: lang === 'en' ? 'Idea Lighthouse' : '启发灯塔'},
       ]
     }] : []),
   ];
 
   const TOP_TITLES = {
-    projects:'研究项目', library:'文献库', reading:'阅读台',
-    search:'知识检索', chat:'研究讨论', notes:'研究笔记',
-    writing:'写作台', ideas:'启发灯塔',
+    projects: lang === 'en' ? 'Projects' : '研究项目', library: lang === 'en' ? 'Library' : '文献库', reading: lang === 'en' ? 'Reading Desk' : '阅读台',
+    search: lang === 'en' ? 'Knowledge Search' : '知识检索', chat: lang === 'en' ? 'Research Chat' : '研究讨论', notes: lang === 'en' ? 'Notes' : '研究笔记',
+    writing: lang === 'en' ? 'Writing Desk' : '写作台', ideas: lang === 'en' ? 'Idea Lighthouse' : '启发灯塔',
   };
 
   return (
     <div className="app">
       <div className={`sb-ov${sbOpen?' open':''}`} onClick={() => setSbOpen(false)} />
       <div className={`sb${sbOpen?' open':''}`}>
-        <div className="sb-back" onClick={() => window.location.hash='#/'}>← 返回 MineAI</div>
-        <div className="sb-hd"><h1>学术研究站</h1><p>零幻觉·精确引用·深度探索</p></div>
+        <div className="sb-back" onClick={() => window.location.hash='#/'}>{lang === 'en' ? '← Back to MineAI' : '← 返回 MineAI'}</div>
+        <div className="sb-hd"><h1>{lang === 'en' ? 'Academic Lab' : '学术研究站'}</h1><p>{lang === 'en' ? 'Zero hallucination · precise citations · deep exploration' : '零幻觉·精确引用·深度探索'}</p></div>
         <div className="sb-nav">
           {NAV_GROUPS.map(grp => (
             <div className="ns" key={grp.label}>
@@ -1106,9 +1114,9 @@ function PaperLabApp({user, onLogout, onUpdateUser}) {
             <Icon name="user" size={14} />{displayName(user)}
           </div>
           <div style={{display:'flex',gap:6}}>
-            <button onClick={onLogout} style={{flex:1,padding:'5px 8px',borderRadius:'var(--r)',background:'var(--bg4)',color:'var(--fg3)',border:'1px solid var(--border2)',fontSize:12,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:4}}>
-              <Icon name="logout" size={13} />退出
-            </button>
+          <button onClick={onLogout} style={{flex:1,padding:'5px 8px',borderRadius:'var(--r)',background:'var(--bg4)',color:'var(--fg3)',border:'1px solid var(--border2)',fontSize:12,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:4}}>
+              <Icon name="logout" size={13} />{lang === 'en' ? 'Logout' : '退出'}
+          </button>
           </div>
         </div>
       </div>
@@ -1132,27 +1140,27 @@ function PaperLabApp({user, onLogout, onUpdateUser}) {
           {v === 'projects' && (
             <div className="pl-fade">
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
-                <h2 style={{fontFamily:'var(--serif)',fontSize:22}}>研究项目</h2>
-                <button className="btn btn-p" onClick={() => setShowNewProject(true)}>+ 新建项目</button>
+                <h2 style={{fontFamily:'var(--serif)',fontSize:22}}>{lang === 'en' ? 'Projects' : '研究项目'}</h2>
+                <button className="btn btn-p" onClick={() => setShowNewProject(true)}>{lang === 'en' ? '+ New Project' : '+ 新建项目'}</button>
               </div>
 
               <div className="card" style={{marginBottom:20,borderColor:'var(--cyan)',background:'rgba(90,196,180,.05)'}}>
                 <div style={{fontSize:13,color:'var(--cyan)',fontWeight:500,marginBottom:6,display:'inline-flex',alignItems:'center',gap:6}}>
                   <Icon name="search" size={12} />
-                  学术研究站设计理念
+                  {lang === 'en' ? 'Academic Lab Design Principles' : '学术研究站设计理念'}
                 </div>
                 <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,fontSize:12,color:'var(--fg2)'}}>
-                  <div><Icon name="bolt" size={12} /> <b>零幻觉</b>：仅引用文献库中的真实内容</div>
-                  <div><Icon name="link" size={12} /> <b>精确引用</b>：文件名:L行号-行号 可点击跳转</div>
-                  <div><Icon name="map" size={12} /> <b>深度探索</b>：Agent 自动在知识迷宫中导航</div>
-                  <div><Icon name="pen" size={12} /> <b>辅助写作</b>：每段内容自动附带文献依据</div>
-                  <div><Icon name="file" size={12} /> <b>OCR绑定</b>：与OCR工作室深度集成</div>
-                  <div><Icon name="spark" size={12} /> <b>启发灯塔</b>：基于文献的研究灵感</div>
+                  <div><Icon name="bolt" size={12} /> <b>{lang === 'en' ? 'Zero hallucination' : '零幻觉'}</b>：{lang === 'en' ? 'Only cite real content from the literature library' : '仅引用文献库中的真实内容'}</div>
+                  <div><Icon name="link" size={12} /> <b>{lang === 'en' ? 'Precise citations' : '精确引用'}</b>：{lang === 'en' ? 'Clickable file:Lline-line refs' : '文件名:L行号-行号 可点击跳转'}</div>
+                  <div><Icon name="map" size={12} /> <b>{lang === 'en' ? 'Deep exploration' : '深度探索'}</b>：{lang === 'en' ? 'The Agent navigates the knowledge maze automatically' : 'Agent 自动在知识迷宫中导航'}</div>
+                  <div><Icon name="pen" size={12} /> <b>{lang === 'en' ? 'Writing aid' : '辅助写作'}</b>：{lang === 'en' ? 'Each section automatically carries literature evidence' : '每段内容自动附带文献依据'}</div>
+                  <div><Icon name="file" size={12} /> <b>OCR</b>：{lang === 'en' ? 'Deeply integrated with OCR Studio' : '与OCR工作室深度集成'}</div>
+                  <div><Icon name="spark" size={12} /> <b>{lang === 'en' ? 'Idea Lighthouse' : '启发灯塔'}</b>：{lang === 'en' ? 'Literature-grounded research inspiration' : '基于文献的研究灵感'}</div>
                 </div>
               </div>
 
               {projects.length === 0 ? (
-                <div className="empty"><h3>暂无研究项目</h3><p>创建第一个研究项目，开始你的学术研究之旅</p></div>
+                <div className="empty"><h3>{lang === 'en' ? 'No projects yet' : '暂无研究项目'}</h3><p>{lang === 'en' ? 'Create your first project and start the academic journey.' : '创建第一个研究项目，开始你的学术研究之旅'}</p></div>
               ) : (
                 <div className="g2">
                   {projects.map(p => (
@@ -1163,15 +1171,15 @@ function PaperLabApp({user, onLogout, onUpdateUser}) {
                       <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
                         <h3 style={{fontFamily:'var(--serif)',fontSize:16,color:'var(--gold2)'}}>{p.title}</h3>
                         <div style={{display:'flex',gap:6}}>
-                          <span style={{fontSize:10,padding:'2px 6px',borderRadius:3,background:'rgba(90,196,180,.1)',color:'var(--cyan)'}}>{p.lit_count}篇文献</span>
-                          <span style={{fontSize:10,padding:'2px 6px',borderRadius:3,background:'var(--bg4)',color:'var(--fg3)'}}>{p.note_count}条笔记</span>
+                          <span style={{fontSize:10,padding:'2px 6px',borderRadius:3,background:'rgba(90,196,180,.1)',color:'var(--cyan)'}}>{p.lit_count}{lang === 'en' ? ' literatures' : '篇文献'}</span>
+                          <span style={{fontSize:10,padding:'2px 6px',borderRadius:3,background:'var(--bg4)',color:'var(--fg3)'}}>{p.note_count}{lang === 'en' ? ' notes' : '条笔记'}</span>
                         </div>
                       </div>
                       {p.domain && <div style={{fontSize:12,color:'var(--blue)',marginTop:4}}># {p.domain}</div>}
                       {p.description && <div style={{fontSize:12,color:'var(--fg2)',marginTop:6,lineHeight:1.5}}>{p.description.slice(0,100)}</div>}
                       {p.research_questions && (
                         <div style={{fontSize:11,color:'var(--fg3)',marginTop:6,borderTop:'1px solid var(--border)',paddingTop:6}}>
-                          研究问题: {p.research_questions.slice(0,80)}
+                          {lang === 'en' ? 'Research questions: ' : '研究问题: '}{p.research_questions.slice(0,80)}
                         </div>
                       )}
                     </div>
@@ -1182,14 +1190,14 @@ function PaperLabApp({user, onLogout, onUpdateUser}) {
               {showNewProject && (
                 <div className="modal-ov" onClick={() => setShowNewProject(false)}>
                   <div className="modal" onClick={e => e.stopPropagation()}>
-                    <h2>新建研究项目</h2>
-                    <div className="fg"><label>项目标题 *</label><input value={newProjForm.title} onChange={e=>setNewProjForm({...newProjForm,title:e.target.value})} autoFocus /></div>
-                    <div className="fg"><label>研究领域</label><input value={newProjForm.domain} onChange={e=>setNewProjForm({...newProjForm,domain:e.target.value})} placeholder="如：深度学习、材料科学..." /></div>
-                    <div className="fg"><label>项目描述</label><textarea value={newProjForm.description} onChange={e=>setNewProjForm({...newProjForm,description:e.target.value})} rows={3} /></div>
-                    <div className="fg"><label>核心研究问题</label><textarea value={newProjForm.research_questions} onChange={e=>setNewProjForm({...newProjForm,research_questions:e.target.value})} rows={4} placeholder="描述你要研究的核心问题，Agent 将基于此聚焦分析..." /></div>
+                    <h2>{lang === 'en' ? 'New Research Project' : '新建研究项目'}</h2>
+                    <div className="fg"><label>{lang === 'en' ? 'Project title *' : '项目标题 *'}</label><input value={newProjForm.title} onChange={e=>setNewProjForm({...newProjForm,title:e.target.value})} autoFocus /></div>
+                    <div className="fg"><label>{lang === 'en' ? 'Research area' : '研究领域'}</label><input value={newProjForm.domain} onChange={e=>setNewProjForm({...newProjForm,domain:e.target.value})} placeholder={lang === 'en' ? 'e.g. deep learning, materials science...' : '如：深度学习、材料科学...'} /></div>
+                    <div className="fg"><label>{lang === 'en' ? 'Project description' : '项目描述'}</label><textarea value={newProjForm.description} onChange={e=>setNewProjForm({...newProjForm,description:e.target.value})} rows={3} /></div>
+                    <div className="fg"><label>{lang === 'en' ? 'Core research questions' : '核心研究问题'}</label><textarea value={newProjForm.research_questions} onChange={e=>setNewProjForm({...newProjForm,research_questions:e.target.value})} rows={4} placeholder={lang === 'en' ? 'Describe the core questions you want to study; the Agent will focus analysis on them.' : '描述你要研究的核心问题，Agent 将基于此聚焦分析...'} /></div>
                     <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}>
-                      <button className="btn btn-s" onClick={() => setShowNewProject(false)}>取消</button>
-                      <button className="btn btn-p" onClick={createProject}>创建项目</button>
+                      <button className="btn btn-s" onClick={() => setShowNewProject(false)}>{lang === 'en' ? 'Cancel' : '取消'}</button>
+                      <button className="btn btn-p" onClick={createProject}>{lang === 'en' ? 'Create Project' : '创建项目'}</button>
                     </div>
                   </div>
                 </div>
@@ -1199,7 +1207,7 @@ function PaperLabApp({user, onLogout, onUpdateUser}) {
 
           {/* 需要项目的视图 */}
           {!curProject && v !== 'projects' && (
-            <div className="empty"><h3>请先选择研究项目</h3><button className="btn btn-p" onClick={()=>goTo('projects')}>选择项目</button></div>
+            <div className="empty"><h3>{lang === 'en' ? 'Please select a project first' : '请先选择研究项目'}</h3><button className="btn btn-p" onClick={()=>goTo('projects')}>{lang === 'en' ? 'Choose Project' : '选择项目'}</button></div>
           )}
 
           {curProject && v === 'library' && (

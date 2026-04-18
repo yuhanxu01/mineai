@@ -13,6 +13,34 @@ from .sanity import sanity_check
 from .market import match_orders, get_market_summary, get_price_history
 
 
+STARTING_BUILDINGS = [
+    {"type": "house", "size": (2, 2), "workers": 0},
+    {"type": "house", "size": (2, 2), "workers": 0},
+    {"type": "barn", "size": (3, 3), "workers": 0},
+    {"type": "stockpile", "size": (2, 2), "workers": 0},
+    {"type": "well", "size": (1, 1), "workers": 0, "water_storage": 200},
+]
+
+STARTING_LAYOUT_OFFSETS = [
+    {"type": "house", "x": 0, "y": 0},
+    {"type": "house", "x": 4, "y": 0},
+    {"type": "barn", "x": 1, "y": 3},
+    {"type": "stockpile", "x": 5, "y": 4},
+    {"type": "well", "x": 3, "y": 2},
+]
+
+STORAGE_CAPACITY = {
+    "house": 80,
+    "stone_house": 120,
+    "boarding_house": 260,
+    "barn": 1800,
+    "stockpile": 1200,
+    "market": 2400,
+    "trading_post": 2000,
+    "well": 120,
+}
+
+
 def token_auth_user(request):
     auth = request.META.get('HTTP_AUTHORIZATION', '')
     if not auth.startswith('Token '):
@@ -31,6 +59,16 @@ def _make_initial_state():
     # 起始购买区域：中心区域 16×16
     cx, cy = 24, 24
     purchased_regions = [{"x": cx, "y": cy, "w": 16, "h": 16}]
+    buildings = _generate_starting_buildings(tiles, purchased_regions)
+
+    starter_houses = [b for b in buildings if b["type"] in ("house", "stone_house", "boarding_house")]
+    for idx, villager in enumerate(villagers):
+        if starter_houses:
+            home = starter_houses[idx % len(starter_houses)]
+            villager["home_id"] = home["id"]
+            villager["x"] = float(home["x"] + 0.5 + (idx % max(1, home["w"])) * 0.35)
+            villager["y"] = float(home["y"] + 0.8 + (idx // max(1, home["w"])) * 0.35)
+            home["residents"].append(villager["id"])
 
     return {
         "version": 1,
@@ -52,11 +90,115 @@ def _make_initial_state():
             "food": 200,
             "gold": 100,
         },
-        "population": {"total": 4, "working": 0, "students": 0, "homeless": 4, "idle": 4},
-        "buildings": [],
+        "population": {"total": 4, "working": 0, "students": 0, "homeless": 0 if starter_houses else 4, "idle": 4},
+        "profession_targets": {},
+        "buildings": buildings,
         "villagers": villagers,
         "stats": {"peak_pop": 4, "total_gold_earned": 0, "years_survived": 0},
     }
+
+
+def _tile_is_buildable(tiles, x, y):
+    return 0 <= y < len(tiles) and 0 <= x < len(tiles[y]) and tiles[y][x] in (0, 3)
+
+
+def _rect_is_buildable(tiles, x, y, w, h, placed):
+    for dy in range(h):
+        for dx in range(w):
+            if not _tile_is_buildable(tiles, x + dx, y + dy):
+                return False
+    for ob in placed:
+        overlap = not (x + w <= ob["x"] or ob["x"] + ob["w"] <= x or y + h <= ob["y"] or ob["y"] + ob["h"] <= y)
+        if overlap:
+            return False
+    return True
+
+
+def _make_building_state(building_type, x, y, w, h, workers, water_storage=0):
+    return {
+        "id": f"b_start_{building_type}_{uuid.uuid4().hex[:8]}",
+        "type": building_type,
+        "x": x,
+        "y": y,
+        "w": w,
+        "h": h,
+        "workers_assigned": 0,
+        "workers_max": workers,
+        "residents": [],
+        "built": True,
+        "progress": 1.0,
+        "storage": {},
+        "storage_cap": STORAGE_CAPACITY.get(building_type, 120),
+        "storage_used": 0,
+        "water_storage": water_storage,
+        "carts_unlocked": False if building_type == "blacksmith" else None,
+        "forester_mode": "auto" if building_type == "forester" else None,
+        "yield_current": {},
+        "yield_current_total": 0,
+        "yield_last": {},
+        "yield_last_total": 0,
+        "yield_last_season": None,
+    }
+
+
+def _generate_starting_buildings(tiles, purchased_regions):
+    placed = []
+    if not purchased_regions:
+        return placed
+
+    region = purchased_regions[0]
+    start_x = region["x"] + 1
+    start_y = region["y"] + 1
+    end_x = region["x"] + region["w"] - 1
+    end_y = region["y"] + region["h"] - 1
+    layout_specs = {spec["type"]: spec for spec in STARTING_BUILDINGS}
+
+    # Preferred opener: a compact hamlet layout with a center well.
+    layout_width = 7
+    layout_height = 7
+    anchor_candidates = []
+    center_x = region["x"] + max(1, (region["w"] - layout_width) // 2)
+    center_y = region["y"] + max(1, (region["h"] - layout_height) // 2)
+    for dy in range(-2, 3):
+        for dx in range(-2, 3):
+            anchor_candidates.append((center_x + dx, center_y + dy))
+
+    for anchor_x, anchor_y in anchor_candidates:
+        candidate = []
+        ok = True
+        for offset in STARTING_LAYOUT_OFFSETS:
+            spec = layout_specs[offset["type"]]
+            w, h = spec["size"]
+            x = anchor_x + offset["x"]
+            y = anchor_y + offset["y"]
+            if x < start_x or y < start_y or x + w > end_x or y + h > end_y:
+                ok = False
+                break
+            if not _rect_is_buildable(tiles, x, y, w, h, candidate):
+                ok = False
+                break
+            candidate.append(_make_building_state(
+                spec["type"], x, y, w, h, spec["workers"], spec.get("water_storage", 0)
+            ))
+        if ok:
+            return candidate
+
+    for spec in STARTING_BUILDINGS:
+        w, h = spec["size"]
+        placed_building = None
+        for y in range(start_y, end_y - h + 1):
+            for x in range(start_x, end_x - w + 1):
+                if not _rect_is_buildable(tiles, x, y, w, h, placed):
+                    continue
+                placed_building = _make_building_state(
+                    spec["type"], x, y, w, h, spec["workers"], spec.get("water_storage", 0)
+                )
+                placed.append(placed_building)
+                break
+            if placed_building:
+                break
+
+    return placed
 
 
 def _generate_map(width, height):
@@ -156,19 +298,23 @@ def _generate_starting_villagers(count):
             "x": float(cx + rng.randint(-3, 3)),
             "y": float(cy + rng.randint(-3, 3)),
             "state": "idle",
-            "job": None,
+            "job": "laborer",
             "building_id": None,
             "home_id": None,
+            "school_id": None,
             "health": 100,
             "happiness": 80,
             "educated": False,
+            "school_ticks": 0,
             "partner_id": None,
+            "birth_cooldown": 0,
             "hunger": 100,
             "thirst": 80,
             "warmth": 100,
             "action": None,
             "action_ticks_left": 0,
-            "carrying": None,
+            "carrying": {},
+            "has_cart": False,
         })
     return villagers
 

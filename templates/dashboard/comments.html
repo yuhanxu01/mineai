@@ -1,31 +1,31 @@
 {% extends 'dashboard/base.html' %}
-{% block title %}评论管理{% endblock %}
-{% block page_title %}评论管理{% endblock %}
+{% block title %}Comment Moderation{% endblock %}
+{% block page_title %}Comment Moderation{% endblock %}
 
 {% block content %}
 <div class="page-header">
   <div class="page-header-left">
-    <h1>评论管理</h1>
-    <p>审核和删除用户发表的所有评论</p>
+    <h1>Comment Moderation</h1>
+    <p>Review and delete all comments posted by users</p>
   </div>
 </div>
 
 <div class="card">
   <div class="card-header">
-    <h2>评论列表</h2>
+    <h2>Comment List</h2>
     <form class="search-bar" method="get">
       <div class="search-input">
         <span class="search-icon">{% include 'dashboard/_icon.html' with name='search' size=14 %}</span>
-        <input class="form-control" name="q" value="{{ q }}" placeholder="搜索内容/用户/书名…">
+        <input class="form-control" name="q" value="{{ q }}" placeholder="Search content / user / title...">
       </div>
-      <button class="btn btn-outline" type="submit">搜索</button>
-      {% if q %}<a href="{% url 'dashboard:comment_list' %}" class="btn btn-outline">清除</a>{% endif %}
+      <button class="btn btn-outline" type="submit">Search</button>
+      {% if q %}<a href="{% url 'dashboard:comment_list' %}" class="btn btn-outline">Clear</a>{% endif %}
     </form>
   </div>
   <div class="table-wrap">
     <table>
       <thead>
-        <tr><th>用户</th><th>小说</th><th>位置</th><th>评分</th><th>内容摘要</th><th>时间</th><th>操作</th></tr>
+        <tr><th>User</th><th>Novel</th><th>Location</th><th>Rating</th><th>Summary</th><th>Time</th><th>Actions</th></tr>
       </thead>
       <tbody>
         {% for c in page_obj %}
@@ -34,11 +34,11 @@
           <td><strong>{{ c.novel.title }}</strong></td>
           <td class="td-muted">
             {% if c.chapter and c.paragraph_index is not None %}
-              第{{ c.chapter.number }}章 段落{{ c.paragraph_index }}
+              Chapter {{ c.chapter.number }} Paragraph {{ c.paragraph_index }}
             {% elif c.chapter %}
-              第{{ c.chapter.number }}章
+              Chapter {{ c.chapter.number }}
             {% else %}
-              整本
+              Whole book
             {% endif %}
           </td>
           <td>
@@ -54,23 +54,23 @@
           <td class="td-muted">{{ c.created_at|date:"m-d H:i" }}</td>
           <td>
             <form method="post" action="{% url 'dashboard:comment_delete' c.pk %}"
-                  onsubmit="return confirm('确定删除此评论？')" style="display:inline">
+                  onsubmit="return confirm('Delete this comment?')" style="display:inline">
               {% csrf_token %}
-              <button class="btn btn-danger btn-xs" type="submit">删除</button>
+              <button class="btn btn-danger btn-xs" type="submit">Delete</button>
             </form>
           </td>
         </tr>
         {% empty %}
-        <tr><td colspan="7"><div class="empty-state"><div class="empty-icon">{% include 'dashboard/_icon.html' with name='chat' size=36 %}</div><p>暂无评论</p></div></td></tr>
+        <tr><td colspan="7"><div class="empty-state"><div class="empty-icon">{% include 'dashboard/_icon.html' with name='chat' size=36 %}</div><p>No comments yet</p></div></td></tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
   {% if page_obj.has_other_pages %}
   <div class="pagination">
-    {% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}&q={{ q }}">上一页</a>{% endif %}
+    {% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}&q={{ q }}">Previous</a>{% endif %}
     <span class="current">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
-    {% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}&q={{ q }}">下一页</a>{% endif %}
+    {% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}&q={{ q }}">Next</a>{% endif %}
   </div>
   {% endif %}
 </div>

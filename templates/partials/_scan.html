@@ -1,15 +1,16 @@
 {% verbatim %}
 
-// ── CameraCapture 组件（可复用模块）──────────────────────────
-// 使用 getUserMedia 显示实时取景器 + 拍照
-// fallback: 若浏览器不支持则退化为 <input capture> 直接调起原生相机
+// ── CameraCapture component (reusable) ────────────────────────
+// Uses getUserMedia for a live preview + capture
+// fallback: if unsupported, falls back to <input capture> native camera
 function CameraCapture({ onCapture, onClose }) {
+  const lang = getLang();
   const videoRef    = useRef(null);
   const streamRef   = useRef(null);
-  const [facing, setFacing]   = useState('environment'); // 'environment'=后摄 'user'=前摄
+  const [facing, setFacing]   = useState('environment'); // 'environment'=rear camera 'user'=front camera
   const [ready,  setReady]    = useState(false);
   const [err,    setErr]      = useState('');
-  const [useNative, setUseNative] = useState(false); // fallback 模式
+  const [useNative, setUseNative] = useState(false); // fallback mode
 
   const stopStream = () => {
     if (streamRef.current) {
@@ -29,8 +30,8 @@ function CameraCapture({ onCapture, onClose }) {
       if (videoRef.current) { videoRef.current.srcObject = stream; }
       setReady(true);
     } catch(e) {
-      // HTTPS 未开启 / 权限拒绝时退化为原生 input
-      if (e.name === 'NotAllowedError') setErr('摄像头权限被拒绝，请在浏览器设置中允许访问');
+      // Fallback to native input when HTTPS is unavailable or permission is denied
+      if (e.name === 'NotAllowedError') setErr('Camera permission was denied. Please allow access in your browser settings.');
       else setUseNative(true);
     }
   }, []);
@@ -40,7 +41,7 @@ function CameraCapture({ onCapture, onClose }) {
     return () => stopStream();
   }, [facing]); // eslint-disable-line
 
-  // 点击"拍照"：从 video 帧截取到 canvas → dataURL
+  // Capture from the video frame to a canvas dataURL
   const handleCapture = () => {
     const video = videoRef.current;
     if (!video || !video.videoWidth) return;
@@ -51,7 +52,7 @@ function CameraCapture({ onCapture, onClose }) {
     onCapture(cv.toDataURL('image/jpeg', 0.92));
   };
 
-  // fallback：<input capture> 触发原生相机
+  // fallback: <input capture> triggers the native camera
   const handleNativeCapture = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -63,27 +64,27 @@ function CameraCapture({ onCapture, onClose }) {
   return (
     <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.95)',zIndex:2000,
       display:'flex',flexDirection:'column'}}>
-      {/* 顶栏 */}
+      {/* Top bar */}
       <div style={{display:'flex',alignItems:'center',padding:'12px 16px',
         borderBottom:'1px solid var(--border)',flexShrink:0}}>
-        <span style={{flex:1,fontSize:14,color:'var(--fg)',fontWeight:500}}>相机拍照</span>
+        <span style={{flex:1,fontSize:14,color:'var(--fg)',fontWeight:500}}>{lang === 'en' ? 'Camera Capture' : '相机拍摄'}</span>
         <button onClick={()=>{ stopStream(); onClose(); }}
           style={{background:'none',color:'var(--fg2)',padding:'4px 8px',lineHeight:1}}>
           <Icon name="x" size={18}/>
         </button>
       </div>
 
-      {/* 取景器 / 错误 / fallback */}
+      {/* Preview / error / fallback */}
       <div style={{flex:1,position:'relative',overflow:'hidden',
         display:'flex',alignItems:'center',justifyContent:'center',background:'#000'}}>
         {useNative ? (
           <div style={{textAlign:'center',padding:24}}>
             <div style={{color:'var(--fg2)',fontSize:13,marginBottom:20,lineHeight:1.6}}>
-              当前环境不支持实时取景（需要 HTTPS）<br/>点击下方按钮直接调起系统相机
+              {lang === 'en' ? 'This environment does not support live preview (HTTPS required).' : '当前环境不支持实时预览（需要 HTTPS）。'}<br/>{lang === 'en' ? 'Click the button below to open the native camera.' : '点击下方按钮打开系统相机。'}
             </div>
             <label className="btn btn-p" style={{padding:'12px 28px',fontSize:15,cursor:'pointer',
               display:'inline-flex',alignItems:'center',gap:8}}>
-              <Icon name="scan" size={16}/> 打开相机
+              <Icon name="scan" size={16}/> {lang === 'en' ? 'Open camera' : '打开相机'}
               <input type="file" accept="image/*" capture="environment"
                 style={{display:'none'}} onChange={handleNativeCapture}/>
             </label>
@@ -94,7 +95,7 @@ function CameraCapture({ onCapture, onClose }) {
           <video ref={videoRef} style={{maxWidth:'100%',maxHeight:'100%',objectFit:'contain'}}
             playsInline muted autoPlay/>
         )}
-        {/* 取景框辅助线 */}
+        {/* Frame guide */}
         {!useNative && !err && ready && (
           <div style={{position:'absolute',inset:0,pointerEvents:'none',
             display:'flex',alignItems:'center',justifyContent:'center'}}>
@@ -104,22 +105,22 @@ function CameraCapture({ onCapture, onClose }) {
         )}
       </div>
 
-      {/* 底部操作栏 */}
+      {/* Bottom action bar */}
       {!useNative && (
         <div style={{padding:'16px 20px',display:'flex',gap:12,justifyContent:'center',
           alignItems:'center',borderTop:'1px solid var(--border)',flexShrink:0,flexWrap:'wrap'}}>
           <button className="btn btn-s" onClick={()=>setFacing(f=>f==='environment'?'user':'environment')}
             style={{display:'inline-flex',alignItems:'center',gap:6}}>
-            <Icon name="refresh" size={13}/> 切换摄像头
+            <Icon name="refresh" size={13}/> {lang === 'en' ? 'Switch camera' : '切换摄像头'}
           </button>
           <button className="btn btn-p" onClick={handleCapture} disabled={!ready}
             style={{padding:'11px 36px',fontSize:15,display:'inline-flex',alignItems:'center',gap:8,
               borderRadius:'50px',minWidth:120}}>
-            <Icon name="scan" size={16}/> 拍照
+            <Icon name="scan" size={16}/> {lang === 'en' ? 'Capture' : '拍摄'}
           </button>
-          {/* 也提供 input capture 备用 */}
+          {/* Also provide an input capture fallback */}
           <label className="btn btn-s" style={{cursor:'pointer',display:'inline-flex',alignItems:'center',gap:6}}>
-            <Icon name="upload" size={13}/> 调用系统相机
+            <Icon name="upload" size={13}/> {lang === 'en' ? 'Use system camera' : '使用系统相机'}
             <input type="file" accept="image/*" capture="environment"
               style={{display:'none'}} onChange={handleNativeCapture}/>
           </label>
@@ -130,9 +131,9 @@ function CameraCapture({ onCapture, onClose }) {
 }
 
 // ══════════════════════════════════════════════════════════════
-//  图片拼接 — OpenCV.js WASM Web Worker
-//  算法：AKAZE → BFMatcher/Lowe → 自动排序 → 中心锚点链式单应矩阵
-//        → estimateGains色温校准 → 距离变换羽化融合
+//  Image stitching — OpenCV.js WASM Web Worker
+//  Pipeline: AKAZE -> BFMatcher/Lowe -> auto ordering -> center-anchored chained homographies
+//           -> estimateGains color calibration -> distance-transform feather blending
 // ══════════════════════════════════════════════════════════════
 const OPENCV_CDN_URLS = [
   'https://docs.opencv.org/4.8.0/opencv.js',
@@ -570,6 +571,75 @@ function createStitchWorker() {
 const UPLOAD_ALLOWED_EXTS = new Set(['.jpg','.jpeg','.png','.webp','.gif','.bmp','.tiff','.tif']);
 const UPLOAD_MAX_MB = 50;
 
+const SCAN_OPS = [
+  {
+    key: 'curve',
+    icon: 'curve',
+    label: 'Curve flatten',
+    desc: 'Reduce page curvature and flatten bends',
+    params: [
+      { name: 'strength', label: 'Strength', type: 'range', min: 0, max: 1, step: 0.05, default: 0.6, hint: 'Higher values flatten more aggressively' },
+    ],
+  },
+  {
+    key: 'perspective',
+    icon: 'scan',
+    label: 'Perspective correction',
+    desc: 'Correct tilt and perspective distortion',
+    params: [
+      { name: 'mode', label: 'Mode', type: 'select', default: 'auto', options: [
+        { v: 'auto', label: 'Auto' },
+        { v: 'strong', label: 'Strong' },
+      ]},
+    ],
+  },
+  {
+    key: 'deskew',
+    icon: 'refresh',
+    label: 'Auto deskew',
+    desc: 'Rotate to the best text angle',
+    params: [
+      { name: 'maxAngle', label: 'Max angle', type: 'range', min: 2, max: 20, step: 1, default: 8, hint: 'Search within this angle range' },
+    ],
+  },
+  {
+    key: 'shadow',
+    icon: 'moon',
+    label: 'Shadow removal',
+    desc: 'Estimate and remove uneven lighting',
+    params: [
+      { name: 'strength', label: 'Strength', type: 'range', min: 0, max: 1, step: 0.05, default: 0.65 },
+    ],
+  },
+  {
+    key: 'clahe',
+    icon: 'spark',
+    label: 'CLAHE enhance',
+    desc: 'Improve local contrast for faded scans',
+    params: [
+      { name: 'clipLimit', label: 'Clip limit', type: 'range', min: 1, max: 8, step: 0.1, default: 2.5 },
+    ],
+  },
+  {
+    key: 'binarize',
+    icon: 'filter',
+    label: 'Adaptive binarization',
+    desc: 'Convert to high-contrast black and white',
+    params: [
+      { name: 'blockSize', label: 'Block size', type: 'range', min: 11, max: 51, step: 2, default: 21 },
+    ],
+  },
+  {
+    key: 'sharpen',
+    icon: 'zap',
+    label: 'Sharpen / denoise',
+    desc: 'Reduce noise and bring out edges',
+    params: [
+      { name: 'amount', label: 'Amount', type: 'range', min: 0, max: 2, step: 0.1, default: 1.0 },
+    ],
+  },
+];
+
 function CloudUploadPanel({ onSendToStitch }) {
   const [uploads,    setUploads]    = useState([]);
   const [loading,    setLoading]    = useState(true);
@@ -676,7 +746,7 @@ function CloudUploadPanel({ onSendToStitch }) {
         flexDirection:'column', background:'var(--bg2)', flexShrink:0, overflow:'hidden'}}>
 
         <div style={{padding:'10px 14px', borderBottom:'1px solid var(--border)',
-          fontSize:11, color:'var(--fg3)', letterSpacing:2}}>上传图片</div>
+          fontSize:11, color:'var(--fg3)', letterSpacing:2}}>Upload Images</div>
 
         {/* 拖拽上传区 */}
         <label ref={dropRef}
@@ -689,10 +759,10 @@ function CloudUploadPanel({ onSendToStitch }) {
             transition:'border-color .2s', background:'var(--bg3)', padding:'14px 10px', textAlign:'center'}}>
           <Icon name="upload" size={24}/>
           <div style={{fontSize:11, fontWeight:500, color:'var(--fg2)'}}>
-            {uploading ? '上传中…' : '点击 / 拖拽图片'}
+            {uploading ? 'Uploading...' : 'Click or drag images here'}
           </div>
           <div style={{fontSize:9, color:'var(--fg3)', lineHeight:1.5}}>
-            最大 50 MB · JPG PNG WEBP GIF BMP
+            Up to 50 MB · JPG PNG WEBP GIF BMP
           </div>
           <input type="file" accept="image/*" style={{display:'none'}} disabled={uploading}
             onChange={e => e.target.files[0] && handleUpload(e.target.files[0])}/>
@@ -724,16 +794,16 @@ function CloudUploadPanel({ onSendToStitch }) {
         )}
 
         <div style={{padding:'4px 12px 4px', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-          <span style={{fontSize:10, color:'var(--fg3)'}}>上传记录 {uploads.length}/200</span>
+          <span style={{fontSize:10, color:'var(--fg3)'}}>Upload records {uploads.length}/200</span>
           <button onClick={loadUploads} style={{background:'none', border:'none', color:'var(--fg3)',
-            fontSize:10, cursor:'pointer', padding:'2px 4px'}}>刷新</button>
+            fontSize:10, cursor:'pointer', padding:'2px 4px'}}>Refresh</button>
         </div>
 
         <div style={{padding:'10px 10px', borderTop:'1px solid var(--border)'}}>
           <div style={{fontSize:9, color:'var(--fg3)', lineHeight:1.7}}>
-            上传到云端后可在任意设备访问<br/>
-            文件加密存储 · 不会被他人看到<br/>
-            点击「→ 送入拼接」可直接拼图
+            Uploaded files can be accessed from any device<br/>
+            Files are stored encrypted and hidden from others<br/>
+            Click "→ Send to stitch" to stitch directly
           </div>
         </div>
       </div>
@@ -743,15 +813,15 @@ function CloudUploadPanel({ onSendToStitch }) {
         {loading ? (
           <div style={{textAlign:'center', paddingTop:40, color:'var(--fg3)'}}>
             <Icon name="refresh" size={28}/>
-            <div style={{marginTop:10, fontSize:12}}>加载中…</div>
+            <div style={{marginTop:10, fontSize:12}}>Loading...</div>
           </div>
         ) : uploads.length === 0 ? (
           <div style={{textAlign:'center', paddingTop:60, color:'var(--fg3)'}}>
             <div style={{marginBottom:12}}><Icon name="image" size={48}/></div>
-            <div style={{fontSize:14, color:'var(--gold2)', marginBottom:8}}>云端图库为空</div>
+            <div style={{fontSize:14, color:'var(--gold2)', marginBottom:8}}>Cloud gallery is empty</div>
             <div style={{fontSize:11, lineHeight:1.8}}>
-              上传图片后在此查看记录<br/>
-              上传的图片可直接用于图片拼接
+              Uploaded images will appear here<br/>
+              They can be sent directly to image stitching
             </div>
           </div>
         ) : (
@@ -777,13 +847,13 @@ function CloudUploadPanel({ onSendToStitch }) {
                       <button onClick={() => onSendToStitch(u.url, u.original_name)}
                         style={{flex:1, fontSize:9, padding:'3px 0', borderRadius:3, cursor:'pointer',
                           background:'var(--gold)', color:'#1a180e', border:'none', fontWeight:600}}>
-                        → 送入拼接
+                        → Send to stitch
                       </button>
                     )}
                     <button onClick={() => handleDelete(u.id)}
                       style={{fontSize:9, padding:'3px 6px', borderRadius:3, cursor:'pointer',
                         background:'rgba(196,90,90,.15)', color:'var(--red)', border:'1px solid var(--red)'}}>
-                      删除
+                      Delete
                     </button>
                   </div>
                 </div>
@@ -1594,9 +1664,9 @@ function StitchPanel({ addRef }) {
             justifyContent:'center', gap:8, cursor:'pointer', transition:'border-color .2s',
             background:'var(--bg3)', color:'var(--fg3)', textAlign:'center', padding:'16px 12px'}}>
           <Icon name="upload" size={28}/>
-          <div style={{fontSize:12, fontWeight:500, color:'var(--fg2)'}}>点击选择 / 拖拽到此</div>
+          <div style={{fontSize:12, fontWeight:500, color:'var(--fg2)'}}>Click to choose / drag here</div>
           <div style={{fontSize:10, color:'var(--fg3)', lineHeight:1.5}}>
-            JPG · PNG · WEBP · BMP<br/>最多 10 张，建议 30-50% 重叠
+            JPG · PNG · WEBP · BMP<br/>Up to 10 images, 30-50% overlap recommended
           </div>
           <input type="file" multiple accept=".jpg,.jpeg,.png,.webp,.bmp,.tiff"
             style={{display:'none'}} onChange={e => addImages(e.target.files)}/>
@@ -1607,7 +1677,7 @@ function StitchPanel({ addRef }) {
           {images.length > 0 && (
             <button onClick={() => setImages([])} style={{background:'none', color:'var(--fg3)',
               fontSize:11, padding:'2px 6px', border:'1px solid var(--border2)', borderRadius:3, cursor:'pointer'}}>
-              清空
+              Clear
             </button>
           )}
         </div>
@@ -1616,7 +1686,7 @@ function StitchPanel({ addRef }) {
         <div style={{flex:1, overflowY:'auto', padding:'0 10px 8px'}}>
           {images.length === 0 ? (
             <div style={{fontSize:10, color:'var(--fg3)', textAlign:'center', paddingTop:8, lineHeight:1.6}}>
-              上传后在此显示<br/>可拖动调整拼接顺序
+              Uploaded items appear here<br/>Drag to adjust stitch order
             </div>
           ) : (
             images.map((im, i) => (
@@ -1639,7 +1709,7 @@ function StitchPanel({ addRef }) {
                 <div style={{flex:1, minWidth:0}}>
                   <div style={{fontSize:10, color:'var(--fg2)', overflow:'hidden',
                     textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{im.name}</div>
-                  <div style={{fontSize:9, color:'var(--fg3)'}}>拖动可排序</div>
+                  <div style={{fontSize:9, color:'var(--fg3)'}}>Drag to reorder</div>
                 </div>
                 <button onClick={() => removeImage(i)}
                   style={{background:'none', color:'var(--fg3)', padding:'2px 4px',
@@ -1681,24 +1751,24 @@ function StitchPanel({ addRef }) {
           <button className="btn btn-p" style={{width:'100%', fontSize:13}}
             onClick={handleStitch}
             disabled={stitching || images.length < 2}>
-            {stitching ? <><Icon name="refresh" size={13}/> 计算中…</> : '▶ 开始拼接'}
+            {stitching ? <><Icon name="refresh" size={13}/> Processing...</> : '▶ Start stitching'}
           </button>
           {(resultUrl || images.length > 0) && !stitching && (
             <button className="btn btn-s" style={{width:'100%', fontSize:12}}
-              onClick={handleReset}>↺ 重新开始</button>
+              onClick={handleReset}>↺ Restart</button>
           )}
           {resultUrl && !stitching && (
             <button className="btn btn-s" style={{width:'100%', fontSize:12,
               display:'inline-flex', alignItems:'center', justifyContent:'center', gap:5}}
               onClick={handleDownload}>
-              <Icon name="download" size={12}/> 下载全景图
+              <Icon name="download" size={12}/> Download panorama
             </button>
           )}
         </div>
 
         <div style={{padding:'8px 12px', borderTop:'1px solid var(--border)',
           fontSize:9, color:'var(--fg3)', lineHeight:1.6}}>
-          首次加载 OpenCV.js ~9MB，之后缓存<br/>全程本地计算，图片不离开设备
+          First load of OpenCV.js is ~9MB, then cached<br/>All processing stays local; images never leave your device
         </div>
       </div>
 
@@ -1713,12 +1783,12 @@ function StitchPanel({ addRef }) {
           <div style={{textAlign:'center', maxWidth:500}}>
             <div style={{marginBottom:16}}><Icon name="image" size={56}/></div>
             <div style={{fontSize:18, color:'var(--gold2)', marginBottom:8, fontFamily:'var(--serif)'}}>
-              图片拼接 · 全景合成
+              Image stitching · Panorama composition
             </div>
             <div style={{fontSize:12, color:'var(--fg3)', marginBottom:24, lineHeight:2}}>
-              将多张不同角度拍摄的照片<br/>
-              自动对齐合成为高分辨率全景图<br/>
-              <span style={{color:'var(--green)'}}>相邻图片建议有 30% ~ 50% 重叠区域</span>
+              Combine multiple photos shot from different angles<br/>
+              and align them into a high-resolution panorama automatically<br/>
+              <span style={{color:'var(--green)'}}>Adjacent images should overlap by 30% to 50%</span>
             </div>
             <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, textAlign:'left'}}>
               {[
@@ -1743,14 +1813,14 @@ function StitchPanel({ addRef }) {
         {stitching && (
           <div style={{width:'100%', maxWidth:520, textAlign:'center'}}>
             <div style={{marginBottom:20}}><Icon name="refresh" size={44}/></div>
-            <div style={{fontSize:14, color:'var(--fg)', marginBottom:8}}>{progress.msg || '处理中…'}</div>
+            <div style={{fontSize:14, color:'var(--fg)', marginBottom:8}}>{progress.msg || 'Processing...'}</div>
             <div style={{height:8, background:'var(--bg3)', borderRadius:4, overflow:'hidden', marginBottom:8}}>
               <div style={{height:'100%', background:'var(--gold)', width: progress.pct + '%',
                 transition:'width .5s ease', boxShadow:'0 0 12px var(--gold)'}}/>
             </div>
-            <div style={{fontSize:11, color:'var(--fg3)', marginBottom:4}}>{progress.pct}% 完成</div>
+            <div style={{fontSize:11, color:'var(--fg3)', marginBottom:4}}>{progress.pct}% complete</div>
             <div style={{fontSize:10, color:'var(--fg3)'}}>
-              首次加载 OpenCV.js (~9MB)，之后浏览器缓存，无需重复下载
+              First load of OpenCV.js is ~9MB, then cached in the browser, no repeat downloads
             </div>
           </div>
         )}
@@ -2183,7 +2253,7 @@ function ScanEnhanceApp({user, onLogout, onUpdateUser}) {
             {/* 左侧操作面板 */}
             <div style={{width:268,borderRight:'1px solid var(--border)',display:'flex',flexDirection:'column',
               background:'var(--bg2)',flexShrink:0,overflow:'hidden'}}>
-              <div style={{padding:'10px 14px',borderBottom:'1px solid var(--border)',fontSize:11,color:'var(--fg3)',letterSpacing:2}}>处理操作</div>
+        <div style={{padding:'10px 14px',borderBottom:'1px solid var(--border)',fontSize:11,color:'var(--fg3)',letterSpacing:2}}>Processing Operations</div>
               <div style={{flex:1,overflowY:'auto',padding:'8px 10px'}}>
                 {SCAN_OPS.map(op => {
                   const active = !!enabledOps[op.key];
@@ -2241,7 +2311,7 @@ function ScanEnhanceApp({user, onLogout, onUpdateUser}) {
                 )}
                 <button className="btn btn-p" style={{width:'100%',fontSize:13}}
                   onClick={handleProcess} disabled={processing}>
-                  {processing ? <><Icon name="refresh" size={13}/> 处理中…</> : '▶ 在浏览器中处理'}
+                  {processing ? <><Icon name="refresh" size={13}/> Processing...</> : '▶ Process in browser'}
                 </button>
               </div>
 
@@ -2263,10 +2333,10 @@ function ScanEnhanceApp({user, onLogout, onUpdateUser}) {
             <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',background:'var(--bg)'}}>
               <div style={{padding:'7px 14px',borderBottom:'1px solid var(--border)',
                 display:'flex',alignItems:'center',gap:12,background:'var(--bg2)',fontSize:12}}>
-                <span style={{color:'var(--fg3)'}}>拖动分割线对比原始 / 处理后效果</span>
+                <span style={{color:'var(--fg3)'}}>Drag the divider to compare original vs processed</span>
                 {curPage.procDataUrl && (
                   <span style={{color:'var(--green)',marginLeft:'auto',display:'inline-flex',alignItems:'center',gap:4}}>
-                    <Icon name="check" size={11}/> 处理完成（浏览器端）
+                    <Icon name="check" size={11}/> Processing complete (browser-side)
                   </span>
                 )}
               </div>
@@ -2275,7 +2345,7 @@ function ScanEnhanceApp({user, onLogout, onUpdateUser}) {
                 <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',background:'#111',overflow:'hidden'}}>
                   {curPage.origDataUrl
                     ? <img src={curPage.origDataUrl} alt="original" style={{maxHeight:'100%',maxWidth:'100%',objectFit:'contain'}}/>
-                    : <div style={{color:'var(--fg3)'}}>无图片</div>}
+                    : <div style={{color:'var(--fg3)'}}>No image</div>}
                 </div>
                 {/* 处理后图（左侧裁剪） */}
                 {curPage.procDataUrl && (
@@ -2287,9 +2357,9 @@ function ScanEnhanceApp({user, onLogout, onUpdateUser}) {
                 {/* 标签 */}
                 {curPage.procDataUrl && (<>
                   <div style={{position:'absolute',top:10,left:12,background:'rgba(94,184,122,.9)',color:'#000',
-                    fontSize:10,padding:'2px 8px',borderRadius:3,pointerEvents:'none',display:splitPos>10?'block':'none'}}>处理后</div>
+                    fontSize:10,padding:'2px 8px',borderRadius:3,pointerEvents:'none',display:splitPos>10?'block':'none'}}>Processed</div>
                   <div style={{position:'absolute',top:10,right:12,background:'rgba(0,0,0,.55)',color:'var(--fg2)',
-                    fontSize:10,padding:'2px 8px',borderRadius:3,pointerEvents:'none',display:splitPos<90?'block':'none'}}>原始</div>
+                    fontSize:10,padding:'2px 8px',borderRadius:3,pointerEvents:'none',display:splitPos<90?'block':'none'}}>Original</div>
                   {/* 分割线 */}
                   <div style={{position:'absolute',top:0,bottom:0,left:`${splitPos}%`,width:2,
                     background:'var(--gold)',cursor:'ew-resize',transform:'translateX(-50%)'}}
@@ -2304,16 +2374,16 @@ function ScanEnhanceApp({user, onLogout, onUpdateUser}) {
                   <div style={{position:'absolute',bottom:20,left:'50%',transform:'translateX(-50%)',
                     background:'rgba(0,0,0,.65)',color:'var(--fg2)',fontSize:12,padding:'8px 18px',
                     borderRadius:20,pointerEvents:'none',whiteSpace:'nowrap'}}>
-                    勾选操作 → 点击「在浏览器中处理」
+                    Select operations, then click "Process in browser"
                   </div>
                 )}
                 {processing && (
                   <div style={{position:'absolute',inset:0,background:'rgba(0,0,0,.55)',
                     display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',gap:14}}>
                     <div><Icon name="settings" size={36}/></div>
-                    <div style={{color:'var(--fg)',fontSize:15,fontWeight:500}}>浏览器端处理中…</div>
+                    <div style={{color:'var(--fg)',fontSize:15,fontWeight:500}}>Processing in browser...</div>
                     <div style={{color:'var(--cyan)',fontSize:12,maxWidth:320,textAlign:'center'}}>{progress}</div>
-                    <div style={{color:'var(--fg3)',fontSize:11}}>服务器 CPU 占用：0%</div>
+                    <div style={{color:'var(--fg3)',fontSize:11}}>Server CPU usage: 0%</div>
                   </div>
                 )}
               </div>

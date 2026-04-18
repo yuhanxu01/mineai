@@ -74,12 +74,39 @@ const B_CATS = {
 
 const FOOD_KEYS = ['wheat','vegetables','fruit','fish','venison','mushrooms','mutton','chicken'];
 const RESOURCE_BUILDING_RADIUS = 8;
+const MARKET_SERVICE_RADIUS = 14;
+const CHAPEL_SERVICE_RADIUS = 16;
+const TOWN_HALL_SERVICE_RADIUS = 18;
 const RESOURCE_RANGE_BUILDINGS = new Set(['woodcutter','forester','mine','quarry','gatherer','hunter','fishing_dock','herbalist']);
 const DETAIL_STOCK_KEYS = [
   'logs','stone','iron','coal','firewood','iron_tools','steel_tools',
   'wheat','vegetables','fruit','fish','venison','mushrooms','mutton',
   'wool','leather','herbs','hide_coat','wool_coat','warm_coat'
 ];
+
+const JOB_LABELS = {
+  laborer:'劳工',
+  builder:'建筑工',
+  student:'学生',
+  child:'儿童',
+  teacher:'教师',
+  doctor:'医生',
+  vendor:'商贩',
+  merchant:'商人',
+  woodcutter:'伐木工',
+  forester:'林务员',
+  mine:'矿工',
+  quarry:'采石工',
+  gatherer:'采集者',
+  hunter:'猎人',
+  fishing_dock:'渔夫',
+  herbalist:'草药师',
+  blacksmith:'铁匠',
+  tailor:'裁缝',
+  farm:'农夫',
+  orchard:'果农',
+  pasture:'牧民',
+};
 
 // Natural flat colors per building type (no semi-transparent black)
 const BUILDING_COLORS = {
@@ -382,6 +409,7 @@ class BanishedEngine {
     this.gatheringStart = null;
     this.gatheringResourceType = 'wood';
     this.workerPolicy = this.state.workerPolicy || 'balanced';
+    if(!this.state.profession_targets)this.state.profession_targets={};
     // Initialize tile resources (trees and food on each tile)
     if (!this.state.map.tile_resources) {
       this.state.map.tile_resources = this._generateTileResources(m.width, m.height, m.tiles);
@@ -737,6 +765,9 @@ class BanishedEngine {
       storage:{}, storage_cap:this._defaultStorageCap(type), storage_used:0, water_storage:type==='well'?200:0,
       carts_unlocked:type==='blacksmith'?false:undefined,
       forester_mode:type==='forester'?'auto':undefined,
+      graves_cap:type==='cemetery'?24:undefined,
+      graves_used:type==='cemetery'?0:undefined,
+      buried_names:type==='cemetery'?[]:undefined,
       yield_current:{}, yield_current_total:0,
       yield_last:{}, yield_last_total:0, yield_last_season:null,
       _clearing_jobs:clearingJobs.length>0?clearingJobs:undefined,
@@ -767,6 +798,11 @@ class BanishedEngine {
   setWorkerPolicy(policy) {
     this.workerPolicy = (policy === 'natural_only') ? 'natural_only' : 'balanced';
     this.state.workerPolicy = this.workerPolicy;
+    this.onUpdate({state:this.state});
+  }
+  setProfessionTarget(job, count){
+    if(!this.state.profession_targets)this.state.profession_targets={};
+    this.state.profession_targets[job]=Math.max(0, Math.floor(Number(count)||0));
     this.onUpdate({state:this.state});
   }
   setSpeed(s) { this.speed = s; if (this.state.time) this.state.time.speed = s; }
@@ -834,11 +870,29 @@ class BanishedEngine {
     const isWinter = s.time.season === 'winter';
     const isAutumn = s.time.season === 'autumn';
     this._ensureHousingAssignments(s);
+    this._updateFamilyStructure(s);
+    this._updateEducation(s);
+    this._updateMarketCoverage(s);
+    this._updateCivicCoverage(s);
+    this._rebalanceWorkforce(s);
     for (const v of s.villagers) {
       if (v.state === 'dead') continue;
+      if((v.birth_cooldown||0)>0)v.birth_cooldown--;
       v.hunger = Math.max(0, (v.hunger||100) - 0.5);
       v.thirst = Math.max(0, (v.thirst||100) - 0.16);
       v.warmth = isWinter ? Math.max(0,(v.warmth||100)-1) : Math.min(100,(v.warmth||100)+0.3);
+      if(v.state!=='sick'){
+        const illnessRisk=
+          (isWinter && (v.warmth||100)<35) ||
+          (v.hunger||100)<20 ||
+          (v.thirst||100)<15;
+        if(illnessRisk && Math.random()<0.0025){
+          v.state='sick';
+          v.path=null;
+          v.action=null;
+          v.action_ticks_left=0;
+        }
+      }
       if (v.hunger < 10) v.health = Math.max(0,(v.health||100)-1);
       if (v.thirst < 10) v.health = Math.max(0,(v.health||100)-2);
       if (v.warmth < 5) { v.health = 0; }
@@ -856,10 +910,7 @@ class BanishedEngine {
     this._refreshBuildingDetailStats(s);
     const idleCount=s.villagers.filter(v=>v.state==='idle').length;
     s.resources.labor=Math.min(200,(s.resources.labor||0)+idleCount*0.03);
-    s.population.total = s.villagers.filter(v=>v.state!=='dead').length;
-    s.population.idle = s.villagers.filter(v=>v.state==='idle').length;
-    const alive=s.villagers.filter(v=>v.state!=='dead');
-    s.population.avg_happiness=alive.length?alive.reduce((a,v)=>a+(v.happiness||0),0)/alive.length:0;
+    this._refreshPopulationStats(s);
     if (s.time.tick % 15 === 0) this.onUpdate({state:s});
   }
 
@@ -895,6 +946,446 @@ class BanishedEngine {
 
   _houseCapacity(type){
     return type==='boarding_house' ? 8 : 2;
+  }
+
+  _lifeStage(v){
+    const age=Number(v?.age||0);
+    if(age<10)return 'child';
+    if(age<18)return 'student';
+    if(age<55)return 'adult';
+    return 'elder';
+  }
+
+  _nearestBuildingOfType(s, x, y, types=[]){
+    let best=null, bd=Infinity;
+    for(const b of (s.buildings||[])){
+      if(!b?.built || !types.includes(b.type))continue;
+      const tx=b.x+Math.floor((b.w||1)/2);
+      const ty=b.y+Math.floor((b.h||1)/2);
+      const d=Math.hypot(x-tx,y-ty);
+      if(d<bd){bd=d;best=b;}
+    }
+    return best;
+  }
+
+  _jobLabel(job){
+    return JOB_LABELS[job]||job||'居民';
+  }
+
+  _buildingJob(type){
+    if(type==='school')return 'teacher';
+    if(type==='hospital')return 'doctor';
+    if(type==='market')return 'vendor';
+    if(type==='trading_post')return 'merchant';
+    return type;
+  }
+
+  _jobTypeToBuildingType(job){
+    const map={teacher:'school',doctor:'hospital',vendor:'market',merchant:'trading_post'};
+    return map[job]||job;
+  }
+
+  _findHospital(v,s=this.state){
+    let best=null, bd=Infinity;
+    for(const b of (s.buildings||[])){
+      if(b.type!=='hospital' || !b.built || (b.workers_assigned||0)<=0)continue;
+      const tx=b.x+Math.floor((b.w||1)/2), ty=b.y+Math.floor((b.h||1)/2);
+      const d=Math.hypot((v.x||0)-tx,(v.y||0)-ty);
+      if(d<bd){bd=d;best={tx,ty,building:b};}
+    }
+    return best;
+  }
+
+  _findNearestServiceBuilding(s, x, y, type, radius, requireWorkers=true){
+    let best=null, bd=Infinity;
+    for(const b of (s.buildings||[])){
+      if(b.type!==type || !b.built)continue;
+      if(requireWorkers && (b.workers_assigned||0)<=0)continue;
+      if(type==='cemetery' && (b.graves_used||0)>=(b.graves_cap||24))continue;
+      const tx=b.x+Math.floor((b.w||1)/2), ty=b.y+Math.floor((b.h||1)/2);
+      const d=Math.hypot(x-tx,y-ty);
+      if(d<=radius && d<bd){bd=d;best=b;}
+    }
+    return best;
+  }
+
+  _currentProfessionCounts(s){
+    const counts={};
+    for(const v of (s.villagers||[])){
+      if(v.state==='dead')continue;
+      const job=v.job||'laborer';
+      counts[job]=(counts[job]||0)+1;
+    }
+    return counts;
+  }
+
+  _defaultProfessionTargets(s){
+    const targets={laborer:1,builder:0};
+    for(const b of (s.buildings||[])){
+      const job=this._buildingJob(b.type);
+      if(!b.built){
+        targets.builder=(targets.builder||0)+Math.min(3, Math.max(1,b.w||1));
+        continue;
+      }
+      if((b.workers_max||0)>0){
+        targets[job]=(targets[job]||0)+(b.workers_max||0);
+      }
+    }
+    return targets;
+  }
+
+  _effectiveProfessionTargets(s){
+    const base=this._defaultProfessionTargets(s);
+    const custom=s.profession_targets||{};
+    return {...base,...custom};
+  }
+
+  _findAssignableBuildingForJob(s, job){
+    const buildingType=this._jobTypeToBuildingType(job);
+    const candidates=(s.buildings||[]).filter(b=>{
+      if(buildingType==='builder'){
+        return !b.built && (b.workers_assigned||0)<3;
+      }
+      return b.built && b.type===buildingType && (b.workers_assigned||0)<(b.workers_max||0);
+    });
+    if(!candidates.length)return null;
+    candidates.sort((a,b)=>(a.workers_assigned||0)-(b.workers_assigned||0));
+    return candidates[0];
+  }
+
+  _releaseVillagerFromWork(v,s){
+    if(v.building_id){
+      const b=(s.buildings||[]).find(x=>x.id===v.building_id);
+      if(b)b.workers_assigned=Math.max(0,(b.workers_assigned||0)-1);
+    }
+    v.building_id=null;
+    v.path=null;
+    v.action=null;
+    v.action_ticks_left=0;
+    v.state='idle';
+    v.job='laborer';
+  }
+
+  _rebalanceWorkforce(s){
+    const targets=this._effectiveProfessionTargets(s);
+    const counts=this._currentProfessionCounts(s);
+    const releasable=(s.villagers||[]).filter(v=>
+      v.state!=='dead' &&
+      ['adult','elder'].includes(this._lifeStage(v)) &&
+      v.job &&
+      !['laborer','student','child'].includes(v.job) &&
+      ['idle','working','moving','building'].includes(v.state) &&
+      !v._delivery
+    );
+
+    for(const v of releasable){
+      const job=v.job;
+      const target=targets[job];
+      if(target===undefined)continue;
+      if((counts[job]||0)>target){
+        counts[job]--;
+        counts.laborer=(counts.laborer||0)+1;
+        this._releaseVillagerFromWork(v,s);
+      }
+    }
+  }
+
+  _updateMarketCoverage(s){
+    const markets=(s.buildings||[]).filter(b=>b.built&&b.type==='market'&&(b.workers_assigned||0)>0);
+    const homes=(s.buildings||[]).filter(b=>b.built&&['house','stone_house','boarding_house'].includes(b.type));
+    for(const h of homes){
+      let best=null, bd=Infinity;
+      for(const m of markets){
+        const hx=h.x+Math.floor((h.w||1)/2), hy=h.y+Math.floor((h.h||1)/2);
+        const mx=m.x+Math.floor((m.w||1)/2), my=m.y+Math.floor((m.h||1)/2);
+        const d=Math.hypot(hx-mx,hy-my);
+        if(d<=MARKET_SERVICE_RADIUS && d<bd){bd=d;best=m;}
+      }
+      h.market_id=best?.id||null;
+      h.market_served=!!best;
+    }
+  }
+
+  _updateCivicCoverage(s){
+    const homes=(s.buildings||[]).filter(b=>b.built&&['house','stone_house','boarding_house'].includes(b.type));
+    for(const h of homes){
+      const hx=h.x+Math.floor((h.w||1)/2), hy=h.y+Math.floor((h.h||1)/2);
+      const chapel=this._findNearestServiceBuilding(s,hx,hy,'chapel',CHAPEL_SERVICE_RADIUS,true);
+      const hall=this._findNearestServiceBuilding(s,hx,hy,'town_hall',TOWN_HALL_SERVICE_RADIUS,true);
+      h.chapel_id=chapel?.id||null;
+      h.chapel_served=!!chapel;
+      h.town_hall_id=hall?.id||null;
+      h.town_hall_served=!!hall;
+    }
+  }
+
+  _processBurials(s){
+    const deceased=(s.villagers||[]).filter(v=>v.state==='dead' && v.burial_pending);
+    if(!deceased.length)return;
+    for(const v of deceased){
+      const cemetery=this._findNearestServiceBuilding(s, v.x||0, v.y||0, 'cemetery', 999, false);
+      if(!cemetery)continue;
+      cemetery.graves_used=(cemetery.graves_used||0)+1;
+      cemetery.buried_names=[...(cemetery.buried_names||[]), v.name].slice(-12);
+      v.burial_pending=false;
+      v.buried=true;
+      v.cemetery_id=cemetery.id;
+      break;
+    }
+  }
+
+  _countStorageUsed(store){
+    return Object.values(store||{}).reduce((sum,n)=>sum+(Number(n)||0),0);
+  }
+
+  _transferStore(source, target, key, amount, targetCap=Infinity){
+    if(amount<=0)return 0;
+    const available=Math.max(0, Number(source?.[key]||0));
+    if(available<=0)return 0;
+    const targetUsed=this._countStorageUsed(target);
+    const room=Math.max(0, targetCap-targetUsed);
+    const moved=Math.max(0, Math.min(available, amount, room));
+    if(moved<=0)return 0;
+    source[key]=available-moved;
+    if(source[key]<=0)delete source[key];
+    target[key]=(target[key]||0)+moved;
+    return moved;
+  }
+
+  _tickMarketLogistics(s){
+    const markets=(s.buildings||[]).filter(b=>b.built&&b.type==='market'&&(b.workers_assigned||0)>0);
+    const homes=(s.buildings||[]).filter(b=>b.built&&['house','stone_house','boarding_house'].includes(b.type));
+    const desiredKeys=[...FOOD_KEYS,'firewood','herbs','iron_tools'];
+
+    for(const m of markets){
+      m.storage=m.storage||{};
+      const staff=Math.max(1,m.workers_assigned||1);
+      const perTick=2+staff*2;
+      for(const key of desiredKeys){
+        const stock=Number(m.storage[key]||0);
+        const target=key==='firewood'?80:36;
+        if(stock>=target)continue;
+        const missing=target-stock;
+        const moved=Math.min(perTick, missing, Number(s.resources[key]||0));
+        if(moved<=0)continue;
+        s.resources[key]-=moved;
+        m.storage[key]=(m.storage[key]||0)+moved;
+      }
+      m.storage_used=Math.min(m.storage_cap||this._defaultStorageCap('market'), this._countStorageUsed(m.storage));
+    }
+
+    for(const h of homes){
+      h.storage=h.storage||{};
+      const market=h.market_id?(s.buildings||[]).find(b=>b.id===h.market_id && b.built):null;
+      if(!market?.storage)continue;
+      const residents=(h.residents||[]).length||1;
+      const homeCap=h.storage_cap||this._defaultStorageCap(h.type);
+      const desiredFood=Math.min(18, residents*4);
+      const desiredFirewood=Math.min(24, residents*5);
+      const homeFood=FOOD_KEYS.reduce((sum,key)=>sum+(Number(h.storage[key]||0)),0);
+      const homeFirewood=Number(h.storage.firewood||0);
+
+      if(homeFood<desiredFood){
+        let need=desiredFood-homeFood;
+        for(const key of FOOD_KEYS){
+          if(need<=0)break;
+          need-=this._transferStore(market.storage,h.storage,key,Math.min(need,3),homeCap);
+        }
+      }
+      if(homeFirewood<desiredFirewood){
+        this._transferStore(market.storage,h.storage,'firewood',Math.min(desiredFirewood-homeFirewood,4),homeCap);
+      }
+      h.storage_used=Math.min(homeCap,this._countStorageUsed(h.storage));
+      market.storage_used=Math.min(market.storage_cap||this._defaultStorageCap('market'), this._countStorageUsed(market.storage));
+    }
+  }
+
+  _consumeFoodFromSupply(v,s){
+    const consumeFrom=(store)=>{
+      if(!store)return false;
+      for(const key of FOOD_KEYS){
+        if((store[key]||0)>0){
+          store[key]--;
+          if(store[key]<=0)delete store[key];
+          return true;
+        }
+      }
+      return false;
+    };
+
+    const home=v.home_id?(s.buildings||[]).find(b=>b.id===v.home_id):null;
+    if(home && consumeFrom(home.storage)){home.storage_used=this._countStorageUsed(home.storage);return true;}
+    const market=home?.market_id?(s.buildings||[]).find(b=>b.id===home.market_id):null;
+    if(market && consumeFrom(market.storage)){market.storage_used=this._countStorageUsed(market.storage);return true;}
+    const foodKey=FOOD_KEYS.find(k=>(s.resources[k]||0)>0);
+    if(foodKey){
+      s.resources[foodKey]=Math.max(0,(s.resources[foodKey]||0)-1);
+      return true;
+    }
+    return false;
+  }
+
+  _consumeFirewoodFromHouse(h,s){
+    if(!h)return false;
+    h.storage=h.storage||{};
+    if((h.storage.firewood||0)>0){
+      h.storage.firewood--;
+      if(h.storage.firewood<=0)delete h.storage.firewood;
+      h.storage_used=this._countStorageUsed(h.storage);
+      return true;
+    }
+    const market=h.market_id?(s.buildings||[]).find(b=>b.id===h.market_id):null;
+    if(market?.storage?.firewood>0){
+      market.storage.firewood--;
+      if(market.storage.firewood<=0)delete market.storage.firewood;
+      market.storage_used=this._countStorageUsed(market.storage);
+      return true;
+    }
+    if((s.resources.firewood||0)>0){
+      s.resources.firewood=Math.max(0,(s.resources.firewood||0)-1);
+      return true;
+    }
+    return false;
+  }
+
+  _updateFamilyStructure(s){
+    const villagers=(s.villagers||[]).filter(v=>v.state!=='dead');
+    const byId=new Map(villagers.map(v=>[v.id,v]));
+    const adults=villagers.filter(v=>['adult','elder'].includes(this._lifeStage(v)));
+
+    for(const v of villagers){
+      if(v.partner_id && (!byId.has(v.partner_id) || byId.get(v.partner_id)?.home_id!==v.home_id)){
+        v.partner_id=null;
+      }
+    }
+
+    const houses=(s.buildings||[]).filter(b=>b.built&&['house','stone_house','boarding_house'].includes(b.type));
+    for(const h of houses){
+      const residents=adults
+        .filter(v=>v.home_id===h.id && !v.partner_id)
+        .sort((a,b)=>(a.age||0)-(b.age||0));
+      const males=residents.filter(v=>v.gender==='m');
+      const females=residents.filter(v=>v.gender==='f');
+      const pairs=Math.min(males.length,females.length);
+      for(let i=0;i<pairs;i++){
+        const a=males[i], b=females[i];
+        if(!a || !b)continue;
+        a.partner_id=b.id;
+        b.partner_id=a.id;
+      }
+    }
+  }
+
+  _updateEducation(s){
+    const villagers=(s.villagers||[]);
+    const schools=(s.buildings||[]).filter(b=>b.built&&b.type==='school');
+    const teacherCount=schools.reduce((sum,b)=>sum+(b.workers_assigned||0),0);
+    const schoolCapacity=teacherCount*6;
+    let enrolled=0;
+
+    for(const v of villagers){
+      if(v.state==='dead')continue;
+      const stage=this._lifeStage(v);
+
+      if(stage==='child'){
+        v.school_id=null;
+        if(v.job==='student')v.job='child';
+        if(v.state==='studying')v.state='idle';
+        continue;
+      }
+
+      if(stage==='student'){
+        if(schoolCapacity>0 && enrolled<schoolCapacity){
+          const school=this._nearestBuildingOfType(s, v.x||0, v.y||0, ['school']);
+          if(school){
+            v.school_id=school.id;
+            v.job='student';
+            enrolled++;
+            continue;
+          }
+        }
+        v.school_id=null;
+        if(v.state==='studying')v.state='idle';
+        if(v.job==='student')v.job='child';
+        continue;
+      }
+
+      if(v.school_id && !v.educated){
+        v.school_ticks=(v.school_ticks||0)+1;
+        if((v.school_ticks||0)>=TICK_PER_YEAR*2){
+          v.educated=true;
+        }
+      }
+      v.school_id=null;
+      if(v.job==='student')v.job=null;
+    }
+  }
+
+  _tryFamilyBirth(s){
+    const villagers=(s.villagers||[]).filter(v=>v.state!=='dead');
+    const houses=(s.buildings||[]).filter(b=>['house','stone_house','boarding_house'].includes(b.type)&&b.built);
+    for(const h of houses){
+      const residents=villagers.filter(v=>v.home_id===h.id);
+      const capacity=this._houseCapacity(h.type);
+      if(residents.length>=capacity)continue;
+
+      const mother=residents.find(v=>v.gender==='f' && (v.age||0)>=18 && (v.age||0)<=45 && v.partner_id);
+      if(!mother)continue;
+      const partner=villagers.find(v=>v.id===mother.partner_id && v.home_id===h.id && (v.age||0)>=18);
+      if(!partner)continue;
+      if((mother.birth_cooldown||0)>0 || (partner.birth_cooldown||0)>0)continue;
+
+      const youngestAge=Math.min(...residents.map(v=>Number(v.age||0)));
+      if(Number.isFinite(youngestAge) && youngestAge<2)continue;
+
+      const chance=mother.educated||partner.educated ? 0.00024 : 0.00034;
+      if(Math.random()>chance)continue;
+
+      const names=['小明','小红','阿强','翠花','大牛','小花','子豪','晓梅','阿虎','玲玲'];
+      s.villagers.push({
+        id:`v_${Date.now()}_${Math.random().toString(36).slice(2,8)}`,
+        name:names[Math.floor(Math.random()*names.length)],
+        age:0,
+        gender:Math.random()<0.5?'m':'f',
+        x:h.x+0.9+(Math.random()*0.8),
+        y:h.y+0.9+(Math.random()*0.8),
+        state:'idle',
+        job:'child',
+        building_id:null,
+        home_id:h.id,
+        school_id:null,
+        health:100,
+        happiness:78,
+        mood_tag:'平稳',
+        educated:false,
+        school_ticks:0,
+        partner_id:null,
+        hunger:100,
+        thirst:100,
+        warmth:100,
+        action:null,
+        action_ticks_left:0,
+        carrying:{},
+        has_cart:false,
+      });
+      mother.birth_cooldown=TICK_PER_YEAR*3;
+      partner.birth_cooldown=TICK_PER_YEAR*3;
+      break;
+    }
+  }
+
+  _refreshPopulationStats(s){
+    const alive=(s.villagers||[]).filter(v=>v.state!=='dead');
+    const dead=(s.villagers||[]).filter(v=>v.state==='dead');
+    s.population.total=alive.length;
+    s.population.idle=alive.filter(v=>v.state==='idle').length;
+    s.population.students=alive.filter(v=>this._lifeStage(v)==='student').length;
+    s.population.working=alive.filter(v=>['working','building','studying'].includes(v.state)).length;
+    s.population.children=alive.filter(v=>this._lifeStage(v)==='child').length;
+    s.population.adults=alive.filter(v=>['adult','elder'].includes(this._lifeStage(v))).length;
+    s.population.buried_dead=dead.filter(v=>v.buried).length;
+    s.population.unburied_dead=dead.filter(v=>!v.buried).length;
+    s.population.avg_happiness=alive.length?alive.reduce((a,v)=>a+(v.happiness||0),0)/alive.length:0;
   }
 
   _ensureHousingAssignments(s){
@@ -948,37 +1439,29 @@ class BanishedEngine {
       let used=0;
 
       if(storageTypes.includes(b.type) && b.built){
-        const share=cap/totalStorageCap;
-        const stock={};
-        for(const k of DETAIL_STOCK_KEYS){
-          const n=Math.floor((s.resources[k]||0)*share);
-          if(n<=0)continue;
-          stock[k]=n;
-          used+=n;
+        if(b.type!=='market'){
+          const share=cap/totalStorageCap;
+          const stock={};
+          for(const k of DETAIL_STOCK_KEYS){
+            const n=Math.floor((s.resources[k]||0)*share);
+            if(n<=0)continue;
+            stock[k]=n;
+            used+=n;
+          }
+          b.storage=stock;
+        }else{
+          used=this._countStorageUsed(b.storage);
         }
-        b.storage=stock;
         b.storage_used=Math.min(cap,used);
         continue;
       }
 
       if(['house','stone_house','boarding_house'].includes(b.type) && b.built){
         const residentIds=b.residents||[];
-        const ratio=residentIds.length/aliveCount;
-        const stock={};
-        for(const k of [...FOOD_KEYS,'firewood']){
-          const n=Math.floor((s.resources[k]||0)*ratio);
-          if(n<=0)continue;
-          if(used+n>cap){
-            const left=Math.max(0,cap-used);
-            if(left>0){stock[k]=left;used+=left;}
-            break;
-          }
-          stock[k]=n;
-          used+=n;
-        }
-        b.storage=stock;
+        used=this._countStorageUsed(b.storage);
         b.storage_used=Math.min(cap,used);
         b.resident_names=residentIds.map(id=>byId.get(id)?.name).filter(Boolean);
+        b.market_label=b.market_served?'集市覆盖':'未覆盖';
         continue;
       }
 
@@ -1030,11 +1513,19 @@ class BanishedEngine {
       (hasHome?8:-12) +
       Math.min(8, Math.max(0,(familyCount-1)*3));
 
+    if(hasHome){
+      const home=(s.buildings||[]).find(b=>b.id===v.home_id);
+      if(home?.market_served)moodTarget+=4;
+      if(home?.chapel_served)moodTarget+=5;
+      if(home?.town_hall_served)moodTarget+=2;
+    }
+
     if(v.state==='hungry')moodTarget-=10;
     if(v.state==='thirsty')moodTarget-=12;
     if(v.state==='sick')moodTarget-=14;
     if(isWinter && warmth<35)moodTarget-=8;
     if((s.population?.homeless||0)>0 && !hasHome)moodTarget-=6;
+    if((s.population?.unburied_dead||0)>0)moodTarget-=Math.min(12,(s.population?.unburied_dead||0)*3);
     moodTarget=clamp(moodTarget,0,100);
 
     const prev=Number(v.happiness??70);
@@ -1106,6 +1597,20 @@ class BanishedEngine {
 
   _findFood(v) {
     let best = null, bd = Infinity;
+    const home=v.home_id?this.state.buildings.find(b=>b.id===v.home_id):null;
+    if(home){
+      const homeFood=FOOD_KEYS.reduce((sum,key)=>sum+(Number(home.storage?.[key]||0)),0);
+      if(homeFood>0){
+        return {tx:home.x+Math.floor(home.w/2),ty:home.y+Math.floor(home.h/2)};
+      }
+    }
+    if(home?.market_served && home.market_id){
+      const market=this.state.buildings.find(b=>b.id===home.market_id && b.built);
+      const marketFood=FOOD_KEYS.reduce((sum,key)=>sum+(Number(market?.storage?.[key]||0)),0);
+      if(market && marketFood>0){
+        return {tx:market.x+Math.floor(market.w/2),ty:market.y+Math.floor(market.h/2)};
+      }
+    }
     for (const b of this.state.buildings) {
       if (!b.built) continue;
       if (b.id === v.home_id || b.id === v.building_id || ['barn','market'].includes(b.type)) {
@@ -1253,6 +1758,39 @@ class BanishedEngine {
   }
 
   _stepVillager(v, s, isWinter, isAutumn) {
+    const stage=this._lifeStage(v);
+    const survivalBlocked=['thirsty','hungry','sick'].includes(v.state);
+    if(stage==='child' && !survivalBlocked){
+      v.job='child';
+      v.state='idle';
+      if(!v.path && Math.random()<0.04 && v.home_id){
+        const home=s.buildings.find(b=>b.id===v.home_id);
+        if(home){
+          const tx=home.x+Math.floor(Math.random()*Math.max(1,home.w));
+          const ty=home.y+Math.floor(Math.random()*Math.max(1,home.h));
+          const p=bfsPath(s.map.tiles,s.map.width,s.map.height,Math.floor(v.x),Math.floor(v.y),tx,ty);
+          if(p)v.path=p;
+        }
+      }
+      return;
+    }
+    if(stage==='student' && v.school_id && !survivalBlocked){
+      v.job='student';
+      const school=s.buildings.find(b=>b.id===v.school_id && b.built);
+      if(school){
+        const tx=school.x+Math.floor(school.w/2), ty=school.y+Math.floor(school.h/2);
+        if(!v.path && (Math.floor(v.x)!==tx || Math.floor(v.y)!==ty)){
+          const p=bfsPath(s.map.tiles,s.map.width,s.map.height,Math.floor(v.x),Math.floor(v.y),tx,ty);
+          if(p){v.path=p;v.state='studying';return;}
+        }
+        if(!v.path && !v.action && v.state!=='thirsty' && v.state!=='hungry' && v.state!=='sick'){
+          v.action='studying';
+          v.action_ticks_left=12;
+          v.state='studying';
+          return;
+        }
+      }
+    }
     if(v.state==='upset'){
       if((v.hunger||0)<30){v.state='hungry'; return;}
       if((v.thirst||0)<30){v.state='thirsty'; return;}
@@ -1302,7 +1840,18 @@ class BanishedEngine {
       }else{v.hunger=60;v.state='idle';}
       return;
     }
-    if (v.state==='sick'){v.health=Math.min(100,(v.health||0)+0.5);if(v.health>70)v.state='idle';return;}
+    if (v.state==='sick'){
+      const hospital=this._findHospital(v,s);
+      if(hospital){
+        if(!v.path){
+          const p=bfsPath(s.map.tiles,s.map.width,s.map.height,Math.floor(v.x),Math.floor(v.y),hospital.tx,hospital.ty);
+          if(p){v.path=p;v._hospitalTarget=hospital;return;}
+        }
+      }
+      v.health=Math.min(100,(v.health||0)+0.2);
+      if(v.health>75)v.state='idle';
+      return;
+    }
     if ((v.health||100)<30){v.state='sick';return;}
     if (!['working','building','studying'].includes(v.state)) {
       if(this._assignZoneGather(v,s))return;
@@ -1338,6 +1887,16 @@ class BanishedEngine {
       v.state='working';
       return;
     }
+    if(v._hospitalTarget){
+      const hospital=v._hospitalTarget.building;
+      v._hospitalTarget=null;
+      if(hospital && hospital.built){
+        v.action='treatment';
+        v.action_ticks_left=8;
+        v.state='sick';
+        return;
+      }
+    }
     if (v._wt) {
       const wt=v._wt; v._wt=null;
       if (wt.building) {
@@ -1361,8 +1920,7 @@ class BanishedEngine {
     }
     if (v._ft) {
       v._ft=null;
-      const foodKey = FOOD_KEYS.find(k=>(s.resources[k]||0)>0);
-      if (foodKey) s.resources[foodKey]=Math.max(0,(s.resources[foodKey]||0)-1);
+      this._consumeFoodFromSupply(v,s);
       v.action='eating';v.action_ticks_left=1;
       return;
     }
@@ -1387,6 +1945,28 @@ class BanishedEngine {
   _completeAction(v,s){
     if (v.action==='drinking'){v.thirst=100;v.state=v.hunger<30?'hungry':'idle';}
     else if(v.action==='eating'){v.hunger=Math.min(100,(v.hunger||0)+70);v.state='idle';}
+    else if(v.action==='treatment'){
+      const hospital=this._findHospital(v,s)?.building;
+      const doctors=Math.max(1,hospital?.workers_assigned||1);
+      v.health=Math.min(100,(v.health||0)+4+doctors*2);
+      if(v.health>85){
+        v.state='idle';
+      }else{
+        v.action='treatment';
+        v.action_ticks_left=8;
+        v.state='sick';
+        return;
+      }
+    }
+    else if(v.action==='studying'){
+      v.school_ticks=(v.school_ticks||0)+12;
+      v.state='studying';
+      if((v.hunger||0)>=30 && (v.thirst||0)>=30){
+        v.action='studying';
+        v.action_ticks_left=12;
+        return;
+      }
+    }
     else if(v.action==='site_clearing'){
       // Chop one tree / harvest one food from building footprint before constructing
       const b=s.buildings.find(b=>b.id===v.building_id);
@@ -1504,7 +2084,7 @@ class BanishedEngine {
         }
       }else{v.action=null;}
     }
-    if(v.action!=='working')v.action=null;
+    if(!['working','studying'].includes(v.action))v.action=null;
   }
 
   _nearestResourceNode(s, cx, cy, types, radius=12){
@@ -1671,11 +2251,35 @@ class BanishedEngine {
   }
 
   _assignWork(v,s){
+    const stage=this._lifeStage(v);
+    if(!['adult','elder'].includes(stage)){
+      v.job=stage==='student'?'student':'child';
+      v.state='idle';
+      return;
+    }
+    const targets=this._effectiveProfessionTargets(s);
+    const counts=this._currentProfessionCounts(s);
+    const jobPriority=['doctor','teacher','vendor','merchant','builder','woodcutter','forester','gatherer','hunter','fishing_dock','herbalist','blacksmith','tailor','farm','orchard','pasture','mine','quarry'];
+    for(const job of jobPriority){
+      if((counts[job]||0)>=(targets[job]||0))continue;
+      const building=this._findAssignableBuildingForJob(s,job);
+      if(!building)continue;
+      building.workers_assigned=(building.workers_assigned||0)+1;
+      v.building_id=building.id;
+      v.state=job==='builder'?'building':'working';
+      v.job=job;
+      const p=bfsPath(s.map.tiles,s.map.width,s.map.height,Math.floor(v.x),Math.floor(v.y),building.x+Math.floor(building.w/2),building.y+Math.floor(building.h/2));
+      if(p){v.path=p;return;}
+      building.workers_assigned=Math.max(0,(building.workers_assigned||0)-1);
+      v.building_id=null;
+      v.state='idle';
+      v.job='laborer';
+    }
     const naturalOnly = (this.workerPolicy === 'natural_only');
     const naturalTypes = ['woodcutter','forester','mine','quarry','gatherer','hunter','fishing_dock','herbalist'];
 
     for(const b of s.buildings){
-      if(!b.built&&b.workers_assigned<3){b.workers_assigned++;v.building_id=b.id;v.state='building';
+      if(!b.built&&b.workers_assigned<3){b.workers_assigned++;v.building_id=b.id;v.state='building';v.job='builder';
         const p=bfsPath(s.map.tiles,s.map.width,s.map.height,Math.floor(v.x),Math.floor(v.y),b.x+Math.floor(b.w/2),b.y+Math.floor(b.h/2));
         if(p){v.path=p;return;}
         b.workers_assigned=Math.max(0,b.workers_assigned-1);
@@ -1685,7 +2289,7 @@ class BanishedEngine {
     }
     for(const b of s.buildings){
       if(naturalOnly && !naturalTypes.includes(b.type)) continue;
-      if(b.built&&b.workers_max>0&&b.workers_assigned<b.workers_max){b.workers_assigned++;v.building_id=b.id;v.state='working';
+      if(b.built&&b.workers_max>0&&b.workers_assigned<b.workers_max){b.workers_assigned++;v.building_id=b.id;v.state='working';v.job=this._buildingJob(b.type);
         const p=bfsPath(s.map.tiles,s.map.width,s.map.height,Math.floor(v.x),Math.floor(v.y),b.x+Math.floor(b.w/2),b.y+Math.floor(b.h/2));
         if(p){v.path=p;return;}
         b.workers_assigned=Math.max(0,b.workers_assigned-1);
@@ -1702,11 +2306,13 @@ class BanishedEngine {
           v.path=p;
           v._gather_water=w;
           v.state='working';
+          v.job='laborer';
           return;
         }
       }
     }
 
+    v.job='laborer';
     v.state='idle';
   }
 
@@ -1800,9 +2406,11 @@ class BanishedEngine {
 
     for(const b of s.buildings){
       if(b.type==='well'&&b.built) b.water_storage=Math.min(200,(b.water_storage||0)+2);
-      if(isWinter&&['house','stone_house'].includes(b.type)&&b.built)
-        s.resources.firewood=Math.max(0,(s.resources.firewood||0)-0.005);
+      if(isWinter&&['house','stone_house','boarding_house'].includes(b.type)&&b.built && Math.random()<0.03)
+        this._consumeFirewoodFromHouse(b,s);
     }
+    this._tickMarketLogistics(s);
+    this._processBurials(s);
   }
 
   _tickWildlife(s){
@@ -1843,25 +2451,24 @@ class BanishedEngine {
     const alive=s.villagers.filter(v=>v.state!=='dead');
     for(const v of alive){
       v._ageTick=(v._ageTick||0)+1;
-      if(v._ageTick>=TICK_PER_YEAR){v.age++;v._ageTick=0;if(v.age>70&&Math.random()<0.04)v.health=(v.health||100)-25;}
+      if(v._ageTick>=TICK_PER_YEAR){
+        v.age++;
+        v._ageTick=0;
+        if(v.age>70&&Math.random()<0.04)v.health=(v.health||100)-25;
+        if(v.age>=18 && !v.educated && (v.school_ticks||0)>=TICK_PER_YEAR*2){
+          v.educated=true;
+        }
+      }
     }
-    const houses=s.buildings.filter(b=>['house','stone_house','boarding_house'].includes(b.type)&&b.built);
-    const cap=houses.reduce((a,b)=>a+(b.type==='boarding_house'?8:2),0);
-    if(alive.length<cap&&alive.length>=2&&Math.random()<0.0003){
-      const names=['小明','小红','阿强','翠花','大牛','小花','子豪','晓梅','阿虎','玲玲'];
-      const h=houses[0];
-      s.villagers.push({
-        id:`v_${Date.now()}_${Math.random().toString(36).slice(2,8)}`,
-        name:names[Math.floor(Math.random()*names.length)],age:0,gender:Math.random()<0.5?'m':'f',
-        x:h?h.x+1:10,y:h?h.y+1:10,state:'idle',building_id:null,home_id:h?h.id:null,
-        health:100,happiness:75,mood_tag:'平稳',educated:false,hunger:100,thirst:100,warmth:100,action:null,action_ticks_left:0,
-        carrying:{},has_cart:false,
-      });
-    }
+    this._tryFamilyBirth(s);
   }
 
   _onDeath(v){
     if(v.building_id){const b=this.state.buildings.find(b=>b.id===v.building_id);if(b)b.workers_assigned=Math.max(0,b.workers_assigned-1);}
+    v.job=null;
+    v.buried=false;
+    v.burial_pending=true;
+    v.cemetery_id=null;
     v.path=null;
   }
 

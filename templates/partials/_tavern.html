@@ -1,0 +1,565 @@
+{% verbatim %}
+/* ═══════════════════════════════════════════════════════
+   SillyTavernApp — SillyTavern 深度集成
+   路由: #/app/silly_tavern
+   ═══════════════════════════════════════════════════════ */
+
+function SillyTavernApp({ user, onLogout, onUpdateUser }) {
+  const lang = getLang();
+
+  // ── 状态 ────────────────────────────────────────────
+  const [loading, setLoading] = useState(true);
+  const [status, setStatus] = useState(null);       // { running, url, provisioned, account, ... }
+  const [provisioning, setProvisioning] = useState(false);
+  const [error, setError] = useState('');
+  const [copied, setCopied] = useState('');          // 'handle' | 'password' | ''
+  const [embedMode, setEmbedMode] = useState(false); // true = iframe 全屏
+  const [showAdmin, setShowAdmin] = useState(false);
+  const [adminCfg, setAdminCfg] = useState(null);
+  const [adminAccounts, setAdminAccounts] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [adminForm, setAdminForm] = useState({});
+  const [iframeKey, setIframeKey] = useState(0);    // 重载 iframe
+
+  // ── 加载状态 ────────────────────────────────────────
+  useEffect(() => { loadStatus(); }, []);
+
+  async function loadStatus() {
+    setLoading(true);
+    setError('');
+    try {
+      const d = await F('/api/tavern/status/');
+      setStatus(d);
+    } catch (e) {
+      setError('无法获取服务状态');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // ── 预配账号 ─────────────────────────────────────────
+  async function handleProvision() {
+    setProvisioning(true);
+    setError('');
+    try {
+      const d = await P('/api/tavern/provision/', {});
+      if (d.ok) {
+        await loadStatus();
+      } else {
+        setError(d.error || '创建账号失败');
+      }
+    } catch (e) {
+      setError('创建账号失败，请重试');
+    } finally {
+      setProvisioning(false);
+    }
+  }
+
+  // ── 复制到剪贴板 ─────────────────────────────────────
+  async function copyText(text, key) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(key);
+      setTimeout(() => setCopied(''), 2000);
+    } catch {
+      // fallback
+      const el = document.createElement('textarea');
+      el.value = text;
+      document.body.appendChild(el);
+      el.select();
+      document.execCommand('copy');
+      document.body.removeChild(el);
+      setCopied(key);
+      setTimeout(() => setCopied(''), 2000);
+    }
+  }
+
+  // ── 打开 ST 新标签页 ──────────────────────────────────
+  function openInNewTab() {
+    if (status?.url) window.open(status.url, '_blank', 'noopener');
+  }
+
+  // ── 管理员功能 ────────────────────────────────────────
+  async function loadAdminCfg() {
+    try {
+      const d = await F('/api/tavern/admin/config/');
+      setAdminCfg(d);
+      setAdminForm({
+        base_url: d.base_url,
+        data_dir: d.data_dir,
+        admin_handle: d.admin_handle,
+        allow_frame_embed: d.allow_frame_embed,
+        setup_note: d.setup_note,
+      });
+    } catch {}
+  }
+
+  async function loadAdminAccounts() {
+    try {
+      const d = await F('/api/tavern/admin/accounts/');
+      setAdminAccounts(d.accounts);
+    } catch {}
+  }
+
+  useEffect(() => {
+    if (showAdmin && user?.is_staff) {
+      loadAdminCfg();
+      loadAdminAccounts();
+    }
+  }, [showAdmin]);
+
+  async function saveAdminCfg() {
+    setSaving(true);
+    try {
+      await P('/api/tavern/admin/config/', adminForm);
+      await loadStatus();
+      await loadAdminCfg();
+    } catch {}
+    setSaving(false);
+  }
+
+  // ── 嵌入模式 ──────────────────────────────────────────
+  if (embedMode && status?.url) {
+    return (
+      <div style={{position:'fixed',inset:0,background:'#000',zIndex:1000,display:'flex',flexDirection:'column'}}>
+        <div style={{
+          display:'flex',alignItems:'center',gap:12,padding:'6px 14px',
+          background:'var(--bg2)',borderBottom:'1px solid var(--border)',flexShrink:0,
+        }}>
+          <button className="btn btn-s btn-sm" onClick={() => setEmbedMode(false)} style={{padding:'4px 10px',fontSize:12}}>
+            <Icon name="arrow-left" size={13} /> 返回 MineAI
+          </button>
+          <span style={{fontSize:12,color:'var(--fg2)',flex:1,textAlign:'center'}}>SillyTavern</span>
+          <button className="btn btn-s btn-sm" onClick={() => setIframeKey(k => k+1)} style={{padding:'4px 8px',fontSize:11}}>
+            刷新
+          </button>
+          <button className="btn btn-s btn-sm" onClick={openInNewTab} style={{padding:'4px 8px',fontSize:11}}>
+            <Icon name="external-link" size={12} />
+          </button>
+        </div>
+        <iframe
+          key={iframeKey}
+          src={status.url}
+          style={{flex:1,border:'none',width:'100%'}}
+          title="SillyTavern"
+          allow="microphone; camera"
+          sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals allow-downloads"
+        />
+      </div>
+    );
+  }
+
+  // ── 主界面 ────────────────────────────────────────────
+  return (
+    <div style={{display:'flex',height:'100vh',flexDirection:'column',overflow:'hidden'}}>
+      {/* 顶栏 */}
+      <div style={{
+        display:'flex',alignItems:'center',gap:12,padding:'12px 20px',
+        background:'var(--bg2)',borderBottom:'1px solid var(--border)',flexShrink:0,
+      }}>
+        <div style={{
+          width:32,height:32,borderRadius:8,
+          background:'linear-gradient(135deg,#e87060,#c94090)',
+          display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,
+        }}>
+          <span style={{fontSize:18}}>🍺</span>
+        </div>
+        <div style={{flex:1}}>
+          <div style={{fontSize:15,fontWeight:600,color:'var(--fg)'}}>SillyTavern</div>
+          <div style={{fontSize:11,color:'var(--fg3)'}}>AI 角色扮演 · 多用户 · 全功能聊天界面</div>
+        </div>
+        {status && (
+          <div style={{
+            display:'flex',alignItems:'center',gap:6,fontSize:11,
+            color: status.running ? '#4ec88a' : '#e85a5a',
+          }}>
+            <div style={{width:7,height:7,borderRadius:'50%',background:'currentColor'}} />
+            {status.running ? '运行中' : '离线'}
+          </div>
+        )}
+        {user?.is_staff && (
+          <button
+            className="btn btn-s btn-sm"
+            onClick={() => setShowAdmin(v => !v)}
+            style={{padding:'4px 10px',fontSize:11}}
+          >
+            <Icon name="settings" size={12} /> 管理
+          </button>
+        )}
+      </div>
+
+      <div style={{flex:1,overflow:'auto',padding:'24px 20px',maxWidth:900,margin:'0 auto',width:'100%',boxSizing:'border-box'}}>
+
+        {/* 加载中 */}
+        {loading && (
+          <div style={{textAlign:'center',padding:60,color:'var(--fg3)'}}>
+            <div style={{fontSize:13}}>检查服务状态…</div>
+          </div>
+        )}
+
+        {/* 错误 */}
+        {error && (
+          <div style={{
+            padding:'10px 14px',marginBottom:16,borderRadius:8,
+            background:'rgba(232,90,90,0.12)',border:'1px solid rgba(232,90,90,0.3)',
+            color:'#e85a5a',fontSize:13,
+          }}>
+            {error}
+          </div>
+        )}
+
+        {!loading && status && (
+          <>
+            {/* 管理员配置面板 */}
+            {showAdmin && user?.is_staff && (
+              <div style={{
+                marginBottom:24,padding:20,borderRadius:12,
+                background:'var(--bg2)',border:'1px solid var(--border)',
+              }}>
+                <div style={{fontSize:14,fontWeight:600,marginBottom:16,color:'var(--gold)'}}>
+                  管理员配置
+                </div>
+
+                {adminCfg && (
+                  <>
+                    <div style={{display:'grid',gap:12,marginBottom:16}}>
+                      <label style={{fontSize:12}}>
+                        <div style={{color:'var(--fg2)',marginBottom:4}}>SillyTavern 服务地址</div>
+                        <input
+                          className="inp"
+                          value={adminForm.base_url || ''}
+                          onChange={e => setAdminForm(f => ({...f, base_url: e.target.value}))}
+                          placeholder="http://localhost:8001"
+                          style={{width:'100%',boxSizing:'border-box'}}
+                        />
+                        <div style={{fontSize:10,color:'var(--fg3)',marginTop:3}}>
+                          ST 实际运行的 URL（可以是内网地址或公网域名）
+                        </div>
+                      </label>
+
+                      <label style={{fontSize:12}}>
+                        <div style={{color:'var(--fg2)',marginBottom:4}}>SillyTavern data 目录路径</div>
+                        <input
+                          className="inp"
+                          value={adminForm.data_dir || ''}
+                          onChange={e => setAdminForm(f => ({...f, data_dir: e.target.value}))}
+                          placeholder="/opt/SillyTavern/data"
+                          style={{width:'100%',boxSizing:'border-box'}}
+                        />
+                        <div style={{fontSize:10,color:'var(--fg3)',marginTop:3}}>
+                          服务器上 ST 数据目录的绝对路径，用于自动创建用户账号
+                        </div>
+                      </label>
+
+                      <label style={{fontSize:12}}>
+                        <div style={{color:'var(--fg2)',marginBottom:4}}>用户说明（Markdown）</div>
+                        <textarea
+                          className="inp"
+                          value={adminForm.setup_note || ''}
+                          onChange={e => setAdminForm(f => ({...f, setup_note: e.target.value}))}
+                          placeholder="写给用户的提示，如首次登录说明、使用建议等…"
+                          rows={3}
+                          style={{width:'100%',boxSizing:'border-box',resize:'vertical',fontFamily:'inherit'}}
+                        />
+                      </label>
+
+                      <label style={{fontSize:12,display:'flex',alignItems:'center',gap:8}}>
+                        <input
+                          type="checkbox"
+                          checked={!!adminForm.allow_frame_embed}
+                          onChange={e => setAdminForm(f => ({...f, allow_frame_embed: e.target.checked}))}
+                        />
+                        <span style={{color:'var(--fg2)'}}>允许 iframe 内嵌（需 ST 配置允许跨域嵌入）</span>
+                      </label>
+                    </div>
+
+                    <div style={{display:'flex',gap:8,marginBottom:20}}>
+                      <button
+                        className="btn btn-p btn-sm"
+                        onClick={saveAdminCfg}
+                        disabled={saving}
+                      >
+                        {saving ? '保存中…' : '保存配置'}
+                      </button>
+                      <button className="btn btn-s btn-sm" onClick={loadStatus}>
+                        刷新状态
+                      </button>
+                    </div>
+
+                    {/* 已配置账号列表 */}
+                    {adminAccounts && (
+                      <>
+                        <div style={{fontSize:12,color:'var(--fg2)',marginBottom:8}}>
+                          已预配账号（{adminAccounts.length} 个）
+                        </div>
+                        <div style={{
+                          maxHeight:200,overflow:'auto',borderRadius:8,
+                          border:'1px solid var(--border2)',background:'var(--bg3)',
+                        }}>
+                          {adminAccounts.length === 0 ? (
+                            <div style={{padding:16,textAlign:'center',color:'var(--fg3)',fontSize:12}}>暂无</div>
+                          ) : (
+                            <table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
+                              <thead>
+                                <tr style={{borderBottom:'1px solid var(--border2)'}}>
+                                  {['MineAI 用户','ST Handle','创建时间'].map(h => (
+                                    <th key={h} style={{padding:'6px 10px',textAlign:'left',color:'var(--fg3)',fontWeight:400}}>
+                                      {h}
+                                    </th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {adminAccounts.map(a => (
+                                  <tr key={a.id} style={{borderBottom:'1px solid var(--border2)'}}>
+                                    <td style={{padding:'6px 10px',color:'var(--fg2)'}}>{a.username}</td>
+                                    <td style={{padding:'6px 10px',color:'var(--gold)',fontFamily:'monospace'}}>{a.handle}</td>
+                                    <td style={{padding:'6px 10px',color:'var(--fg3)'}}>
+                                      {new Date(a.provisioned_at).toLocaleDateString()}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          )}
+                        </div>
+                      </>
+                    )}
+
+                    {/* 部署指引 */}
+                    <details style={{marginTop:20}}>
+                      <summary style={{fontSize:12,color:'var(--fg2)',cursor:'pointer',userSelect:'none'}}>
+                        查看 SillyTavern 多用户部署指引
+                      </summary>
+                      <div style={{
+                        marginTop:12,padding:14,borderRadius:8,
+                        background:'var(--bg4)',fontSize:11,color:'var(--fg2)',lineHeight:1.7,
+                        fontFamily:'monospace',whiteSpace:'pre-wrap',
+                      }}>
+{`# 1. 克隆 SillyTavern
+git clone https://github.com/SillyTavern/SillyTavern.git /opt/SillyTavern
+cd /opt/SillyTavern && npm install
+
+# 2. 编辑 config.yaml 启用多用户模式
+#   listen: true
+#   enableUserAccounts: true
+#   enableDiscreetLogin: true   # 隐藏用户列表（推荐）
+#   port: 8001                   # 避免与 Django 冲突
+
+# 3. 如需 iframe 嵌入，修改 config.yaml：
+#   whitelistMode: false
+# 并在 SillyTavern 源码 server.js 中关闭 X-Frame-Options：
+#   app.use(helmet({ frameguard: false }));
+
+# 4. 使用 PM2 持久运行
+npm install -g pm2
+pm2 start server.js --name sillytavern
+pm2 save && pm2 startup
+
+# 5. Nginx 反向代理（独立子域名，推荐）
+#   server {
+#     server_name tavern.yourdomain.com;
+#     location / {
+#       proxy_pass http://127.0.0.1:8001;
+#       proxy_http_version 1.1;
+#       proxy_set_header Upgrade $http_upgrade;
+#       proxy_set_header Connection "upgrade";
+#       proxy_set_header Host $host;
+#     }
+#   }
+
+# 6. 在 MineAI 管理后台填写：
+#   - 服务地址：https://tavern.yourdomain.com
+#   - data 目录：/opt/SillyTavern/data`}
+                      </div>
+                    </details>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* 服务离线提示 */}
+            {!status.running && (
+              <div style={{
+                padding:'16px 20px',marginBottom:20,borderRadius:12,
+                background:'rgba(232,90,90,0.08)',border:'1px solid rgba(232,90,90,0.2)',
+              }}>
+                <div style={{fontSize:14,fontWeight:600,color:'#e85a5a',marginBottom:6}}>
+                  SillyTavern 服务当前离线
+                </div>
+                <div style={{fontSize:12,color:'var(--fg2)'}}>
+                  {status.url ? `无法连接到 ${status.url}` : '尚未配置服务地址'}
+                  {user?.is_staff ? '，请在管理面板检查配置或启动服务。' : '，请联系管理员。'}
+                </div>
+              </div>
+            )}
+
+            {/* 用户说明 */}
+            {status.setup_note && (
+              <div style={{
+                padding:'14px 18px',marginBottom:20,borderRadius:12,
+                background:'var(--bg2)',border:'1px solid var(--border)',
+                fontSize:13,color:'var(--fg2)',lineHeight:1.6,
+              }}>
+                {status.setup_note}
+              </div>
+            )}
+
+            {/* 账号卡片 */}
+            <div style={{
+              padding:24,borderRadius:14,
+              background:'var(--bg2)',border:'1px solid var(--border)',
+              marginBottom:20,
+            }}>
+              {!status.provisioned ? (
+                /* ── 未创建账号 ── */
+                <div style={{textAlign:'center',padding:'20px 0'}}>
+                  <div style={{fontSize:40,marginBottom:12}}>🍺</div>
+                  <div style={{fontSize:16,fontWeight:600,marginBottom:8,color:'var(--fg)'}}>
+                    创建你的 SillyTavern 账号
+                  </div>
+                  <div style={{fontSize:13,color:'var(--fg3)',marginBottom:24,lineHeight:1.6}}>
+                    点击下方按钮，系统将自动为你在 SillyTavern 中创建专属账号。<br/>
+                    账号与 MineAI 身份绑定，数据完全独立。
+                  </div>
+                  {!status.data_dir_configured && (
+                    <div style={{
+                      fontSize:11,color:'var(--fg3)',marginBottom:16,
+                      padding:'8px 14px',borderRadius:8,background:'var(--bg3)',
+                      border:'1px solid var(--border2)',
+                    }}>
+                      管理员尚未配置数据目录，暂无法自动创建账号
+                    </div>
+                  )}
+                  <button
+                    className="btn btn-p"
+                    onClick={handleProvision}
+                    disabled={provisioning || !status.data_dir_configured}
+                    style={{padding:'10px 28px',fontSize:14}}
+                  >
+                    {provisioning ? '创建中…' : '创建我的账号'}
+                  </button>
+                </div>
+              ) : (
+                /* ── 已有账号 ── */
+                <>
+                  <div style={{fontSize:13,fontWeight:600,color:'var(--fg)',marginBottom:16}}>
+                    你的 SillyTavern 账号
+                  </div>
+
+                  {/* 凭据展示 */}
+                  {[
+                    {label:'用户名 (Handle)', value: status.account.handle, key:'handle'},
+                    {label:'密码', value: status.account.password, key:'password'},
+                  ].map(({label, value, key}) => (
+                    <div key={key} style={{
+                      display:'flex',alignItems:'center',gap:10,marginBottom:10,
+                      padding:'10px 14px',borderRadius:8,
+                      background:'var(--bg3)',border:'1px solid var(--border2)',
+                    }}>
+                      <div style={{flex:1}}>
+                        <div style={{fontSize:10,color:'var(--fg3)',marginBottom:2}}>{label}</div>
+                        <div style={{fontSize:13,color:'var(--fg)',fontFamily:'monospace',letterSpacing:'0.02em'}}>
+                          {value}
+                        </div>
+                      </div>
+                      <button
+                        className="btn btn-s btn-sm"
+                        onClick={() => copyText(value, key)}
+                        style={{padding:'4px 10px',fontSize:11,flexShrink:0}}
+                      >
+                        {copied === key ? '已复制 ✓' : '复制'}
+                      </button>
+                    </div>
+                  ))}
+
+                  {/* 服务地址 */}
+                  <div style={{
+                    display:'flex',alignItems:'center',gap:10,marginBottom:20,
+                    padding:'10px 14px',borderRadius:8,
+                    background:'var(--bg3)',border:'1px solid var(--border2)',
+                  }}>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:10,color:'var(--fg3)',marginBottom:2}}>服务地址</div>
+                      <div style={{fontSize:12,color:'var(--gold)',fontFamily:'monospace'}}>
+                        {status.url}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 操作按钮 */}
+                  <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
+                    <button
+                      className="btn btn-p"
+                      onClick={openInNewTab}
+                      disabled={!status.running}
+                      style={{flex:1,minWidth:140,padding:'9px 16px',fontSize:13}}
+                    >
+                      <Icon name="external-link" size={13} />
+                      {' '}在新标签页打开
+                    </button>
+
+                    {status.allow_frame_embed && (
+                      <button
+                        className="btn btn-s"
+                        onClick={() => setEmbedMode(true)}
+                        disabled={!status.running}
+                        style={{flex:1,minWidth:140,padding:'9px 16px',fontSize:13}}
+                      >
+                        <Icon name="layout" size={13} />
+                        {' '}在页面内嵌入
+                      </button>
+                    )}
+                  </div>
+
+                  {status.running && (
+                    <div style={{
+                      marginTop:14,padding:'10px 14px',borderRadius:8,
+                      background:'rgba(78,200,138,0.08)',border:'1px solid rgba(78,200,138,0.2)',
+                      fontSize:12,color:'var(--fg2)',lineHeight:1.5,
+                    }}>
+                      <strong style={{color:'#4ec88a'}}>提示：</strong>
+                      首次使用请点击"在新标签页打开"，用上方的用户名和密码登录。
+                      登录后浏览器会保存 Cookie，之后可以直接使用内嵌模式。
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* SillyTavern 介绍卡 */}
+            <div style={{
+              padding:20,borderRadius:14,
+              background:'var(--bg2)',border:'1px solid var(--border)',
+            }}>
+              <div style={{fontSize:13,fontWeight:600,color:'var(--fg)',marginBottom:14}}>
+                关于 SillyTavern
+              </div>
+              <div style={{
+                display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(200px,1fr))',gap:12,
+              }}>
+                {[
+                  {icon:'💬', title:'AI 角色扮演', desc:'支持数百种角色卡，与 AI 进行沉浸式对话'},
+                  {icon:'🔌', title:'多 API 接入', desc:'兼容 OpenAI / Claude / 本地模型 等所有主流接口'},
+                  {icon:'🧠', title:'记忆 & 世界书', desc:'长期记忆、世界设定、角色关系全面管理'},
+                  {icon:'🎨', title:'高度可定制', desc:'主题、界面、扩展插件、TTS 语音一应俱全'},
+                ].map(({icon, title, desc}) => (
+                  <div key={title} style={{
+                    padding:'12px 14px',borderRadius:10,
+                    background:'var(--bg3)',border:'1px solid var(--border2)',
+                  }}>
+                    <div style={{fontSize:20,marginBottom:6}}>{icon}</div>
+                    <div style={{fontSize:12,fontWeight:600,color:'var(--fg)',marginBottom:4}}>{title}</div>
+                    <div style={{fontSize:11,color:'var(--fg3)',lineHeight:1.5}}>{desc}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+{% endverbatim %}

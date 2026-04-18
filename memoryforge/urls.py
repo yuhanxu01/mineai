@@ -23,6 +23,8 @@ urlpatterns = [
     path('api/chat/', include('chat.urls')),
     path('api/banished/', include('banished.urls')),
     path('api/plugin/', include('plugin.urls')),
+    path('api/ssh/', include('ssh_manager.urls')),
+    path('api/tavern/', include('tavern.urls')),
     path('lan-transfer/', include('lan_transfer.urls')),
     path('share/', TemplateView.as_view(template_name='share_index.html')),
     path('dashboard/', include('dashboard.urls', namespace='dashboard')),

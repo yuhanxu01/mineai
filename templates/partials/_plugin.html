@@ -15,13 +15,14 @@ function useAuth() {
 
 // ─── Plugin Tutorial ─────────────────────────────────────────────────────
 function PluginTutorial({ onClose }) {
+  const lang = getLang();
   const [tab, setTab] = React.useState('overview');
   const TABS = [
-    { id:'overview', icon:'layers', label:'概览' },
-    { id:'nocode',   icon:'bot',    label:'无代码插件' },
-    { id:'code',     icon:'code',   label:'代码插件' },
-    { id:'sdk',      icon:'key',    label:'MineAI SDK' },
-    { id:'examples', icon:'rocket', label:'完整示例' },
+    { id:'overview', icon:'layers', label:lang === 'en' ? 'Overview' : '概览' },
+    { id:'nocode',   icon:'bot',    label:lang === 'en' ? 'No-code' : '无代码插件' },
+    { id:'code',     icon:'code',   label:lang === 'en' ? 'Code' : '代码插件' },
+    { id:'sdk',      icon:'key',    label:lang === 'en' ? 'MineAI SDK' : 'MineAI SDK' },
+    { id:'examples', icon:'rocket', label:lang === 'en' ? 'Examples' : '完整示例' },
   ];
 
   const Block = ({code}) => (
@@ -50,12 +51,12 @@ function PluginTutorial({ onClose }) {
   const renderContent = () => {
     if (tab === 'overview') return (
       <div>
-        <Sec title="什么是 MineAI 插件？">
-          <Tx>MineAI 插件是由社区用户提交的独立应用模块，审核通过后出现在应用广场，所有用户均可一键打开使用。</Tx>
+        <Sec title={lang === 'en' ? 'What is a MineAI plugin?' : '什么是 MineAI 插件？'}>
+          <Tx>{lang === 'en' ? 'MineAI plugins are standalone app modules submitted by the community. After approval they appear in the app marketplace and any user can open them with one click.' : 'MineAI 插件是由社区用户提交的独立应用模块，审核通过后出现在应用广场，所有用户均可一键打开使用。'}</Tx>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,marginBottom:24}}>
             {[
-              {title:'无代码插件',icon:'bot',desc:'填写 System Prompt 和欢迎语即可创建专属 AI 助手，零编程门槛。',color:'#5ac480'},
-              {title:'代码插件',icon:'code',desc:'上传单个 HTML 文件，通过 MineAI SDK 调用 LLM、存储数据、访问记忆金字塔，完全自定义 UI。',color:'#5a8ac4'},
+              {title:lang === 'en' ? 'No-code plugin' : '无代码插件',icon:'bot',desc:lang === 'en' ? 'Fill in a System Prompt and welcome message to create a dedicated AI assistant, with no coding required.' : '填写 System Prompt 和欢迎语即可创建专属 AI 助手，零编程门槛。',color:'#5ac480'},
+              {title:lang === 'en' ? 'Code plugin' : '代码插件',icon:'code',desc:lang === 'en' ? 'Upload a single HTML file and use the MineAI SDK to call LLMs, store data, and access the memory pyramid, with a fully custom UI.' : '上传单个 HTML 文件，通过 MineAI SDK 调用 LLM、存储数据、访问记忆金字塔，完全自定义 UI。',color:'#5a8ac4'},
             ].map(item => (
               <div key={item.title} style={{padding:'14px 16px',border:`1px solid ${hexToRgba(item.color,0.3)}`,borderRadius:10,background:hexToRgba(item.color,0.06)}}>
                 <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
@@ -67,12 +68,21 @@ function PluginTutorial({ onClose }) {
             ))}
           </div>
         </Sec>
-        <Sec title="发布流程">
+        <Sec title={lang === 'en' ? 'Publishing flow' : '发布流程'}>
           {[
-            ['1','提交插件','在「我的插件」中填写信息或上传 HTML，点击提交审核，初始状态为「待审核」。'],
-            ['2','等待审核','管理员将在 1–3 个工作日内审核，可在「我的插件」中查看状态。'],
-            ['3','上线展示','审核通过后插件自动出现在应用广场，卡片右上角带有插件标识。'],
-            ['4','持续迭代','可随时在「我的插件」中编辑更新，修改后重新进入待审核状态。'],
+            lang === 'en'
+              ? ['1','Submit plugin','Fill in the details or upload an HTML file in "My Plugins", then click submit for review. The initial status is Pending Review.']
+              : ['1','提交插件','在「我的插件」中填写信息或上传 HTML，点击提交审核，初始状态为「待审核」。'],
+            lang === 'en'
+              ? ['2','Wait for review','An admin will review it within 1–3 business days. You can check the status in "My Plugins".']
+              : ['2','等待审核','管理员将在 1–3 个工作日内审核，可在「我的插件」中查看状态。'],
+            lang === 'en'
+              ? ['3','Go live','After approval, the plugin appears automatically in the app marketplace, with a plugin badge on the card.'
+              ]
+              : ['3','上线展示','审核通过后插件自动出现在应用广场，卡片右上角带有插件标识。'],
+            lang === 'en'
+              ? ['4','Keep iterating','You can edit and update it at any time in "My Plugins"; after changes it returns to Pending Review.']
+              : ['4','持续迭代','可随时在「我的插件」中编辑更新，修改后重新进入待审核状态。'],
           ].map(([n,title,desc]) => (
             <div key={n} style={{display:'flex',gap:14,marginBottom:14,alignItems:'flex-start'}}>
               <div style={{width:26,height:26,borderRadius:'50%',background:hexToRgba('#c9a86c',0.15),border:'1px solid var(--gold-dim)',display:'flex',alignItems:'center',justifyContent:'center',color:'var(--gold)',fontSize:12,fontWeight:700,flexShrink:0}}>{n}</div>
@@ -83,25 +93,25 @@ function PluginTutorial({ onClose }) {
             </div>
           ))}
         </Sec>
-        <Sec title="能力与限制">
-          <Note type="tip">插件可以：调用 LLM（流式输出）、读写专属 KV 数据、语义检索记忆金字塔。</Note>
-          <Note type="warn">插件运行在沙箱 iframe 中，无法访问父页面 DOM、Cookie 或其他用户数据。</Note>
-          <Note type="danger">禁止：挖矿、追踪用户、向外发送 Beacon、加载恶意脚本，违规将被永久下架封号。</Note>
+        <Sec title={lang === 'en' ? 'Capabilities and limits' : '能力与限制'}>
+          <Note type="tip">{lang === 'en' ? 'Plugins can call LLMs (streaming), read and write dedicated KV data, and semantically retrieve memory pyramid content.' : '插件可以：调用 LLM（流式输出）、读写专属 KV 数据、语义检索记忆金字塔。'}</Note>
+          <Note type="warn">{lang === 'en' ? 'Plugins run inside a sandbox iframe and cannot access the parent page DOM, cookies, or other users\' data.' : '插件运行在沙箱 iframe 中，无法访问父页面 DOM、Cookie 或其他用户数据。'}</Note>
+          <Note type="danger">{lang === 'en' ? 'Forbidden: mining, tracking users, sending beacons externally, or loading malicious scripts. Violations will be permanently removed.' : '禁止：挖矿、追踪用户、向外发送 Beacon、加载恶意脚本，违规将被永久下架封号。'}</Note>
         </Sec>
       </div>
     );
     if (tab === 'nocode') return (
       <div>
-        <Sec title="无代码插件：5 分钟创建专属 AI 助手">
-          <Tx>无代码插件是一个配置了自定义 System Prompt 的 AI 对话助手，适合教师、内容创作者和领域专家快速构建垂直场景工具。</Tx>
+        <Sec title={lang === 'en' ? 'No-code plugin: create a dedicated AI assistant in 5 minutes' : '无代码插件：5 分钟创建专属 AI 助手'}>
+          <Tx>{lang === 'en' ? 'A no-code plugin is an AI chat assistant configured with a custom System Prompt. It is ideal for teachers, creators, and domain experts who want to build focused tools quickly.' : '无代码插件是一个配置了自定义 System Prompt 的 AI 对话助手，适合教师、内容创作者和领域专家快速构建垂直场景工具。'}</Tx>
         </Sec>
-        <Sec title="配置字段说明">
+        <Sec title={lang === 'en' ? 'Configuration fields' : '配置字段说明'}>
           {[
-            ['插件名称 *','简洁醒目，如「代码审查助手」「儿童故事生成器」'],
-            ['描述','一两句话说明功能，帮助用户在广场中快速判断是否有用'],
-            ['System Prompt *','AI 的核心指令：定义角色、能力、限制和输出格式'],
-            ['欢迎消息','用户打开时看到的第一条消息，建议说明使用方法'],
-            ['输入框占位符','引导用户输入，如「输入代码，我来帮你找 Bug…」'],
+            [lang === 'en' ? 'Plugin name *' : '插件名称 *', lang === 'en' ? 'Short and clear, e.g. "Code Review Assistant" or "Children\'s Story Generator"' : '简洁醒目，如「代码审查助手」「儿童故事生成器」'],
+            [lang === 'en' ? 'Description' : '描述', lang === 'en' ? 'One or two sentences explaining what it does, so users can quickly judge if it is useful.' : '一两句话说明功能，帮助用户在广场中快速判断是否有用'],
+            [lang === 'en' ? 'System Prompt *' : 'System Prompt *', lang === 'en' ? 'The core instruction that defines role, capabilities, limits, and output format.' : 'AI 的核心指令：定义角色、能力、限制和输出格式'],
+            [lang === 'en' ? 'Welcome message' : '欢迎消息', lang === 'en' ? 'The first message users see when opening the plugin. It should explain how to use it.' : '用户打开时看到的第一条消息，建议说明使用方法'],
+            [lang === 'en' ? 'Input placeholder' : '输入框占位符', lang === 'en' ? 'Guide the user, e.g. "Paste code here and I\'ll help find bugs..."' : '引导用户输入，如「输入代码，我来帮你找 Bug…」'],
           ].map(([label,tip],i) => (
             <div key={i} style={{display:'flex',gap:12,marginBottom:10,padding:'10px 14px',background:'var(--bg2)',borderRadius:8,border:'1px solid var(--border)'}}>
               <div style={{minWidth:120,fontSize:12,fontWeight:600,color:'var(--gold)',paddingTop:1,flexShrink:0}}>{label}</div>
@@ -109,7 +119,7 @@ function PluginTutorial({ onClose }) {
             </div>
           ))}
         </Sec>
-        <Sec title="System Prompt 示例：代码审查助手">
+        <Sec title={lang === 'en' ? 'System Prompt example: code review assistant' : 'System Prompt 示例：代码审查助手'}>
           <Block code={`你是一名资深代码审查工程师，专注于代码质量和安全性。
 
 当用户发送代码时，请按以下格式回复：
@@ -118,27 +128,27 @@ function PluginTutorial({ onClose }) {
 3. 给出具体的改进建议
 4. 提供修复后的代码片段
 
-请用中文回复，语气专业友好。`} />
+${lang === 'en' ? 'Respond in English with a professional and friendly tone.' : '请用中文回复，语气专业友好。'}`} />
         </Sec>
-        <Sec title="写好 System Prompt 的技巧">
-          <Note type="tip">明确角色定位：「你是一位资深…」比「你是一个 AI」效果好得多。</Note>
-          <Note type="tip">规定输出格式：「请用 Markdown 表格输出」「每条建议单独列一行」。</Note>
-          <Note type="tip">设置边界：「只回答关于 Python 的问题，其他问题请礼貌拒绝」。</Note>
-          <Note type="warn">避免过长 Prompt — 超过 2000 字往往会导致 AI 响应质量下降。</Note>
+        <Sec title={lang === 'en' ? 'Tips for writing a good System Prompt' : '写好 System Prompt 的技巧'}>
+          <Note type="tip">{lang === 'en' ? 'Be explicit about the role: "You are a senior..." works much better than "You are an AI".' : '明确角色定位：「你是一位资深…」比「你是一个 AI」效果好得多。'}</Note>
+          <Note type="tip">{lang === 'en' ? 'Specify the output format: "Use a Markdown table" or "Put each suggestion on a separate line".' : '规定输出格式：「请用 Markdown 表格输出」「每条建议单独列一行」。'}</Note>
+          <Note type="tip">{lang === 'en' ? 'Set boundaries: "Only answer Python questions; politely refuse everything else".' : '设置边界：「只回答关于 Python 的问题，其他问题请礼貌拒绝」。'}</Note>
+          <Note type="warn">{lang === 'en' ? 'Avoid very long prompts. Over 2000 characters often reduces response quality.' : '避免过长 Prompt — 超过 2000 字往往会导致 AI 响应质量下降。'}</Note>
         </Sec>
       </div>
     );
     if (tab === 'code') return (
       <div>
-        <Sec title="代码插件：构建完全自定义的应用">
-          <Tx>代码插件是一个自包含的单 HTML 文件，运行在沙箱 iframe 中，通过 MineAI SDK 与平台通信。你可以使用任何纯前端技术（原生 JS、Vue CDN、Alpine.js 等）构建丰富的交互界面。</Tx>
+        <Sec title={lang === 'en' ? 'Code plugin: build a fully custom app' : '代码插件：构建完全自定义的应用'}>
+          <Tx>{lang === 'en' ? 'A code plugin is a self-contained single HTML file that runs inside a sandboxed iframe and communicates with the platform through the MineAI SDK. You can build rich interfaces with any pure frontend tech (vanilla JS, Vue CDN, Alpine.js, etc.).' : '代码插件是一个自包含的单 HTML 文件，运行在沙箱 iframe 中，通过 MineAI SDK 与平台通信。你可以使用任何纯前端技术（原生 JS、Vue CDN、Alpine.js 等）构建丰富的交互界面。'}</Tx>
         </Sec>
-        <Sec title="文件要求">
+        <Sec title={lang === 'en' ? 'File requirements' : '文件要求'}>
           {[
-            ['格式','单个 .html 文件，UTF-8 编码'],
-            ['大小','最大 2 MB（含内联 CSS / JS）'],
-            ['外部依赖','可通过 CDN 引入第三方库（Chart.js、Vue 等）'],
-            ['框架','无限制，推荐原生 JS 或轻量 CDN 库以保证加载速度'],
+            [lang === 'en' ? 'Format' : '格式', lang === 'en' ? 'A single .html file, UTF-8 encoded' : '单个 .html 文件，UTF-8 编码'],
+            [lang === 'en' ? 'Size' : '大小', lang === 'en' ? 'Up to 2 MB (including inline CSS / JS)' : '最大 2 MB（含内联 CSS / JS）'],
+            [lang === 'en' ? 'External deps' : '外部依赖', lang === 'en' ? 'Third-party libraries can be loaded from a CDN (Chart.js, Vue, etc.)' : '可通过 CDN 引入第三方库（Chart.js、Vue 等）'],
+            [lang === 'en' ? 'Framework' : '框架', lang === 'en' ? 'No restrictions; vanilla JS or lightweight CDN libraries are recommended for speed' : '无限制，推荐原生 JS 或轻量 CDN 库以保证加载速度'],
           ].map(([k,v],i) => (
             <div key={i} style={{display:'flex',gap:10,marginBottom:8,fontSize:13}}>
               <span style={{minWidth:80,color:'var(--fg3)'}}>{k}</span>
@@ -147,12 +157,12 @@ function PluginTutorial({ onClose }) {
             </div>
           ))}
         </Sec>
-        <Sec title="最小插件模板">
+        <Sec title={lang === 'en' ? 'Minimal plugin template' : '最小插件模板'}>
           <Block code={`<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <title>我的插件</title>
+  <title>${lang === 'en' ? 'My Plugin' : '我的插件'}</title>
   <style>
     body { margin:0; font-family:sans-serif;
            background:#08080b; color:#e0d8c8; padding:20px; }
@@ -162,37 +172,37 @@ function PluginTutorial({ onClose }) {
   </style>
 </head>
 <body>
-  <button onclick="callAI()">调用 AI</button>
+  <button onclick="callAI()">${lang === 'en' ? 'Call AI' : '调用 AI'}</button>
   <pre id="output"></pre>
 
   <script>
-    // MineAI SDK 由平台自动注入，直接使用 MineAI 对象
+    // MineAI SDK is injected by the platform; use the MineAI object directly
     async function callAI() {
       const out = document.getElementById('output');
       out.textContent = '';
       await MineAI.callLLM(
-        [{ role: 'user', content: '你好！请介绍一下你自己。' }],
-        (chunk) => { out.textContent += chunk; },   // 流式回调
-        (err)   => { if(err) out.textContent = '[错误] ' + err; }
+        [{ role: 'user', content: '${lang === 'en' ? 'Hello! Please introduce yourself.' : '你好！请介绍一下你自己。'}' }],
+        (chunk) => { out.textContent += chunk; },   // streaming callback
+        (err)   => { if(err) out.textContent = '${lang === 'en' ? '[Error] ' : '[错误] '}' + err; }
       );
     }
   <\/script>
 </body>
 </html>`} />
         </Sec>
-        <Sec title="沙箱安全说明">
-          <Note type="warn">iframe sandbox 允许 scripts / forms / popups，但禁止 allow-same-origin。插件无法访问父页面的 Cookie、localStorage 或 DOM。</Note>
-          <Note type="tip">插件内部的 localStorage 是隔离的，只用于临时 UI 状态。跨会话持久数据请用 MineAI.setData / getData。</Note>
+        <Sec title={lang === 'en' ? 'Sandbox security' : '沙箱安全说明'}>
+          <Note type="warn">{lang === 'en' ? 'The iframe sandbox allows scripts / forms / popups, but forbids allow-same-origin. Plugins cannot access the parent page cookies, localStorage, or DOM.' : 'iframe sandbox 允许 scripts / forms / popups，但禁止 allow-same-origin。插件无法访问父页面的 Cookie、localStorage 或 DOM。'}</Note>
+          <Note type="tip">{lang === 'en' ? 'The plugin\'s localStorage is isolated and only for temporary UI state. Use MineAI.setData / getData for persistent cross-session data.' : '插件内部的 localStorage 是隔离的，只用于临时 UI 状态。跨会话持久数据请用 MineAI.setData / getData。'}</Note>
         </Sec>
       </div>
     );
     if (tab === 'sdk') return (
       <div>
-        <Sec title="MineAI SDK 参考">
-          <Tx>平台在加载代码插件时自动注入 MineAI 对象，无需手动引入任何脚本。callLLM 使用回调，其余方法返回 Promise。</Tx>
+        <Sec title={lang === 'en' ? 'MineAI SDK reference' : 'MineAI SDK 参考'}>
+          <Tx>{lang === 'en' ? 'The platform injects the MineAI object automatically when loading a code plugin, so no extra scripts are needed. callLLM uses callbacks, while the other methods return Promises.' : '平台在加载代码插件时自动注入 MineAI 对象，无需手动引入任何脚本。callLLM 使用回调，其余方法返回 Promise。'}</Tx>
         </Sec>
-        <Sec title="MineAI.callLLM(messages, onChunk, onDone)">
-          <Tx>流式调用大语言模型，消息格式与 OpenAI Chat Completion 兼容。</Tx>
+        <Sec title={lang === 'en' ? 'MineAI.callLLM(messages, onChunk, onDone)' : 'MineAI.callLLM(messages, onChunk, onDone)'}>
+          <Tx>{lang === 'en' ? 'Stream calls to the language model. Message format is compatible with OpenAI Chat Completion.' : '流式调用大语言模型，消息格式与 OpenAI Chat Completion 兼容。'}</Tx>
           <Block code={`// messages: Array<{ role: 'user' | 'assistant' | 'system', content: string }>
 // onChunk:  (chunk: string) => void    每个流式片段的回调
 // onDone:   (error?: string) => void   完成或出错时调用
@@ -211,8 +221,8 @@ await MineAI.callLLM(
   }
 );`} />
         </Sec>
-        <Sec title="MineAI.getData(key) → Promise<any>">
-          <Tx>读取当前用户在此插件下存储的 KV 数据，不同用户的数据完全隔离。键不存在时返回 null。</Tx>
+        <Sec title={lang === 'en' ? 'MineAI.getData(key) → Promise<any>' : 'MineAI.getData(key) → Promise<any>'}>
+          <Tx>{lang === 'en' ? 'Read KV data stored by the current user under this plugin. Data is fully isolated across users. Missing keys return null.' : '读取当前用户在此插件下存储的 KV 数据，不同用户的数据完全隔离。键不存在时返回 null。'}</Tx>
           <Block code={`const lang = await MineAI.getData('preferred_lang');
 // 返回之前 setData 存入的值，或 null（首次使用）
 
@@ -220,13 +230,13 @@ const profile = await MineAI.getData('user_profile');
 if (profile) console.log('用户名：', profile.name);`} />
         </Sec>
         <Sec title="MineAI.setData(key, value) → Promise<void>">
-          <Tx>将数据持久化到平台后端，重新打开插件后仍可读取。支持字符串、数字、对象等 JSON 可序列化类型。</Tx>
+          <Tx>{lang === 'en' ? 'Persist data to the platform backend so it remains available after reopening the plugin. Supports JSON-serializable types such as strings, numbers, and objects.' : '将数据持久化到平台后端，重新打开插件后仍可读取。支持字符串、数字、对象等 JSON 可序列化类型。'}</Tx>
           <Block code={`await MineAI.setData('preferred_lang', 'zh-CN');
 await MineAI.setData('visit_count', 42);
 await MineAI.setData('user_profile', { name: '张三', level: 'expert' });`} />
         </Sec>
         <Sec title="MineAI.getMemory(query) → Promise<string[]>">
-          <Tx>从记忆金字塔中语义检索相关内容片段，适合构建 RAG（检索增强生成）类应用。</Tx>
+          <Tx>{lang === 'en' ? 'Semantically retrieve related fragments from the memory pyramid. Ideal for building RAG (retrieval-augmented generation) apps.' : '从记忆金字塔中语义检索相关内容片段，适合构建 RAG（检索增强生成）类应用。'}</Tx>
           <Block code={`// 语义检索后注入 LLM 上下文
 const memories = await MineAI.getMemory('Python 异步编程');
 const context = memories.join('\n---\n');
@@ -244,8 +254,8 @@ await MineAI.callLLM(
     );
     if (tab === 'examples') return (
       <div>
-        <Sec title="示例一：智能翻译器">
-          <Tx>展示多语言选择和流式输出，适合作为代码插件的入门参考。</Tx>
+        <Sec title={lang === 'en' ? 'Example 1: smart translator' : '示例一：智能翻译器'}>
+          <Tx>{lang === 'en' ? 'Shows language selection and streaming output, making it a good starter reference for code plugins.' : '展示多语言选择和流式输出，适合作为代码插件的入门参考。'}</Tx>
           <Block code={`<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -271,14 +281,14 @@ await MineAI.callLLM(
   </style>
 </head>
 <body>
-  <h2>智能翻译器</h2>
+  <h2>${lang === 'en' ? 'Smart Translator' : '智能翻译器'}</h2>
   <select id="lang">
     <option>英文</option><option>日文</option>
     <option>法文</option><option>西班牙文</option>
   </select>
   <textarea id="input" placeholder="在这里输入要翻译的内容…"></textarea>
-  <button id="btn" onclick="translate()">翻译</button>
-  <div id="output">翻译结果将在这里显示…</div>
+  <button id="btn" onclick="translate()">${lang === 'en' ? 'Translate' : '翻译'}</button>
+  <div id="output">${lang === 'en' ? 'Translation will appear here...' : '翻译结果将在这里显示…'}</div>
 
   <script>
     async function translate() {
@@ -300,8 +310,8 @@ await MineAI.callLLM(
 </body>
 </html>`} />
         </Sec>
-        <Sec title="示例二：记忆增强问答">
-          <Tx>先检索用户记忆金字塔，再让 LLM 基于相关记忆回答，适合构建个人知识助手。</Tx>
+        <Sec title={lang === 'en' ? 'Example 2: memory-enhanced Q&A' : '示例二：记忆增强问答'}>
+          <Tx>{lang === 'en' ? 'First retrieve from the user memory pyramid, then answer based on the retrieved memories. Great for building a personal knowledge assistant.' : '先检索用户记忆金字塔，再让 LLM 基于相关记忆回答，适合构建个人知识助手。'}</Tx>
           <Block code={`<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -327,9 +337,9 @@ await MineAI.callLLM(
 <body>
   <div id="chat"></div>
   <div class="row">
-    <input id="q" placeholder="问我任何问题…"
+    <input id="q" placeholder="${lang === 'en' ? 'Ask me anything...' : '问我任何问题…'}"
            onkeydown="if(event.key==='Enter') ask()">
-    <button onclick="ask()">发送</button>
+    <button onclick="ask()">${lang === 'en' ? 'Send' : '发送'}</button>
   </div>
   <script>
     const chat = document.getElementById('chat');
@@ -345,15 +355,15 @@ await MineAI.callLLM(
       if (!q) return;
       document.getElementById('q').value = '';
       addMsg('user', q);
-      // 1. 语义检索记忆
+      // 1. Semantic memory retrieval
       const memories = await MineAI.getMemory(q);
       const ctx = memories.length
-        ? '相关背景：\n' + memories.join('\n') + '\n\n' : '';
-      // 2. 流式回答
+        ? '${lang === 'en' ? 'Relevant context:\n' : '相关背景：\n'}' + memories.join('\n') + '\n\n' : '';
+      // 2. Streaming answer
       const aiDiv = addMsg('ai', '');
       await MineAI.callLLM(
         [
-          { role: 'system', content: ctx + '请简洁回答用户的问题。' },
+          { role: 'system', content: ctx + '${lang === 'en' ? 'Please answer the user succinctly.' : '请简洁回答用户的问题。'}' },
           { role: 'user',   content: q }
         ],
         (chunk) => {
@@ -367,10 +377,10 @@ await MineAI.callLLM(
 </body>
 </html>`} />
         </Sec>
-        <Sec title="调试技巧">
-          <Note type="tip">在浏览器 DevTools 中，切换到 iframe 对应的 Frame 上下文，即可在 Console 调试插件 JS。</Note>
-          <Note type="tip">先在本地直接用浏览器打开 HTML 文件测试布局，上传后再测试 MineAI SDK 调用。</Note>
-          <Note type="warn">MineAI 对象仅在平台 iframe 环境中可用，本地测试时 window.MineAI 为 undefined，需自行 mock。</Note>
+        <Sec title={lang === 'en' ? 'Debugging tips' : '调试技巧'}>
+          <Note type="tip">{lang === 'en' ? 'In browser DevTools, switch the console context to the iframe frame to debug plugin JS.' : '在浏览器 DevTools 中，切换到 iframe 对应的 Frame 上下文，即可在 Console 调试插件 JS。'}</Note>
+          <Note type="tip">{lang === 'en' ? 'Test the layout locally by opening the HTML file directly in the browser, then test MineAI SDK calls after uploading.' : '先在本地直接用浏览器打开 HTML 文件测试布局，上传后再测试 MineAI SDK 调用。'}</Note>
+          <Note type="warn">{lang === 'en' ? 'The MineAI object is only available inside the platform iframe. When testing locally, window.MineAI will be undefined, so you need to mock it yourself.' : 'MineAI 对象仅在平台 iframe 环境中可用，本地测试时 window.MineAI 为 undefined，需自行 mock。'}</Note>
         </Sec>
       </div>
     );
@@ -382,9 +392,9 @@ await MineAI.callLLM(
       {/* Header */}
       <div style={{padding:'14px 24px',borderBottom:'1px solid var(--border)',background:'var(--bg2)',display:'flex',alignItems:'center',gap:12,flexShrink:0}}>
         <Icon name="book" size={18} style={{color:'var(--gold)'}} />
-        <span style={{fontWeight:700,fontSize:16,color:'var(--fg)'}}>插件开发教程</span>
-        <span style={{fontSize:12,color:'var(--fg3)',marginLeft:2}}>— 学会构建属于你的 MineAI 插件</span>
-        <button className="btn btn-s" style={{marginLeft:'auto',padding:'5px 14px',fontSize:12}} onClick={onClose}>关闭</button>
+        <span style={{fontWeight:700,fontSize:16,color:'var(--fg)'}}>{lang === 'en' ? 'Plugin Development Tutorial' : '插件开发教程'}</span>
+        <span style={{fontSize:12,color:'var(--fg3)',marginLeft:2}}>{lang === 'en' ? 'Learn how to build your own MineAI plugin' : '— 学会构建属于你的 MineAI 插件'}</span>
+        <button className="btn btn-s" style={{marginLeft:'auto',padding:'5px 14px',fontSize:12}} onClick={onClose}>{lang === 'en' ? 'Close' : '关闭'}</button>
       </div>
       <div style={{display:'flex',flex:1,overflow:'hidden'}}>
         {/* Left nav */}
@@ -401,7 +411,7 @@ await MineAI.callLLM(
             </button>
           ))}
           <div style={{marginTop:'auto',padding:'12px 4px 4px',fontSize:11,color:'var(--fg3)',lineHeight:1.6}}>
-            遇到问题？查阅文档或联系管理员。
+            {lang === 'en' ? 'Need help? Check the docs or contact an admin.' : '遇到问题？查阅文档或联系管理员。'}
           </div>
         </div>
         {/* Content */}
@@ -598,13 +608,13 @@ function PluginRunnerApp({ pluginSlug }) {
     <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100vh',flexDirection:'column',gap:16,color:'var(--fg2)'}}>
       <Icon name="alert" size={32} style={{color:'var(--danger)'}} />
       <div>{error}</div>
-      <button className="btn btn-s" onClick={()=>location.hash='#/'}>返回首页</button>
+      <button className="btn btn-s" onClick={()=>location.hash='#/'}>{lang === 'en' ? 'Back to Home' : '返回首页'}</button>
     </div>
   );
 
   if (!plugin) return (
     <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100vh',color:'var(--fg3)'}}>
-      加载中…
+      {lang === 'en' ? 'Loading...' : '加载中…'}
     </div>
   );
 
@@ -614,8 +624,8 @@ function PluginRunnerApp({ pluginSlug }) {
         <div style={{padding:'8px 16px',borderBottom:'1px solid var(--border)',background:'var(--bg2)',display:'flex',alignItems:'center',gap:8,fontSize:13}}>
           <Icon name="plug" size={13} style={{color:'var(--gold)'}} />
           <span style={{color:'var(--fg2)'}}>{plugin.name}</span>
-          <span style={{marginLeft:'auto',fontSize:10,color:'var(--fg3)'}}>Code Plugin · {plugin.author}</span>
-          <button className="btn btn-s" style={{padding:'3px 8px',fontSize:11}} onClick={()=>history.back()}>← 返回</button>
+          <span style={{marginLeft:'auto',fontSize:10,color:'var(--fg3)'}}>{lang === 'en' ? 'Code Plugin' : '代码插件'} · {plugin.author}</span>
+          <button className="btn btn-s" style={{padding:'3px 8px',fontSize:11}} onClick={()=>history.back()}>{lang === 'en' ? '← Back' : '← 返回'}</button>
         </div>
         <iframe
           ref={iframeRef}
@@ -632,7 +642,7 @@ function PluginRunnerApp({ pluginSlug }) {
   return (
     <div style={{height:'100vh',display:'flex',flexDirection:'column'}}>
       <div style={{padding:'8px 16px',borderBottom:'1px solid var(--border)',background:'var(--bg2)',display:'flex',alignItems:'center',gap:8,fontSize:13}}>
-        <button className="btn btn-s" style={{padding:'3px 8px',fontSize:11}} onClick={()=>history.back()}>← 返回</button>
+        <button className="btn btn-s" style={{padding:'3px 8px',fontSize:11}} onClick={()=>history.back()}>{lang === 'en' ? '← Back' : '← 返回'}</button>
       </div>
       <div style={{flex:1,overflow:'hidden'}}>
         <GenericAIApp plugin={plugin} token={token} />
@@ -666,17 +676,17 @@ function PluginUploadForm({ onSaved, editPlugin }) {
   const handleFileUpload = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (!file.name.endsWith('.html')) { setErr('只支持 .html 文件'); return; }
-    if (file.size > 2 * 1024 * 1024) { setErr('文件不能超过 2 MB'); return; }
+    if (!file.name.endsWith('.html')) { setErr(lang === 'en' ? 'Only .html files are supported' : '只支持 .html 文件'); return; }
+    if (file.size > 2 * 1024 * 1024) { setErr(lang === 'en' ? 'File size cannot exceed 2 MB' : '文件不能超过 2 MB'); return; }
     const reader = new FileReader();
     reader.onload = (ev) => set('html_content', ev.target.result);
     reader.readAsText(file);
   };
 
   const submit = async () => {
-    if (!form.name.trim()) { setErr('请填写插件名称'); return; }
-    if (form.plugin_type === 'code' && !form.html_content.trim()) { setErr('请上传 HTML 文件'); return; }
-    if (form.plugin_type === 'nocode' && !form.config.system_prompt?.trim()) { setErr('请填写 System Prompt'); return; }
+    if (!form.name.trim()) { setErr(lang === 'en' ? 'Please enter a plugin name' : '请填写插件名称'); return; }
+    if (form.plugin_type === 'code' && !form.html_content.trim()) { setErr(lang === 'en' ? 'Please upload an HTML file' : '请上传 HTML 文件'); return; }
+    if (form.plugin_type === 'nocode' && !form.config.system_prompt?.trim()) { setErr(lang === 'en' ? 'Please fill in the System Prompt' : '请填写 System Prompt'); return; }
 
     setSaving(true); setErr('');
     try {
@@ -700,11 +710,11 @@ function PluginUploadForm({ onSaved, editPlugin }) {
     <div style={{maxWidth:560,margin:'0 auto',padding:'24px 16px'}}>
       {showTutorial && <PluginTutorial onClose={()=>setShowTutorial(false)} />}
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:20}}>
-        <h2 style={{color:'var(--gold)',fontSize:18,margin:0}}>{isEdit ? '编辑插件' : '发布新插件'}</h2>
+        <h2 style={{color:'var(--gold)',fontSize:18,margin:0}}>{lang === 'en' ? (isEdit ? 'Edit Plugin' : 'Publish New Plugin') : (isEdit ? '编辑插件' : '发布新插件')}</h2>
         <button className="btn btn-s" style={{display:'flex',alignItems:'center',gap:6,padding:'6px 12px',fontSize:12,border:'1px solid var(--gold-dim)',color:'var(--gold)',background:hexToRgba('#c9a86c',0.08)}}
           onClick={()=>setShowTutorial(true)}>
           <Icon name="book" size={12} />
-          查看教程
+          {lang === 'en' ? 'View Tutorial' : '查看教程'}
         </button>
       </div>
 
@@ -712,9 +722,9 @@ function PluginUploadForm({ onSaved, editPlugin }) {
 
       {/* Type Selector */}
       <div style={{marginBottom:16}}>
-        <label style={{fontSize:12,color:'var(--fg3)',marginBottom:6,display:'block'}}>插件类型</label>
+        <label style={{fontSize:12,color:'var(--fg3)',marginBottom:6,display:'block'}}>{lang === 'en' ? 'Plugin Type' : '插件类型'}</label>
         <div style={{display:'flex',gap:8}}>
-          {[['nocode','无代码 AI 助手'],['code','代码插件（HTML）']].map(([v,l])=>(
+          {[['nocode',lang === 'en' ? 'No-code AI Assistant' : '无代码 AI 助手'],['code',lang === 'en' ? 'Code Plugin (HTML)' : '代码插件（HTML）']].map(([v,l])=>(
             <button key={v} onClick={()=>set('plugin_type',v)}
               className={`btn ${form.plugin_type===v?'btn-p':'btn-s'}`}
               style={{flex:1,padding:'8px 12px',fontSize:13}}>
@@ -726,28 +736,28 @@ function PluginUploadForm({ onSaved, editPlugin }) {
 
       {/* Name */}
       <div style={{marginBottom:14}}>
-        <label style={{fontSize:12,color:'var(--fg3)',marginBottom:4,display:'block'}}>插件名称 *</label>
+        <label style={{fontSize:12,color:'var(--fg3)',marginBottom:4,display:'block'}}>{lang === 'en' ? 'Plugin Name *' : '插件名称 *'}</label>
         <input value={form.name} onChange={e=>set('name',e.target.value)}
-          placeholder="简短的插件名" className="input" style={{width:'100%'}} />
+          placeholder={lang === 'en' ? 'A short plugin name' : '简短的插件名'} className="input" style={{width:'100%'}} />
       </div>
 
       {/* Description */}
       <div style={{marginBottom:14}}>
-        <label style={{fontSize:12,color:'var(--fg3)',marginBottom:4,display:'block'}}>描述</label>
+        <label style={{fontSize:12,color:'var(--fg3)',marginBottom:4,display:'block'}}>{lang === 'en' ? 'Description' : '描述'}</label>
         <textarea value={form.description} onChange={e=>set('description',e.target.value)}
-          placeholder="简要描述插件的功能" rows={2} className="input" style={{width:'100%',resize:'vertical'}} />
+          placeholder={lang === 'en' ? 'Briefly describe what the plugin does' : '简要描述插件的功能'} rows={2} className="input" style={{width:'100%',resize:'vertical'}} />
       </div>
 
       {/* Icon + Color */}
       <div style={{display:'flex',gap:12,marginBottom:14}}>
         <div style={{flex:1}}>
-          <label style={{fontSize:12,color:'var(--fg3)',marginBottom:4,display:'block'}}>图标</label>
+          <label style={{fontSize:12,color:'var(--fg3)',marginBottom:4,display:'block'}}>{lang === 'en' ? 'Icon' : '图标'}</label>
           <select value={form.icon} onChange={e=>set('icon',e.target.value)} className="input" style={{width:'100%'}}>
             {iconOptions.map(ic=><option key={ic} value={ic}>{ic}</option>)}
           </select>
         </div>
         <div style={{width:100}}>
-          <label style={{fontSize:12,color:'var(--fg3)',marginBottom:4,display:'block'}}>主题色</label>
+          <label style={{fontSize:12,color:'var(--fg3)',marginBottom:4,display:'block'}}>{lang === 'en' ? 'Color' : '主题色'}</label>
           <input type="color" value={form.color} onChange={e=>set('color',e.target.value)}
             style={{width:'100%',height:36,borderRadius:6,border:'1px solid var(--border)',background:'var(--bg3)',cursor:'pointer'}} />
         </div>
@@ -756,17 +766,17 @@ function PluginUploadForm({ onSaved, editPlugin }) {
       {/* Public toggle */}
       <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:18}}>
         <input type="checkbox" id="plg-pub" checked={form.is_public} onChange={e=>set('is_public',e.target.checked)} />
-        <label htmlFor="plg-pub" style={{fontSize:13,color:'var(--fg2)',cursor:'pointer'}}>公开发布（审核后所有用户可见）</label>
+        <label htmlFor="plg-pub" style={{fontSize:13,color:'var(--fg2)',cursor:'pointer'}}>{lang === 'en' ? 'Public release (visible to all users after approval)' : '公开发布（审核后所有用户可见）'}</label>
       </div>
 
       {/* Code Plugin: upload HTML */}
       {form.plugin_type === 'code' && (
         <div style={{marginBottom:16,padding:16,border:'1px dashed var(--border)',borderRadius:8,background:'var(--bg2)'}}>
-          <div style={{fontSize:13,color:'var(--fg2)',marginBottom:10}}>上传插件 HTML 文件（单文件，最大 2 MB）</div>
+          <div style={{fontSize:13,color:'var(--fg2)',marginBottom:10}}>{lang === 'en' ? 'Upload a plugin HTML file (single file, max 2 MB)' : '上传插件 HTML 文件（单文件，最大 2 MB）'}</div>
           <input type="file" accept=".html" onChange={handleFileUpload} style={{fontSize:13,color:'var(--fg2)'}} />
-          {form.html_content && <div style={{fontSize:11,color:'var(--gold)',marginTop:8}}>✓ 已加载 ({(form.html_content.length/1024).toFixed(1)} KB)</div>}
+          {form.html_content && <div style={{fontSize:11,color:'var(--gold)',marginTop:8}}>{lang === 'en' ? '✓ Loaded' : '✓ 已加载'} ({(form.html_content.length/1024).toFixed(1)} KB)</div>}
           <div style={{fontSize:11,color:'var(--fg3)',marginTop:8,lineHeight:1.6}}>
-            插件运行在沙箱 iframe 中，可通过 <code style={{background:'var(--bg3)',padding:'1px 4px',borderRadius:3}}>window.MineAI</code> 对象调用平台能力。
+            {lang === 'en' ? 'The plugin runs inside a sandboxed iframe and can access platform capabilities through the ' : '插件运行在沙箱 iframe 中，可通过 '}<code style={{background:'var(--bg3)',padding:'1px 4px',borderRadius:3}}>window.MineAI</code>{lang === 'en' ? ' object.' : ' 对象调用平台能力。'}
           </div>
         </div>
       )}
@@ -775,32 +785,32 @@ function PluginUploadForm({ onSaved, editPlugin }) {
       {form.plugin_type === 'nocode' && (
         <div style={{marginBottom:16,padding:16,border:'1px solid var(--border)',borderRadius:8,background:'var(--bg2)',display:'flex',flexDirection:'column',gap:12}}>
           <div>
-            <label style={{fontSize:12,color:'var(--fg3)',marginBottom:4,display:'block'}}>System Prompt *</label>
+            <label style={{fontSize:12,color:'var(--fg3)',marginBottom:4,display:'block'}}>{lang === 'en' ? 'System Prompt *' : 'System Prompt *'}</label>
             <textarea value={form.config.system_prompt||''} onChange={e=>setConfig('system_prompt',e.target.value)}
-              placeholder="定义 AI 的角色和行为…" rows={4} className="input" style={{width:'100%',resize:'vertical',fontFamily:'monospace',fontSize:13}} />
+              placeholder={lang === 'en' ? 'Define the AI role and behavior...' : '定义 AI 的角色和行为…'} rows={4} className="input" style={{width:'100%',resize:'vertical',fontFamily:'monospace',fontSize:13}} />
           </div>
           <div>
-            <label style={{fontSize:12,color:'var(--fg3)',marginBottom:4,display:'block'}}>欢迎消息</label>
+            <label style={{fontSize:12,color:'var(--fg3)',marginBottom:4,display:'block'}}>{lang === 'en' ? 'Welcome Message' : '欢迎消息'}</label>
             <input value={form.config.welcome_msg||''} onChange={e=>setConfig('welcome_msg',e.target.value)}
-              placeholder="用户打开时显示的第一条消息" className="input" style={{width:'100%'}} />
+              placeholder={lang === 'en' ? 'The first message shown when users open the plugin' : '用户打开时显示的第一条消息'} className="input" style={{width:'100%'}} />
           </div>
           <div>
-            <label style={{fontSize:12,color:'var(--fg3)',marginBottom:4,display:'block'}}>输入框占位符</label>
+            <label style={{fontSize:12,color:'var(--fg3)',marginBottom:4,display:'block'}}>{lang === 'en' ? 'Input Placeholder' : '输入框占位符'}</label>
             <input value={form.config.input_placeholder||''} onChange={e=>setConfig('input_placeholder',e.target.value)}
-              placeholder="输入消息…" className="input" style={{width:'100%'}} />
+              placeholder={lang === 'en' ? 'Type your message...' : '输入消息…'} className="input" style={{width:'100%'}} />
           </div>
         </div>
       )}
 
       <div style={{display:'flex',gap:10,justifyContent:'flex-end'}}>
-        <button className="btn btn-s" onClick={()=>onSaved?.()}>取消</button>
+        <button className="btn btn-s" onClick={()=>onSaved?.()}>{lang === 'en' ? 'Cancel' : '取消'}</button>
         <button className="btn btn-p" onClick={submit} disabled={saving}>
-          {saving ? '提交中…' : isEdit ? '保存修改' : '提交审核'}
+          {saving ? (lang === 'en' ? 'Submitting...' : '提交中…') : (isEdit ? (lang === 'en' ? 'Save Changes' : '保存修改') : (lang === 'en' ? 'Submit for Review' : '提交审核'))}
         </button>
       </div>
 
       <div style={{marginTop:12,fontSize:11,color:'var(--fg3)',lineHeight:1.6}}>
-        提交后进入待审核状态，管理员审核通过后将出现在应用广场。
+        {lang === 'en' ? 'After submission, the plugin enters pending review. Once approved by an admin, it will appear in the app marketplace.' : '提交后进入待审核状态，管理员审核通过后将出现在应用广场。'}
       </div>
     </div>
   );
@@ -826,7 +836,7 @@ function MyPluginList() {
   React.useEffect(() => { load(); }, []);
 
   const del = async (p) => {
-    if (!await showConfirm(`确定要删除插件「${p.name}」吗？此操作不可撤销。`, '删除插件')) return;
+    if (!await showConfirm(lang === 'en' ? `Delete plugin "${p.name}"? This action cannot be undone.` : `确定要删除插件「${p.name}」吗？此操作不可撤销。`, lang === 'en' ? 'Delete Plugin' : '删除插件')) return;
     try { await F(`/api/plugin/plugins/${p.id}/`, { method: 'DELETE' }); load(); } catch(e){ alert(e.message); }
   };
 
@@ -834,10 +844,10 @@ function MyPluginList() {
     try {
       await P(`/api/plugin/plugins/${p.id}/visibility/`, { is_public: !p.is_public });
       await load();
-      const msg = !p.is_public ? '已发布到主页' : '已从主页下架';
-      showAlert(`插件「${p.name}」${msg}`, '操作成功');
+      const msg = !p.is_public ? (lang === 'en' ? 'published to homepage' : '已发布到主页') : (lang === 'en' ? 'removed from homepage' : '已从主页下架');
+      showAlert(lang === 'en' ? `Plugin "${p.name}" ${msg}` : `插件「${p.name}」${msg}`, lang === 'en' ? 'Success' : '操作成功');
     } catch (e) {
-      showAlert('操作失败：' + e.message, '操作失败');
+      showAlert((lang === 'en' ? 'Operation failed: ' : '操作失败：') + e.message, lang === 'en' ? 'Operation Failed' : '操作失败');
     }
   };
 
@@ -845,13 +855,15 @@ function MyPluginList() {
     try {
       await P('/api/plugin/templates/lan-transfer/install/', {});
       await load();
-      showAlert('已安装官方插件：局域网大文件直传', '安装成功');
+      showAlert(lang === 'en' ? 'Installed official plugin: LAN file transfer' : '已安装官方插件：局域网大文件直传', lang === 'en' ? 'Installed' : '安装成功');
     } catch (e) {
-      showAlert('安装失败：' + e.message, '安装失败');
+      showAlert((lang === 'en' ? 'Installation failed: ' : '安装失败：') + e.message, lang === 'en' ? 'Installation Failed' : '安装失败');
     }
   };
 
-  const STATUS_LABEL = { pending: '待审核', approved: '已上线', rejected: '已拒绝' };
+  const STATUS_LABEL = lang === 'en'
+    ? { pending: 'Pending Review', approved: 'Published', rejected: 'Rejected' }
+    : { pending: '待审核', approved: '已上线', rejected: '已拒绝' };
   const STATUS_COLOR = { pending: '#c9a86c', approved: '#5ac480', rejected: '#e05a5a' };
 
   if (showCreate || editing) {
@@ -869,28 +881,28 @@ function MyPluginList() {
     <div style={{padding:'16px'}}>
       {showTutorial && <PluginTutorial onClose={()=>setShowTutorial(false)} />}
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
-        <h3 style={{margin:0,color:'var(--fg)',fontSize:16}}>我的插件</h3>
+        <h3 style={{margin:0,color:'var(--fg)',fontSize:16}}>{lang === 'en' ? 'My Plugins' : '我的插件'}</h3>
         <div style={{display:'flex',gap:8}}>
           <button className="btn btn-s" style={{padding:'6px 12px',fontSize:12,border:'1px solid #2f8cff',color:'#7fb5ff',background:'rgba(47,140,255,.08)'}}
             onClick={installLanTransferPlugin}>
-            安装局域网传输插件
+            {lang === 'en' ? 'Install LAN Transfer Plugin' : '安装局域网传输插件'}
           </button>
           <button className="btn btn-s" style={{display:'flex',alignItems:'center',gap:6,padding:'6px 12px',fontSize:12,border:'1px solid var(--gold-dim)',color:'var(--gold)',background:hexToRgba('#c9a86c',0.08)}}
             onClick={()=>setShowTutorial(true)}>
             <Icon name="book" size={12} />
-            查看教程
+            {lang === 'en' ? 'View Tutorial' : '查看教程'}
           </button>
           <button className="btn btn-p" style={{padding:'6px 14px',fontSize:13}} onClick={()=>setShowCreate(true)}>
-            + 发布新插件
+            {lang === 'en' ? '+ Publish New Plugin' : '+ 发布新插件'}
           </button>
         </div>
       </div>
 
-      {loading ? <div style={{color:'var(--fg3)',fontSize:13}}>加载中…</div> :
+      {loading ? <div style={{color:'var(--fg3)',fontSize:13}}>{lang === 'en' ? 'Loading...' : '加载中…'}</div> :
        plugins.length === 0 ? (
         <div style={{textAlign:'center',padding:'40px 0',color:'var(--fg3)'}}>
           <Icon name="plug" size={32} style={{opacity:.3}} />
-          <div style={{marginTop:12,fontSize:14}}>还没有插件，发布第一个吧</div>
+          <div style={{marginTop:12,fontSize:14}}>{lang === 'en' ? 'No plugins yet. Publish your first one.' : '还没有插件，发布第一个吧'}</div>
         </div>
        ) : (
         <div style={{display:'flex',flexDirection:'column',gap:8}}>
@@ -905,7 +917,7 @@ function MyPluginList() {
               </div>
               {p.is_public && p.status === 'approved' && (
                 <span style={{fontSize:10,padding:'2px 8px',borderRadius:10,background:'rgba(47,140,255,.12)',color:'#7fb5ff',border:'1px solid rgba(47,140,255,.35)',flexShrink:0}}>
-                  主页可见
+                  {lang === 'en' ? 'Visible on Homepage' : '主页可见'}
                 </span>
               )}
               <span style={{fontSize:10,padding:'2px 8px',borderRadius:10,background:hexToRgba(STATUS_COLOR[p.status]||'#888',0.12),color:STATUS_COLOR[p.status]||'var(--fg3)',border:`1px solid ${STATUS_COLOR[p.status]||'var(--border)'}`,flexShrink:0}}>
@@ -913,15 +925,15 @@ function MyPluginList() {
               </span>
               <div style={{display:'flex',gap:6,flexShrink:0}}>
                 <button className="btn btn-s" style={{padding:'4px 8px',fontSize:11}} onClick={()=>{ window.location.hash = `#/app/plugin_${p.slug}`; }}>
-                  打开
+                  {lang === 'en' ? 'Open' : '打开'}
                 </button>
                 <button className="btn btn-s" style={{padding:'4px 8px',fontSize:11}}
                   onClick={()=>toggleHomepage(p)}
-                  title={p.status !== 'approved' ? '待审核插件发布后才会在主页可见' : ''}>
-                  {p.is_public ? '下架主页' : '发布主页'}
+                  title={p.status !== 'approved' ? (lang === 'en' ? 'Pending plugins only become visible on the homepage after approval' : '待审核插件发布后才会在主页可见') : ''}>
+                  {p.is_public ? (lang === 'en' ? 'Remove from Homepage' : '下架主页') : (lang === 'en' ? 'Publish to Homepage' : '发布主页')}
                 </button>
-                <button className="btn btn-s" style={{padding:'4px 8px',fontSize:11}} onClick={()=>setEditing(p)}>编辑</button>
-                <button className="btn" style={{padding:'4px 8px',fontSize:11,color:'var(--danger)',background:'transparent',border:'1px solid var(--danger)'}} onClick={()=>del(p)}>删除</button>
+                <button className="btn btn-s" style={{padding:'4px 8px',fontSize:11}} onClick={()=>setEditing(p)}>{lang === 'en' ? 'Edit' : '编辑'}</button>
+                <button className="btn" style={{padding:'4px 8px',fontSize:11,color:'var(--danger)',background:'transparent',border:'1px solid var(--danger)'}} onClick={()=>del(p)}>{lang === 'en' ? 'Delete' : '删除'}</button>
               </div>
             </div>
           ))}

@@ -35,6 +35,8 @@ INSTALLED_APPS = [
     'banished',
     'plugin',
     'lan_transfer',
+    'ssh_manager',
+    'tavern',
 ]
 
 MEDIA_URL = '/media/'

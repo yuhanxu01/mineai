@@ -54,7 +54,7 @@ class ConfigView(APIView):
 
     def post(self, request):
         if not request.user.is_authenticated or not request.user.is_staff:
-            return Response({'error': '权限不足，仅管理员可修改平台API配置'}, status=403)
+            return Response({'error': 'Insufficient permissions. Only admins can change platform API settings.'}, status=403)
         data = request.data
         APIConfig.objects.all().delete()
         config = APIConfig.objects.create(
@@ -104,18 +104,18 @@ class SimpleChatStreamView(View):
     def post(self, request):
         user = _token_auth(request)
         if not user:
-            return JsonResponse({"error": "需要认证"}, status=401)
+            return JsonResponse({"error": "Authentication required"}, status=401)
 
         try:
             data = json.loads(request.body or b'{}')
         except Exception:
-            return JsonResponse({"error": "请求格式错误"}, status=400)
+            return JsonResponse({"error": "Invalid request format"}, status=400)
 
         message = data.get('message', '').strip()
         history = data.get('history', [])
 
         if not message:
-            return JsonResponse({"error": "需要提供消息"}, status=400)
+            return JsonResponse({"error": "Message is required"}, status=400)
 
         messages = [
             {'role': m['role'], 'content': m['content']}
@@ -137,7 +137,7 @@ class SimpleChatStreamView(View):
             try:
                 for chunk in chat_stream(
                     messages,
-                    system="你是一个智能AI助手，可以帮助回答各种问题。请用中文回答，回答简洁明了。",
+                    system="You are a smart AI assistant that helps answer a wide range of questions. Reply concisely and clearly.",
                     temperature=0.7, max_tokens=2048,
                     config=config, user_id=user_id,
                 ):

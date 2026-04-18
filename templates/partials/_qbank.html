@@ -30,6 +30,7 @@ function QBModelBadge({model}) {
 }
 
 function QuestionBankApp({user, onLogout, onUpdateUser}) {
+  const lang = getLang();
   const token = localStorage.getItem('mf_token');
   const [view, setView] = React.useState('list'); // list | edit | shared | shared-detail
   const [questions, setQuestions] = React.useState([]);
@@ -93,7 +94,7 @@ function QuestionBankApp({user, onLogout, onUpdateUser}) {
       const data = await authFetch(`/api/qbank/questions/${q.id}/`);
       setCurrentQ(data);
       setView('edit');
-    } catch (e) { showAlert('加载失败: ' + e.message, '错误'); }
+    } catch (e) { showAlert((lang === 'en' ? 'Load failed: ' : '加载失败: ') + e.message, lang === 'en' ? 'Error' : '错误'); }
     setLoading(false);
   };
 
@@ -103,12 +104,12 @@ function QuestionBankApp({user, onLogout, onUpdateUser}) {
       const data = await authFetch(`/api/qbank/shared/${sq.id}/`);
       setCurrentShared(data);
       setView('shared-detail');
-    } catch (e) { showAlert('加载失败: ' + e.message, '错误'); }
+    } catch (e) { showAlert((lang === 'en' ? 'Load failed: ' : '加载失败: ') + e.message, lang === 'en' ? 'Error' : '错误'); }
     setLoading(false);
   };
 
   const deleteQuestion = async (q) => {
-    const confirmed = await showConfirm(`确认删除「${q.title}」？`);
+    const confirmed = await showConfirm(lang === 'en' ? `Delete "${q.title}"?` : `确认删除「${q.title}」？`);
     if (!confirmed) return;
     try {
       await fetch(`/api/qbank/questions/${q.id}/`, {method:'DELETE', headers});
@@ -121,15 +122,15 @@ function QuestionBankApp({user, onLogout, onUpdateUser}) {
       {/* 侧边栏 */}
       <div className={`sb${sbOpen?' open':''}`} style={{position:'relative',zIndex:10}}>
         <div className="sb-hd">
-          <h1>AI 题库</h1>
+          <h1>{lang === 'en' ? 'AI Question Bank' : 'AI 题库'}</h1>
           <p style={{fontSize:10,color:'var(--fg3)',marginTop:3,letterSpacing:2}}>QUESTION BANK</p>
         </div>
         <div className="sb-nav">
           <div className="ns">
-            <div className="ns-t">功能</div>
+            <div className="ns-t">{lang === 'en' ? 'Sections' : '功能'}</div>
             {[
-              {v:'list', label:'我的题目', icon:'note'},
-              {v:'shared', label:'共享题库', icon:'share-2'},
+              {v:'list', label:lang === 'en' ? 'My Questions' : '我的题目', icon:'note'},
+              {v:'shared', label:lang === 'en' ? 'Shared Bank' : '共享题库', icon:'share-2'},
             ].map(item => (
               <div key={item.v}
                 className={`ni${view===item.v||(!['shared','shared-detail'].includes(view)&&item.v==='list'&&view==='list')?' on':''}`}
@@ -141,18 +142,18 @@ function QuestionBankApp({user, onLogout, onUpdateUser}) {
           </div>
           {view === 'edit' && currentQ && (
             <div className="ns">
-              <div className="ns-t">当前题目</div>
+              <div className="ns-t">{lang === 'en' ? 'Current Question' : '当前题目'}</div>
               <div className="ni on" style={{fontSize:12,wordBreak:'break-word',whiteSpace:'normal',lineHeight:1.4}}>
-                {currentQ.title || '新题目'}
+                {currentQ.title || (lang === 'en' ? 'New Question' : '新题目')}
               </div>
             </div>
           )}
         </div>
         <div style={{padding:'10px 14px', borderTop:'1px solid var(--border)'}}>
-          <div style={{fontSize:11, color:'var(--fg3)', marginBottom:6}}>{user?.email || '访客'}</div>
+          <div style={{fontSize:11, color:'var(--fg3)', marginBottom:6}}>{user?.email || (lang === 'en' ? 'Guest' : '访客')}</div>
           <div style={{display:'flex', gap:6}}>
-            <button onClick={() => window.location.hash='#/'} style={{flex:1,background:'var(--bg3)',color:'var(--fg2)',padding:'5px 0',borderRadius:'var(--r)',fontSize:11}}>← MineAI 首页</button>
-            <button onClick={onLogout} style={{flex:1,background:'var(--bg3)',color:'var(--fg2)',padding:'5px 0',borderRadius:'var(--r)',fontSize:11}}>退出</button>
+            <button onClick={() => window.location.hash='#/'} style={{flex:1,background:'var(--bg3)',color:'var(--fg2)',padding:'5px 0',borderRadius:'var(--r)',fontSize:11}}>← MineAI Home</button>
+            <button onClick={onLogout} style={{flex:1,background:'var(--bg3)',color:'var(--fg2)',padding:'5px 0',borderRadius:'var(--r)',fontSize:11}}>{lang === 'en' ? 'Log out' : '退出'}</button>
           </div>
         </div>
       </div>
@@ -165,22 +166,22 @@ function QuestionBankApp({user, onLogout, onUpdateUser}) {
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
           </button>
           <span style={{fontSize:14,fontWeight:500,color:'var(--fg)'}}>
-            {view==='list'?'我的题目':view==='edit'?(currentQ?.id?`编辑: ${currentQ.title||'题目'}` :'新建题目'):view==='shared'?'共享题库':'题目详情'}
+            {view==='list'?(lang === 'en' ? 'My Questions' : '我的题目'):view==='edit'?(currentQ?.id?(lang === 'en' ? `Edit: ${currentQ.title||'Question'}` : `编辑: ${currentQ.title||'题目'}`) :(lang === 'en' ? 'New Question' : '新建题目')):view==='shared'?(lang === 'en' ? 'Shared Bank' : '共享题库'):(lang === 'en' ? 'Question Details' : '题目详情')}
           </span>
           {view === 'edit' && currentQ?.id && (
-            <button onClick={()=>setView('list')} style={{background:'transparent',color:'var(--fg3)',fontSize:12,marginLeft:8}}>← 返回列表</button>
+            <button onClick={()=>setView('list')} style={{background:'transparent',color:'var(--fg3)',fontSize:12,marginLeft:8}}>← {lang === 'en' ? 'Back to list' : '返回列表'}</button>
           )}
           {view === 'shared-detail' && (
-            <button onClick={()=>setView('shared')} style={{background:'transparent',color:'var(--fg3)',fontSize:12,marginLeft:8}}>← 返回题库</button>
+            <button onClick={()=>setView('shared')} style={{background:'transparent',color:'var(--fg3)',fontSize:12,marginLeft:8}}>← {lang === 'en' ? 'Back to bank' : '返回题库'}</button>
           )}
           {view === 'list' && (
-            <button className="btn btn-p btn-sm" style={{marginLeft:'auto'}} onClick={openNew}>+ 新建题目</button>
+            <button className="btn btn-p btn-sm" style={{marginLeft:'auto'}} onClick={openNew}>+ {lang === 'en' ? 'New Question' : '新建题目'}</button>
           )}
         </div>
 
         {/* 内容区 */}
         <div style={{flex:1,overflow:'auto',minHeight:0}}>
-          {loading && <div style={{textAlign:'center',padding:40,color:'var(--fg3)'}}>加载中…</div>}
+          {loading && <div style={{textAlign:'center',padding:40,color:'var(--fg3)'}}>{lang === 'en' ? 'Loading...' : '加载中…'}</div>}
           {!loading && view === 'list' && (
             <QBMyQuestions questions={questions} onOpen={openQuestion} onDelete={deleteQuestion} onNew={openNew} />
           )}
@@ -230,13 +231,14 @@ function QuestionBankApp({user, onLogout, onUpdateUser}) {
 // ── 我的题目列表 ──────────────────────────────────────────────────────────────
 
 function QBMyQuestions({questions, onOpen, onDelete, onNew}) {
+  const lang = getLang();
   if (questions.length === 0) {
     return (
       <div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',height:'100%',gap:16,color:'var(--fg3)'}}>
         <div style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:48,height:48,borderRadius:12,border:'1px solid var(--border2)',background:'var(--bg3)'}}><Icon name="note" size={22}/></div>
-        <div style={{fontSize:16,color:'var(--fg2)'}}>还没有题目</div>
-        <div style={{fontSize:13}}>上传题目图片，用 OCR 或视觉模型识别，然后让 AI 解答</div>
-        <button className="btn btn-p" style={{marginTop:8}} onClick={onNew}>新建题目</button>
+        <div style={{fontSize:16,color:'var(--fg2)'}}>{lang === 'en' ? 'No questions yet' : '还没有题目'}</div>
+        <div style={{fontSize:13}}>{lang === 'en' ? 'Upload an image, recognize it with OCR or a vision model, then let AI solve it.' : '上传题目图片，用 OCR 或视觉模型识别，然后让 AI 解答'}</div>
+        <button className="btn btn-p" style={{marginTop:8}} onClick={onNew}>{lang === 'en' ? 'New Question' : '新建题目'}</button>
       </div>
     );
   }
@@ -248,8 +250,8 @@ function QBMyQuestions({questions, onOpen, onDelete, onNew}) {
           onMouseLeave={e=>e.currentTarget.style.borderColor='var(--border)'}>
           <div style={{display:'flex',gap:8,alignItems:'flex-start',marginBottom:8}}>
             <div style={{flex:1,minWidth:0}} onClick={()=>onOpen(q)}>
-              <div style={{fontWeight:500,color:'var(--fg)',marginBottom:4,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{q.title || '未命名题目'}</div>
-              <div style={{fontSize:12,color:'var(--fg3)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{q.content || '(无文字内容)'}</div>
+              <div style={{fontWeight:500,color:'var(--fg)',marginBottom:4,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{q.title || (lang === 'en' ? 'Untitled question' : '未命名题目')}</div>
+              <div style={{fontSize:12,color:'var(--fg3)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{q.content || (lang === 'en' ? '(no text content)' : '(无文字内容)')}</div>
             </div>
             <button onClick={e=>{e.stopPropagation();onDelete(q);}}
               style={{background:'transparent',color:'var(--fg3)',fontSize:16,padding:'0 2px',lineHeight:1,flexShrink:0}}>×</button>
@@ -257,9 +259,9 @@ function QBMyQuestions({questions, onOpen, onDelete, onNew}) {
           <div style={{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center'}} onClick={()=>onOpen(q)}>
             <QBModelBadge model={q.model_used} />
             {q.subject && <span style={{fontSize:11,color:'var(--fg3)',padding:'1px 6px',borderRadius:8,background:'var(--bg4)'}}>{q.subject}</span>}
-            {q.is_published && <span style={{fontSize:11,color:'var(--green)',padding:'1px 6px',borderRadius:8,background:'rgba(94,184,122,0.12)'}}>已发布</span>}
-            {q.has_final_answer && <span style={{fontSize:11,color:'var(--gold)',padding:'1px 6px',borderRadius:8,background:'rgba(201,168,108,0.12)'}}>有答案</span>}
-            {q.has_image && <span style={{fontSize:11,color:'var(--cyan)',padding:'1px 6px',borderRadius:8,background:'rgba(90,196,180,0.12)'}}>有图片</span>}
+            {q.is_published && <span style={{fontSize:11,color:'var(--green)',padding:'1px 6px',borderRadius:8,background:'rgba(94,184,122,0.12)'}}>{lang === 'en' ? 'Published' : '已发布'}</span>}
+            {q.has_final_answer && <span style={{fontSize:11,color:'var(--gold)',padding:'1px 6px',borderRadius:8,background:'rgba(201,168,108,0.12)'}}>{lang === 'en' ? 'Has answer' : '有答案'}</span>}
+            {q.has_image && <span style={{fontSize:11,color:'var(--cyan)',padding:'1px 6px',borderRadius:8,background:'rgba(90,196,180,0.12)'}}>{lang === 'en' ? 'Has image' : '有图片'}</span>}
           </div>
           <div style={{fontSize:11,color:'var(--fg3)',marginTop:8,cursor:'pointer'}} onClick={()=>onOpen(q)}>
             {new Date(q.created_at).toLocaleDateString('zh-CN')}
@@ -511,13 +513,13 @@ function QBEditView({question, onSaved, onBack, token, headers, authFetch, user}
     <div style={{display:'flex',flexDirection:'column',height:'100%'}}>
       {/* Tab 导航 */}
       <div style={{display:'flex',borderBottom:'1px solid var(--border)',background:'var(--bg2)',flexShrink:0,paddingLeft:8}}>
-        <button style={tabStyle('question')} onClick={()=>setTab('question')}><span className="with-ic"><Icon name="scan" size={12}/>题目</span></button>
-        <button style={tabStyle('chat')} onClick={()=>setTab('chat')}><span className="with-ic"><Icon name="chat" size={12}/>AI 对话</span></button>
-        <button style={tabStyle('answer')} onClick={()=>setTab('answer')}><span className="with-ic"><Icon name="pen" size={12}/>最终答案</span></button>
-        <button style={tabStyle('standard')} onClick={()=>setTab('standard')}><span className="with-ic"><Icon name="clipboard" size={12}/>标准答案</span></button>
-        <button style={tabStyle('publish')} onClick={()=>setTab('publish')}><span className="with-ic"><Icon name="share-2" size={12}/>发布</span></button>
+        <button style={tabStyle('question')} onClick={()=>setTab('question')}><span className="with-ic"><Icon name="scan" size={12}/>{lang === 'en' ? 'Question' : '题目'}</span></button>
+        <button style={tabStyle('chat')} onClick={()=>setTab('chat')}><span className="with-ic"><Icon name="chat" size={12}/>{lang === 'en' ? 'AI Chat' : 'AI 对话'}</span></button>
+        <button style={tabStyle('answer')} onClick={()=>setTab('answer')}><span className="with-ic"><Icon name="pen" size={12}/>{lang === 'en' ? 'Final Answer' : '最终答案'}</span></button>
+        <button style={tabStyle('standard')} onClick={()=>setTab('standard')}><span className="with-ic"><Icon name="clipboard" size={12}/>{lang === 'en' ? 'Standard Answer' : '标准答案'}</span></button>
+        <button style={tabStyle('publish')} onClick={()=>setTab('publish')}><span className="with-ic"><Icon name="share-2" size={12}/>{lang === 'en' ? 'Publish' : '发布'}</span></button>
         <button className="btn btn-p btn-sm" style={{marginLeft:'auto',marginRight:8,marginTop:4,marginBottom:4}} onClick={saveQuestion} disabled={saving}>
-          {saving ? '保存中…' : '保存'}
+          {saving ? (lang === 'en' ? 'Saving...' : '保存中…') : (lang === 'en' ? 'Save' : '保存')}
         </button>
       </div>
 
@@ -528,29 +530,29 @@ function QBEditView({question, onSaved, onBack, token, headers, authFetch, user}
         {tab === 'question' && (
           <div style={{maxWidth:800,margin:'0 auto',display:'flex',flexDirection:'column',gap:16}}>
             <div style={{display:'flex',gap:12,alignItems:'center',flexWrap:'wrap'}}>
-              <label style={{fontSize:13,color:'var(--fg2)'}}>模型选择：</label>
+              <label style={{fontSize:13,color:'var(--fg2)'}}>{lang === 'en' ? 'Model:' : '模型选择：'}</label>
               <button onClick={()=>handleModelChange('glm-4.7-flash')}
                 style={{padding:'5px 12px',borderRadius:20,border:`1px solid ${model==='glm-4.7-flash'?'var(--blue)':'var(--border2)'}`,
                   background:model==='glm-4.7-flash'?'rgba(90,138,196,0.15)':'transparent',
                   color:model==='glm-4.7-flash'?'var(--blue)':'var(--fg3)',fontSize:12,cursor:'pointer'}}>
-                <span className="with-ic"><Icon name="chat" size={12}/>GLM-4.7（文字题）</span>
+                <span className="with-ic"><Icon name="chat" size={12}/>GLM-4.7 ({lang === 'en' ? 'Text' : '文字题'})</span>
               </button>
               <button onClick={()=>handleModelChange('glm-4v-flash')}
                 style={{padding:'5px 12px',borderRadius:20,border:`1px solid ${model==='glm-4v-flash'?'var(--purple)':'var(--border2)'}`,
                   background:model==='glm-4v-flash'?'rgba(154,106,196,0.15)':'transparent',
                   color:model==='glm-4v-flash'?'var(--purple)':'var(--fg3)',fontSize:12,cursor:'pointer'}}>
-                <span className="with-ic"><Icon name="eye" size={12}/>GLM-4V（几何/图形题）</span>
+                <span className="with-ic"><Icon name="eye" size={12}/>GLM-4V ({lang === 'en' ? 'Geometry / image' : '几何/图形题'})</span>
               </button>
             </div>
 
             <div style={{display:'flex',gap:12,flexWrap:'wrap'}}>
               <div style={{flex:'1 1 140px'}}>
-                <div style={{fontSize:12,color:'var(--fg3)',marginBottom:4}}>科目/标签</div>
-                <input value={q.subject} onChange={e=>setQ(p=>({...p,subject:e.target.value}))} placeholder="如：数学、物理…" style={{width:'100%'}} />
+                <div style={{fontSize:12,color:'var(--fg3)',marginBottom:4}}>{lang === 'en' ? 'Subject / tags' : '科目/标签'}</div>
+                <input value={q.subject} onChange={e=>setQ(p=>({...p,subject:e.target.value}))} placeholder={lang === 'en' ? 'e.g. math, physics...' : '如：数学、物理…'} style={{width:'100%'}} />
               </div>
               <div style={{flex:'2 1 200px'}}>
-                <div style={{fontSize:12,color:'var(--fg3)',marginBottom:4}}>题目标题</div>
-                <input value={q.title} onChange={e=>setQ(p=>({...p,title:e.target.value}))} placeholder="题目标题（可选，留空自动截取）" style={{width:'100%'}} />
+                <div style={{fontSize:12,color:'var(--fg3)',marginBottom:4}}>{lang === 'en' ? 'Title' : '题目标题'}</div>
+                <input value={q.title} onChange={e=>setQ(p=>({...p,title:e.target.value}))} placeholder={lang === 'en' ? 'Optional title; leave blank to auto-extract' : '题目标题（可选，留空自动截取）'} style={{width:'100%'}} />
               </div>
             </div>
 
@@ -562,7 +564,7 @@ function QBEditView({question, onSaved, onBack, token, headers, authFetch, user}
                   <div style={{display:'flex',gap:8,justifyContent:'center',flexWrap:'wrap'}}>
                     {model !== 'glm-4v-flash' && (
                       <button className="btn btn-p btn-sm" onClick={runOCR} disabled={ocrLoading}>
-                        {ocrLoading ? '识别中…' : <span className="with-ic"><Icon name="search" size={12}/>OCR 识别文字</span>}
+                        {ocrLoading ? (lang === 'en' ? 'Recognizing...' : '识别中…') : <span className="with-ic"><Icon name="search" size={12}/>{lang === 'en' ? 'OCR Text Recognition' : 'OCR 识别文字'}</span>}
                       </button>
                     )}
                     <label className="btn btn-s btn-sm" style={{cursor:'pointer',display:'inline-flex',alignItems:'center',gap:4}}>
@@ -578,8 +580,8 @@ function QBEditView({question, onSaved, onBack, token, headers, authFetch, user}
               ) : (
                 <label style={{cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',gap:8,padding:12}}>
                   <div style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:42,height:42,borderRadius:10,border:'1px solid var(--border2)',background:'var(--bg2)'}}><Icon name="scan" size={18}/></div>
-                  <div style={{fontSize:14,color:'var(--fg2)'}}>点击上传题目图片</div>
-                  <div style={{fontSize:12,color:'var(--fg3)'}}>支持 JPG / PNG，上传后可 OCR 识别文字或直接用视觉模型解题</div>
+                  <div style={{fontSize:14,color:'var(--fg2)'}}>{lang === 'en' ? 'Click to upload a question image' : '点击上传题目图片'}</div>
+                  <div style={{fontSize:12,color:'var(--fg3)'}}>{lang === 'en' ? 'Supports JPG / PNG. After upload, you can OCR the text or solve directly with a vision model.' : '支持 JPG / PNG，上传后可 OCR 识别文字或直接用视觉模型解题'}</div>
                   <input type="file" accept="image/*" style={{display:'none'}} onChange={handleImageUpload} />
                 </label>
               )}
@@ -589,19 +591,19 @@ function QBEditView({question, onSaved, onBack, token, headers, authFetch, user}
             <div>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
                 <span style={{fontSize:12,color:'var(--fg3)'}}>
-                  题目文字内容
-                  {model !== 'glm-4v-flash' && <span style={{marginLeft:6,color:'var(--fg3)',fontSize:11}}>（OCR识别后可在此编辑）</span>}
-                  {model === 'glm-4v-flash' && <span style={{marginLeft:6,color:'var(--purple)',fontSize:11}}>（视觉模型将直接读取图片，文字可选填）</span>}
+                  {lang === 'en' ? 'Question text' : '题目文字内容'}
+                  {model !== 'glm-4v-flash' && <span style={{marginLeft:6,color:'var(--fg3)',fontSize:11}}>{lang === 'en' ? '(editable after OCR)' : '（OCR识别后可在此编辑）'}</span>}
+                  {model === 'glm-4v-flash' && <span style={{marginLeft:6,color:'var(--purple)',fontSize:11}}>{lang === 'en' ? '(the vision model reads the image directly; text is optional)' : '（视觉模型将直接读取图片，文字可选填）'}</span>}
                 </span>
               </div>
               <textarea value={q.content} onChange={e=>setQ(p=>({...p,content:e.target.value}))}
-                placeholder={model === 'glm-4v-flash' ? '可选：用文字补充描述题目…' : '在此粘贴或编辑题目文字…'}
+                placeholder={model === 'glm-4v-flash' ? (lang === 'en' ? 'Optional: add text to describe the question...' : '可选：用文字补充描述题目…') : (lang === 'en' ? 'Paste or edit the question text here...' : '在此粘贴或编辑题目文字…')}
                 style={{width:'100%',minHeight:140,fontFamily:'var(--mono)',fontSize:13}} />
             </div>
 
             <div style={{display:'flex',justifyContent:'flex-end',gap:8}}>
               <button className="btn btn-p" onClick={()=>{ saveQuestion().then(()=>setTab('chat')); }}>
-                保存并去 AI 对话 →
+                {lang === 'en' ? 'Save and go to AI chat →' : '保存并去 AI 对话 →'}
               </button>
             </div>
           </div>
@@ -612,7 +614,7 @@ function QBEditView({question, onSaved, onBack, token, headers, authFetch, user}
           <div style={{display:'flex',flexDirection:'column',height:'calc(100vh - 140px)',maxWidth:800,margin:'0 auto'}}>
             {/* 模型切换提示 */}
             <div style={{display:'flex',gap:8,alignItems:'center',marginBottom:12,padding:'8px 12px',background:'var(--bg3)',borderRadius:8,flexShrink:0}}>
-              <span style={{fontSize:12,color:'var(--fg3)',marginRight:4}}>当前模型：</span>
+              <span style={{fontSize:12,color:'var(--fg3)',marginRight:4}}>{lang === 'en' ? 'Current model:' : '当前模型：'}</span>
               <button onClick={()=>handleModelChange('glm-4.7-flash')}
                 style={{padding:'3px 10px',borderRadius:14,border:`1px solid ${model==='glm-4.7-flash'?'var(--blue)':'var(--border2)'}`,
                   background:model==='glm-4.7-flash'?'rgba(90,138,196,0.15)':'transparent',
@@ -625,11 +627,11 @@ function QBEditView({question, onSaved, onBack, token, headers, authFetch, user}
                   color:model==='glm-4v-flash'?'var(--purple)':'var(--fg3)',fontSize:11,cursor:'pointer'}}>
                 <span className="with-ic"><Icon name="eye" size={11}/>GLM-4V</span>
               </button>
-              <span style={{fontSize:11,color:'var(--fg3)',marginLeft:4}}>切换模型不会清空对话历史</span>
+              <span style={{fontSize:11,color:'var(--fg3)',marginLeft:4}}>{lang === 'en' ? 'Switching models will not clear chat history' : '切换模型不会清空对话历史'}</span>
               {msgs.length > 0 && (
                 <button style={{marginLeft:'auto',background:'transparent',color:'var(--fg3)',fontSize:12,cursor:'pointer',border:'1px solid var(--border2)',borderRadius:4,padding:'2px 8px'}}
-                  onClick={async ()=>{ const confirmed = await showConfirm('确认清空对话历史？'); if(confirmed) setMsgs([]); }}>
-                  清空对话
+                  onClick={async ()=>{ const confirmed = await showConfirm(lang === 'en' ? 'Clear chat history?' : '确认清空对话历史？'); if(confirmed) setMsgs([]); }}>
+                  {lang === 'en' ? 'Clear chat' : '清空对话'}
                 </button>
               )}
             </div>
@@ -639,17 +641,17 @@ function QBEditView({question, onSaved, onBack, token, headers, authFetch, user}
               {msgs.length === 0 && !streaming && (
                 <div style={{textAlign:'center',color:'var(--fg3)',padding:30}}>
                   <div style={{marginBottom:8}}><Icon name="bot" size={20}/></div>
-                  <div style={{fontSize:14,marginBottom:4}}>向 AI 提问</div>
-                  <div style={{fontSize:12}}>描述你的问题，或让 AI 解答题目图片中的内容</div>
+                  <div style={{fontSize:14,marginBottom:4}}>{lang === 'en' ? 'Ask AI' : '向 AI 提问'}</div>
+                  <div style={{fontSize:12}}>{lang === 'en' ? 'Describe your problem, or let AI answer from the image.' : '描述你的问题，或让 AI 解答题目图片中的内容'}</div>
                   {q.content && (
                     <button className="btn btn-p btn-sm" style={{marginTop:12}} onClick={()=>setChatInput(`请解答以下题目：\n\n${q.content}`)}>
-                      一键发送题目内容
+                      {lang === 'en' ? 'Send question text' : '一键发送题目内容'}
                     </button>
                   )}
                   {model === 'glm-4v-flash' && q.has_image && (
                     <button className="btn btn-sm" style={{marginTop:8,marginLeft:8,background:'rgba(154,106,196,0.15)',color:'var(--purple)',border:'1px solid var(--purple)'}}
                       onClick={()=>setChatInput('请解答这道题，请给出详细解题步骤。')}>
-                      让 GLM-4V 直接看图解题
+                      {lang === 'en' ? 'Let GLM-4V solve from the image' : '让 GLM-4V 直接看图解题'}
                     </button>
                   )}
                 </div>
@@ -657,7 +659,7 @@ function QBEditView({question, onSaved, onBack, token, headers, authFetch, user}
               {msgs.map((m, i) => (
                 <div key={i} style={{display:'flex',flexDirection:'column',alignItems:m.role==='user'?'flex-end':'flex-start'}}>
                   <div style={{fontSize:11,color:'var(--fg3)',marginBottom:3,display:'flex',alignItems:'center',gap:6}}>
-                    <span>{m.role==='user'?'你':'AI'}</span>
+                    <span>{m.role==='user' ? (lang === 'en' ? 'You' : '你') : 'AI'}</span>
                     {m.model_used && <QBModelBadge model={m.model_used} />}
                   </div>
                   <div style={{
@@ -671,7 +673,7 @@ function QBEditView({question, onSaved, onBack, token, headers, authFetch, user}
                       <button onClick={()=>importFromChat(m.content)}
                         style={{marginTop:8,background:'transparent',color:'var(--gold)',fontSize:11,cursor:'pointer',
                           border:'1px solid var(--gold-dim)',borderRadius:4,padding:'2px 8px',display:'block'}}>
-                        → 用作最终答案
+                        → {lang === 'en' ? 'Use as final answer' : '用作最终答案'}
                       </button>
                     )}
                   </div>
@@ -688,7 +690,7 @@ function QBEditView({question, onSaved, onBack, token, headers, authFetch, user}
                   </div>
                 </div>
               )}
-              {streaming && !streamText && <div style={{color:'var(--fg3)',fontSize:12,textAlign:'center'}}>AI 思考中…</div>}
+              {streaming && !streamText && <div style={{color:'var(--fg3)',fontSize:12,textAlign:'center'}}>{lang === 'en' ? 'AI is thinking...' : 'AI 思考中…'}</div>}
               <div ref={chatEndRef} />
             </div>
 
@@ -696,10 +698,10 @@ function QBEditView({question, onSaved, onBack, token, headers, authFetch, user}
             <div style={{display:'flex',gap:8,marginTop:8,flexShrink:0}}>
               <textarea value={chatInput} onChange={e=>setChatInput(e.target.value)}
                 onKeyDown={e=>{ if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage();} }}
-                placeholder="输入消息… (Enter 发送, Shift+Enter 换行)"
+                placeholder={lang === 'en' ? 'Enter message... (Enter to send, Shift+Enter for a new line)' : '输入消息… (Enter 发送, Shift+Enter 换行)'}
                 style={{flex:1,minHeight:60,maxHeight:120,resize:'vertical',fontFamily:'var(--sans)',fontSize:13}} />
               <button className="btn btn-p" style={{alignSelf:'flex-end'}} onClick={sendMessage} disabled={streaming||!chatInput.trim()}>
-                {streaming ? '…' : '发送'}
+                {streaming ? (lang === 'en' ? '...' : '…') : (lang === 'en' ? 'Send' : '发送')}
               </button>
             </div>
           </div>
@@ -709,32 +711,32 @@ function QBEditView({question, onSaved, onBack, token, headers, authFetch, user}
         {tab === 'answer' && (
           <div style={{maxWidth:800,margin:'0 auto',display:'flex',flexDirection:'column',gap:16}}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-              <h3 style={{fontSize:16,color:'var(--fg)'}}>最终答案（Markdown）</h3>
+              <h3 style={{fontSize:16,color:'var(--fg)'}}>{lang === 'en' ? 'Final Answer (Markdown)' : '最终答案（Markdown）'}</h3>
               <div style={{display:'flex',gap:8}}>
                 {!editingFinal && finalAnswer && (
-                  <button className="btn btn-s btn-sm" onClick={()=>setEditingFinal(true)}>编辑</button>
+                  <button className="btn btn-s btn-sm" onClick={()=>setEditingFinal(true)}>{lang === 'en' ? 'Edit' : '编辑'}</button>
                 )}
                 {editingFinal && (
-                  <button className="btn btn-p btn-sm" onClick={saveFinal}>保存答案</button>
+                  <button className="btn btn-p btn-sm" onClick={saveFinal}>{lang === 'en' ? 'Save Answer' : '保存答案'}</button>
                 )}
               </div>
             </div>
             {editingFinal || !finalAnswer ? (
               <div>
                 <textarea value={finalAnswer} onChange={e=>setFinalAnswer(e.target.value)}
-                  placeholder="在此编写最终答案（支持 Markdown 和 LaTeX 数学公式）"
+                  placeholder={lang === 'en' ? 'Write the final answer here (Markdown and LaTeX supported)' : '在此编写最终答案（支持 Markdown 和 LaTeX 数学公式）'}
                   style={{width:'100%',minHeight:300,fontFamily:'var(--mono)',fontSize:13}} />
                 {!editingFinal && (
                   <div style={{marginTop:8,display:'flex',gap:8}}>
                     <button className="btn btn-p btn-sm" onClick={()=>{setEditingFinal(true);}} disabled={!finalAnswer.trim()}>
-                      保存为最终答案
+                      {lang === 'en' ? 'Save as Final Answer' : '保存为最终答案'}
                     </button>
                   </div>
                 )}
                 {editingFinal && (
                   <div style={{marginTop:8,display:'flex',gap:8}}>
-                    <button className="btn btn-p btn-sm" onClick={saveFinal}>保存</button>
-                    <button className="btn btn-s btn-sm" onClick={()=>setEditingFinal(false)}>取消</button>
+                    <button className="btn btn-p btn-sm" onClick={saveFinal}>{lang === 'en' ? 'Save' : '保存'}</button>
+                    <button className="btn btn-s btn-sm" onClick={()=>setEditingFinal(false)}>{lang === 'en' ? 'Cancel' : '取消'}</button>
                   </div>
                 )}
               </div>
@@ -745,7 +747,9 @@ function QBEditView({question, onSaved, onBack, token, headers, authFetch, user}
             )}
             {!finalAnswer && msgs.length === 0 && (
               <div style={{color:'var(--fg3)',fontSize:13,textAlign:'center',padding:20}}>
-                先在「AI 对话」标签页与 AI 交流，然后点击「→ 用作最终答案」将 AI 回答引入到此处进行编辑和完善。
+                {lang === 'en'
+                  ? 'Chat with the AI in the "AI Chat" tab first, then click "→ Use as Final Answer" to bring the reply here for editing and refinement.'
+                  : '先在「AI 对话」标签页与 AI 交流，然后点击「→ 用作最终答案」将 AI 回答引入到此处进行编辑和完善。'}
               </div>
             )}
           </div>
@@ -754,41 +758,41 @@ function QBEditView({question, onSaved, onBack, token, headers, authFetch, user}
         {/* ── 标准答案面板 ────────────────────────────────────── */}
         {tab === 'standard' && (
           <div style={{maxWidth:800,margin:'0 auto',display:'flex',flexDirection:'column',gap:16}}>
-            <h3 style={{fontSize:16,color:'var(--fg)'}}>标准答案（可选）</h3>
-            <div style={{fontSize:13,color:'var(--fg3)'}}>上传官方标准答案，支持图片或 Markdown 文字，发布后其他用户可查看。</div>
+            <h3 style={{fontSize:16,color:'var(--fg)'}}>{lang === 'en' ? 'Reference Answer (Optional)' : '标准答案（可选）'}</h3>
+            <div style={{fontSize:13,color:'var(--fg3)'}}>{lang === 'en' ? 'Upload the official reference answer as an image or Markdown text. Other users can view it after publishing.' : '上传官方标准答案，支持图片或 Markdown 文字，发布后其他用户可查看。'}</div>
 
             <div>
-              <div style={{fontSize:12,color:'var(--fg3)',marginBottom:6}}>文字标准答案（Markdown）</div>
+              <div style={{fontSize:12,color:'var(--fg3)',marginBottom:6}}>{lang === 'en' ? 'Text answer (Markdown)' : '文字标准答案（Markdown）'}</div>
               <textarea value={stdMd} onChange={e=>setStdMd(e.target.value)}
-                placeholder="在此粘贴标准答案文字，支持 Markdown 和 LaTeX…"
+                placeholder={lang === 'en' ? 'Paste the reference answer text here. Markdown and LaTeX supported.' : '在此粘贴标准答案文字，支持 Markdown 和 LaTeX…'}
                 style={{width:'100%',minHeight:160,fontFamily:'var(--mono)',fontSize:13}} />
             </div>
 
             <div style={{border:'1px dashed var(--border2)',borderRadius:8,padding:16,background:'var(--bg3)'}}>
-              <div style={{fontSize:12,color:'var(--fg3)',marginBottom:8}}>标准答案图片（可选）</div>
+              <div style={{fontSize:12,color:'var(--fg3)',marginBottom:8}}>{lang === 'en' ? 'Reference image (optional)' : '标准答案图片（可选）'}</div>
               {stdPreview ? (
                 <div>
-                  <img src={stdPreview} alt="标准答案" style={{maxWidth:'100%',maxHeight:300,borderRadius:6,marginBottom:8}} />
+                  <img src={stdPreview} alt={lang === 'en' ? 'Reference answer' : '标准答案'} style={{maxWidth:'100%',maxHeight:300,borderRadius:6,marginBottom:8}} />
                   <div style={{display:'flex',gap:8}}>
                     <label className="btn btn-s btn-sm" style={{cursor:'pointer'}}>
-                      换图片
+                      {lang === 'en' ? 'Replace Image' : '换图片'}
                       <input type="file" accept="image/*" style={{display:'none'}} onChange={handleStdImage} />
                     </label>
                     <button className="btn btn-sm" style={{background:'var(--bg5)',color:'var(--fg3)'}}
-                      onClick={()=>{ setStdImage(''); setStdPreview(''); }}>移除</button>
+                      onClick={()=>{ setStdImage(''); setStdPreview(''); }}>{lang === 'en' ? 'Remove' : '移除'}</button>
                   </div>
                 </div>
               ) : (
                 <label style={{cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',gap:6,padding:12}}>
                   <div style={{fontSize:28}}>🖼</div>
-                  <div style={{fontSize:13,color:'var(--fg2)'}}>点击上传标准答案图片</div>
+                  <div style={{fontSize:13,color:'var(--fg2)'}}>{lang === 'en' ? 'Click to upload a reference image' : '点击上传标准答案图片'}</div>
                   <input type="file" accept="image/*" style={{display:'none'}} onChange={handleStdImage} />
                 </label>
               )}
             </div>
 
             <button className="btn btn-p btn-sm" style={{width:'fit-content'}} onClick={saveStandard}>
-              保存标准答案
+              {lang === 'en' ? 'Save Reference Answer' : '保存标准答案'}
             </button>
           </div>
         )}
@@ -797,16 +801,17 @@ function QBEditView({question, onSaved, onBack, token, headers, authFetch, user}
         {tab === 'publish' && (
           <div style={{maxWidth:600,margin:'0 auto',display:'flex',flexDirection:'column',gap:16,alignItems:'center',textAlign:'center',paddingTop:20}}>
             <div style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:56,height:56,borderRadius:16,border:'1px solid var(--border2)',background:'var(--bg3)'}}><Icon name="share-2" size={24}/></div>
-            <h3 style={{fontSize:18,color:'var(--fg)'}}>发布到共享题库</h3>
+            <h3 style={{fontSize:18,color:'var(--fg)'}}>{lang === 'en' ? 'Publish to Shared Question Bank' : '发布到共享题库'}</h3>
             <div style={{fontSize:13,color:'var(--fg3)',maxWidth:400,lineHeight:1.8}}>
-              发布后，所有用户可以查看题目内容、AI 解答和标准答案。
-              其他用户可以点赞、收藏和评论。
+              {lang === 'en' ? 'After publishing, all users can view the question, AI answer, and reference answer.' : '发布后，所有用户可以查看题目内容、AI 解答和标准答案。'}
+              <br />
+              {lang === 'en' ? 'Other users can like, favorite, and comment.' : '其他用户可以点赞、收藏和评论。'}
             </div>
             <div style={{display:'flex',gap:12,flexWrap:'wrap',justifyContent:'center'}}>
               {[
-                {label:'题目内容', ok: !!q.content || !!q.original_image},
-                {label:'最终答案', ok: !!finalAnswer || q.has_final_answer},
-                {label:'标准答案', ok: q.has_standard_answer || !!stdMd},
+                {label:lang === 'en' ? 'Question content' : '题目内容', ok: !!q.content || !!q.original_image},
+                {label:lang === 'en' ? 'Final answer' : '最终答案', ok: !!finalAnswer || q.has_final_answer},
+                {label:lang === 'en' ? 'Reference answer' : '标准答案', ok: q.has_standard_answer || !!stdMd},
               ].map(item => (
                 <div key={item.label} style={{padding:'6px 14px',borderRadius:20,fontSize:12,
                   background:item.ok?'rgba(94,184,122,0.12)':'var(--bg3)',
@@ -816,19 +821,19 @@ function QBEditView({question, onSaved, onBack, token, headers, authFetch, user}
                 </div>
               ))}
             </div>
-            {!q.id && <div style={{color:'var(--orange)',fontSize:13}}>请先保存题目</div>}
+            {!q.id && <div style={{color:'var(--orange)',fontSize:13}}>{lang === 'en' ? 'Please save the question first' : '请先保存题目'}</div>}
             {q.is_published ? (
               <div style={{display:'flex',flexDirection:'column',gap:12,alignItems:'center'}}>
-                <div style={{color:'var(--green)',fontSize:14}}>✓ 已发布到共享题库</div>
+                <div style={{color:'var(--green)',fontSize:14}}>{lang === 'en' ? '✓ Published to shared question bank' : '✓ 已发布到共享题库'}</div>
                 <div style={{display:'flex',gap:8}}>
-                  <button className="btn btn-p btn-sm" onClick={publish} disabled={publishing}>更新发布</button>
+                  <button className="btn btn-p btn-sm" onClick={publish} disabled={publishing}>{lang === 'en' ? 'Update Publish' : '更新发布'}</button>
                   <button className="btn btn-sm" style={{background:'rgba(196,90,90,0.15)',color:'var(--red)',border:'1px solid var(--red)'}}
-                    onClick={unpublish}>取消发布</button>
+                    onClick={unpublish}>{lang === 'en' ? 'Unpublish' : '取消发布'}</button>
                 </div>
               </div>
             ) : (
               <button className="btn btn-p" onClick={publish} disabled={publishing || !q.id} style={{padding:'10px 28px'}}>
-                {publishing ? '发布中…' : '发布到共享题库'}
+                {publishing ? (lang === 'en' ? 'Publishing...' : '发布中…') : (lang === 'en' ? 'Publish to Shared Question Bank' : '发布到共享题库')}
               </button>
             )}
           </div>
@@ -846,17 +851,17 @@ function QBSharedList({list, search, subject, onSearchChange, onSubjectChange, o
       <div style={{display:'flex',gap:10,marginBottom:20,flexWrap:'wrap',alignItems:'center'}}>
         <input value={search} onChange={e=>onSearchChange(e.target.value)}
           onKeyDown={e=>e.key==='Enter'&&onSearch()}
-          placeholder="搜索题目…" style={{flex:'1 1 200px',maxWidth:300}} />
+          placeholder={lang === 'en' ? 'Search questions...' : '搜索题目…'} style={{flex:'1 1 200px',maxWidth:300}} />
         <input value={subject} onChange={e=>onSubjectChange(e.target.value)}
           onKeyDown={e=>e.key==='Enter'&&onSearch()}
-          placeholder="科目筛选…" style={{flex:'1 1 120px',maxWidth:160}} />
-        <button className="btn btn-p btn-sm" onClick={onSearch}>搜索</button>
-        <span style={{fontSize:12,color:'var(--fg3)',marginLeft:'auto'}}>{list.length} 道题</span>
+          placeholder={lang === 'en' ? 'Filter by subject...' : '科目筛选…'} style={{flex:'1 1 120px',maxWidth:160}} />
+        <button className="btn btn-p btn-sm" onClick={onSearch}>{lang === 'en' ? 'Search' : '搜索'}</button>
+        <span style={{fontSize:12,color:'var(--fg3)',marginLeft:'auto'}}>{list.length} {lang === 'en' ? 'questions' : '道题'}</span>
       </div>
       {list.length === 0 && (
         <div style={{textAlign:'center',padding:40,color:'var(--fg3)'}}>
           <div style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:46,height:46,borderRadius:12,border:'1px solid var(--border2)',background:'var(--bg3)',marginBottom:8}}><Icon name="share-2" size={18}/></div>
-          <div>共享题库暂无内容</div>
+          <div>{lang === 'en' ? 'No content in the shared bank yet' : '共享题库暂无内容'}</div>
         </div>
       )}
       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(300px,1fr))',gap:14}}>
@@ -966,7 +971,7 @@ function QBSharedDetail({shared, onBack, token, headers, authFetch, user, onRelo
       <div style={{borderBottom:'1px solid var(--border)',marginBottom:16,display:'flex'}}>
         <button style={sectionStyle('question')} onClick={()=>setActiveSection('question')}><span className="with-ic"><Icon name="note" size={12}/>题目</span></button>
         {shared.final_answer && <button style={sectionStyle('answer')} onClick={()=>setActiveSection('answer')}><span className="with-ic"><Icon name="pen" size={12}/>AI 解答</span></button>}
-        {(shared.standard_answer_md || shared.standard_answer_image) && <button style={sectionStyle('standard')} onClick={()=>setActiveSection('standard')}><span className="with-ic"><Icon name="clipboard" size={12}/>标准答案</span></button>}
+        {(shared.standard_answer_md || shared.standard_answer_image) && <button style={sectionStyle('standard')} onClick={()=>setActiveSection('standard')}><span className="with-ic"><Icon name="clipboard" size={12}/>{lang === 'en' ? 'Reference Answer' : '标准答案'}</span></button>}
         <button style={sectionStyle('comments')} onClick={()=>setActiveSection('comments')}><span className="with-ic"><Icon name="chat" size={12}/>评论 ({comments.length})</span></button>
       </div>
 
@@ -992,7 +997,7 @@ function QBSharedDetail({shared, onBack, token, headers, authFetch, user, onRelo
       {activeSection === 'standard' && (
         <div style={{display:'flex',flexDirection:'column',gap:14}}>
           {shared.standard_answer_image && (
-            <img src={shared.standard_answer_image} alt="标准答案" style={{maxWidth:'100%',maxHeight:500,borderRadius:8,display:'block'}} />
+            <img src={shared.standard_answer_image} alt={lang === 'en' ? 'Reference answer' : '标准答案'} style={{maxWidth:'100%',maxHeight:500,borderRadius:8,display:'block'}} />
           )}
           {shared.standard_answer_md && (
             <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:8,padding:16}}>
@@ -1024,7 +1029,7 @@ function QBSharedDetail({shared, onBack, token, headers, authFetch, user, onRelo
                 onKeyDown={e=>{ if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();postComment();} }}
                 placeholder="写下你的评论…" style={{flex:1,minHeight:72,fontFamily:'var(--sans)'}} />
               <button className="btn btn-p" style={{alignSelf:'flex-end'}} onClick={postComment} disabled={submitting||!comment.trim()}>
-                {submitting ? '…' : '发送'}
+                {submitting ? (lang === 'en' ? '...' : '…') : (lang === 'en' ? 'Send' : '发送')}
               </button>
             </div>
           ) : (

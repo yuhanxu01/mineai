@@ -8,3 +8,5 @@ numpy>=1.26
 opencv-python-headless>=4.8
 gunicorn>=21.2
 redis>=5.0
+paramiko>=3.0
+cryptography>=41.0

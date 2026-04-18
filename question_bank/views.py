@@ -38,7 +38,7 @@ def _get_api_config(user=None):
         return {'api_key': user.user_api_key, 'api_base': api_base}
     cfg = APIConfig.get_active()
     if not cfg:
-        raise ValueError('平台 API 未配置，请联系管理员或填写自己的 API 密钥')
+        raise ValueError('Platform API is not configured. Please contact an admin or set your own API key.')
     return {'api_key': cfg.api_key, 'api_base': cfg.api_base}
 
 
@@ -89,7 +89,7 @@ def _glm_chat_stream(messages, model, api_key, api_base, project_id=None, user_i
                     pass
     except urllib.error.HTTPError as e:
         body = e.read().decode('utf-8') if e.fp else str(e)
-        raise ValueError(f'GLM API 错误 {e.code}: {body}')
+        raise ValueError(f'GLM API error {e.code}: {body}')
 
     AgentLog.objects.create(
         project_id=project_id,
@@ -184,7 +184,7 @@ class OCRView(APIView):
         api_key_override = request.data.get('api_key', '').strip()
 
         if not image_b64:
-            return Response({'error': '请提供图片数据'}, status=400)
+            return Response({'error': 'Please provide image data'}, status=400)
 
         try:
             cfg = _get_api_config(request.user)
@@ -206,11 +206,11 @@ class OCRView(APIView):
                 timeout=120,
             )
         except requests.RequestException as e:
-            return Response({'error': f'网络错误: {e}'}, status=503)
+            return Response({'error': f'Network error: {e}'}, status=503)
 
         if resp.status_code != 200:
             return Response(
-                {'error': f'OCR API 错误 {resp.status_code}: {resp.text[:300]}'},
+                {'error': f'OCR API error {resp.status_code}: {resp.text[:300]}'},
                 status=502,
             )
 
@@ -248,7 +248,7 @@ class QuestionListView(APIView):
 
         q = Question.objects.create(
             user=request.user,
-            title=title or content[:60] or '新题目',
+            title=title or content[:60] or 'New question',
             content=content,
             original_image=original_image,
             image_type=image_type,
@@ -271,7 +271,7 @@ class QuestionDetailView(APIView):
     def get(self, request, pk):
         q = self._get_question(pk, request.user)
         if not q:
-            return Response({'error': '未找到'}, status=404)
+            return Response({'error': 'Not found'}, status=404)
         d = _question_to_dict(q)
         if q.original_image:
             d['original_image'] = q.original_image
@@ -303,7 +303,7 @@ class QuestionDetailView(APIView):
     def put(self, request, pk):
         q = self._get_question(pk, request.user)
         if not q:
-            return Response({'error': '未找到'}, status=404)
+            return Response({'error': 'Not found'}, status=404)
         for field in ('title', 'content', 'model_used', 'tags', 'subject'):
             if field in request.data:
                 setattr(q, field, request.data[field])
@@ -316,7 +316,7 @@ class QuestionDetailView(APIView):
     def delete(self, request, pk):
         q = self._get_question(pk, request.user)
         if not q:
-            return Response({'error': '未找到'}, status=404)
+            return Response({'error': 'Not found'}, status=404)
         q.delete()
         return Response(status=204)
 
@@ -340,19 +340,19 @@ def chat_stream_view(request, pk):
     try:
         q = Question.objects.get(pk=pk, user=user)
     except Question.DoesNotExist:
-        return JsonResponse({'error': '未找到'}, status=404)
+        return JsonResponse({'error': 'Not found'}, status=404)
 
     try:
         body = json.loads(request.body)
     except json.JSONDecodeError:
-        return JsonResponse({'error': '无效 JSON'}, status=400)
+        return JsonResponse({'error': 'Invalid JSON'}, status=400)
 
     user_message = body.get('message', '').strip()
     model = body.get('model', q.model_used or TEXT_MODEL)
     include_image = body.get('include_image', False)
 
     if not user_message:
-        return JsonResponse({'error': '消息不能为空'}, status=400)
+        return JsonResponse({'error': 'Message cannot be empty'}, status=400)
 
     # 更新题目当前使用的模型
     if model != q.model_used:
@@ -435,7 +435,7 @@ class FinalAnswerView(APIView):
     def get(self, request, pk):
         q = self._get_question(pk, request.user)
         if not q:
-            return Response({'error': '未找到'}, status=404)
+            return Response({'error': 'Not found'}, status=404)
         try:
             return Response({'content': q.final_answer.content})
         except FinalAnswer.DoesNotExist:
@@ -444,7 +444,7 @@ class FinalAnswerView(APIView):
     def post(self, request, pk):
         q = self._get_question(pk, request.user)
         if not q:
-            return Response({'error': '未找到'}, status=404)
+            return Response({'error': 'Not found'}, status=404)
         content = request.data.get('content', '').strip()
         fa, _ = FinalAnswer.objects.update_or_create(
             question=q, defaults={'content': content}
@@ -466,7 +466,7 @@ class StandardAnswerView(APIView):
     def get(self, request, pk):
         q = self._get_question(pk, request.user)
         if not q:
-            return Response({'error': '未找到'}, status=404)
+            return Response({'error': 'Not found'}, status=404)
         try:
             sa = q.standard_answer
             return Response({
@@ -479,7 +479,7 @@ class StandardAnswerView(APIView):
     def post(self, request, pk):
         q = self._get_question(pk, request.user)
         if not q:
-            return Response({'error': '未找到'}, status=404)
+            return Response({'error': 'Not found'}, status=404)
         content_md = request.data.get('content_md', '').strip()
         image = request.data.get('image', '').strip()
         image_type = request.data.get('image_type', 'jpeg').strip()
@@ -502,10 +502,10 @@ class PublishView(APIView):
         try:
             q = Question.objects.get(pk=pk, user=request.user)
         except Question.DoesNotExist:
-            return Response({'error': '未找到'}, status=404)
+            return Response({'error': 'Not found'}, status=404)
 
         if not q.content.strip() and not q.original_image:
-            return Response({'error': '题目内容不能为空'}, status=400)
+            return Response({'error': 'Question content cannot be empty'}, status=400)
 
         sq, created = SharedQuestion.objects.get_or_create(question=q)
         q.status = Question.STATUS_PUBLISHED
@@ -513,7 +513,7 @@ class PublishView(APIView):
         return Response({
             'shared_id': sq.id,
             'created': created,
-            'message': '发布成功' if created else '已更新共享题目',
+            'message': 'Published successfully' if created else 'Shared question updated',
         })
 
     def delete(self, request, pk):
@@ -522,9 +522,9 @@ class PublishView(APIView):
             SharedQuestion.objects.filter(question=q).delete()
             q.status = Question.STATUS_DRAFT
             q.save(update_fields=['status'])
-            return Response({'message': '已取消发布'})
+            return Response({'message': 'Unpublished'})
         except Question.DoesNotExist:
-            return Response({'error': '未找到'}, status=404)
+            return Response({'error': 'Not found'}, status=404)
 
 
 # ── 共享题库 ─────────────────────────────────────────────────────────────────
@@ -552,7 +552,7 @@ class SharedDetailView(APIView):
         try:
             sq = SharedQuestion.objects.select_related('question', 'question__user').get(pk=pk)
         except SharedQuestion.DoesNotExist:
-            return Response({'error': '未找到'}, status=404)
+            return Response({'error': 'Not found'}, status=404)
         sq.view_count += 1
         sq.save(update_fields=['view_count'])
         user = request.user if request.user.is_authenticated else None
@@ -579,7 +579,7 @@ class CommentView(APIView):
             return Response({'error': '未找到'}, status=404)
         content = request.data.get('content', '').strip()
         if not content:
-            return Response({'error': '评论不能为空'}, status=400)
+            return Response({'error': 'Comment cannot be empty'}, status=400)
         c = Comment.objects.create(shared_question=sq, user=request.user, content=content)
         return Response({
             'id': c.id,
@@ -596,7 +596,7 @@ class LikeView(APIView):
         try:
             sq = SharedQuestion.objects.get(pk=pk)
         except SharedQuestion.DoesNotExist:
-            return Response({'error': '未找到'}, status=404)
+            return Response({'error': 'Not found'}, status=404)
         like, created = Like.objects.get_or_create(shared_question=sq, user=request.user)
         if not created:
             like.delete()
@@ -611,7 +611,7 @@ class FavoriteView(APIView):
         try:
             sq = SharedQuestion.objects.get(pk=pk)
         except SharedQuestion.DoesNotExist:
-            return Response({'error': '未找到'}, status=404)
+            return Response({'error': 'Not found'}, status=404)
         fav, created = Favorite.objects.get_or_create(shared_question=sq, user=request.user)
         if not created:
             fav.delete()

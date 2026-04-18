@@ -1,5 +1,6 @@
 {% verbatim %}
 function FeatureNavMap({onNavigate}) {
+  const lang = getLang();
   const [open, setOpen] = useState(false);
   const [elements, setElements] = useState([]);
   const cyRef = useRef(null);
@@ -10,13 +11,19 @@ function FeatureNavMap({onNavigate}) {
 
   useEffect(() => {
     fetch(`${KG_API_BASE}/platform/`).then(r=>r.json()).then(d => {
+      const currentLang = lang;
       const els = [
-        ...d.nodes.map(n => ({data:{...n.data, _color: n.data.color}})),
+        ...d.nodes.map(n => {
+          const slug = SLUG_MAP[n.data.label];
+          const builtin = STATIC_APPS.find(a => a.slug === slug);
+          const label = builtin ? (currentLang === 'en' ? (builtin.nameEn || builtin.name) : builtin.name) : n.data.label;
+          return {data:{...n.data, label, _color: n.data.color}};
+        }),
         ...d.edges,
       ];
       setElements(els);
     }).catch(()=>{});
-  }, []);
+  }, [lang]);
 
   useEffect(() => {
     if (!open || !containerRef.current || !window.cytoscape || !elements.length) return;
@@ -71,7 +78,7 @@ function FeatureNavMap({onNavigate}) {
     setAiLoading(true); setHint('');
     try {
       const appLabels = Object.keys(SLUG_MAP).join('、');
-      const messages = [{role:'user',content:`用户说：「${query}」\n\n平台应用列表：${appLabels}\n\n请分析用户最可能需要哪个应用（可以多个），用JSON格式回复，只输出：{"highlight":["应用名1","应用名2"]}`}];
+      const messages = [{role:'user',content:`The user said: "${query}"\n\nPlatform app list: ${appLabels}\n\nAnalyze which app or apps the user most likely needs and reply in JSON only: {"highlight":["App 1","App 2"]}`}];
       let buf = '';
       const _tok = localStorage.getItem('mf_token');
       for await (const chunk of streamSSE(`/api/core/chat-stream/`, {messages, stream:true}, _tok)) {
@@ -91,7 +98,7 @@ function FeatureNavMap({onNavigate}) {
                 n.neighborhood().removeClass('dimmed');
               });
             });
-            setHint(`推荐：${labels.join('、')}`);
+            setHint(lang === 'zh' ? `推荐：${labels.join('、')}` : `Recommended: ${labels.join(', ')}`);
           }
         } catch(e) {}
       }
@@ -103,8 +110,8 @@ function FeatureNavMap({onNavigate}) {
     <div style={{marginBottom:20,borderRadius:'var(--r)',border:'1px solid var(--border2)',overflow:'hidden',background:'var(--bg2)'}}>
       <div onClick={() => setOpen(o=>!o)} style={{padding:'10px 16px',cursor:'pointer',display:'flex',alignItems:'center',gap:10,userSelect:'none'}}>
         <Icon name="share-2" size={16} stroke={1.5} style={{color:'var(--gold)',flexShrink:0}} />
-        <span style={{fontWeight:500,fontSize:13,color:'var(--fg)'}}>功能导航图谱</span>
-        <span style={{fontSize:11,color:'var(--fg3)',marginLeft:4}}>点击节点直接跳转应用</span>
+        <span style={{fontWeight:500,fontSize:13,color:'var(--fg)'}}>{t(lang, 'appGraph')}</span>
+        <span style={{fontSize:11,color:'var(--fg3)',marginLeft:4}}>{t(lang, 'appGraphHint')}</span>
         <Icon name={open?'chevron-up':'chevron-down'} size={14} stroke={2} style={{color:'var(--fg3)',marginLeft:'auto'}} />
       </div>
       {open && (
@@ -113,15 +120,15 @@ function FeatureNavMap({onNavigate}) {
           <div style={{padding:'8px 12px',borderTop:'1px solid var(--border)',display:'flex',gap:8,alignItems:'center'}}>
             <input value={query} onChange={e=>setQuery(e.target.value)}
               onKeyDown={e=>e.key==='Enter'&&doAiNav()}
-              placeholder="描述你想做的事，AI 帮你找到合适的应用..."
+              placeholder={t(lang, 'appSearchPlaceholder')}
               style={{flex:1,fontSize:12,padding:'5px 10px'}} />
             <button className="btn btn-p" onClick={doAiNav} disabled={aiLoading} style={{fontSize:12,padding:'5px 12px'}}>
-              {aiLoading?'..':'AI 导航'}
+              {aiLoading?'..':t(lang, 'aiNav')}
             </button>
             {hint && <span style={{fontSize:11,color:'var(--gold)'}}>{hint}</span>}
           </div>
           <div style={{padding:'0 12px 6px',fontSize:11,color:'var(--fg3)'}}>
-            点击图谱节点可直接跳转应用 · 鼠标悬停高亮关联节点
+          {lang === 'zh' ? '点击图谱节点可直接跳转应用 · 鼠标悬停高亮关联节点' : 'Click nodes to jump directly to apps · hover to highlight related nodes'}
           </div>
         </div>
       )}
@@ -130,6 +137,8 @@ function FeatureNavMap({onNavigate}) {
 }
 
 function PlatformHome({user, onLogout, siteConfig}) {
+  const [lang, setLangState] = useState(() => getLang());
+  const tr = (key, vars) => t(lang, key, vars);
   const [apps, setApps] = useState([]);
   const [pluginApps, setPluginApps] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -183,6 +192,10 @@ function PlatformHome({user, onLogout, siteConfig}) {
       setLoading(false);
     });
   }, []);
+  useEffect(() => {
+    document.documentElement.lang = lang === 'en' ? 'en' : 'zh-CN';
+    setLang(lang);
+  }, [lang]);
 
   // Close menu on outside click
   useEffect(() => {
@@ -199,13 +212,28 @@ function PlatformHome({user, onLogout, siteConfig}) {
     const base = [...apps, ...STATIC_APPS.filter(a => !slugs.has(a.slug))];
     // Append approved user plugins (prefixed slugs won't collide with builtin slugs)
     const pluginSlugs = new Set(pluginApps.map(p => p.slug));
-    return [...base.filter(a => !pluginSlugs.has(a.slug)), ...pluginApps];
+    return [...base.filter(a => !pluginSlugs.has(a.slug)), ...pluginApps].map(app => {
+      const builtin = STATIC_APPS.find(a => a.slug === app.slug);
+      if (!builtin) return app;
+      return {
+        ...app,
+        name: builtin.name,
+        nameEn: builtin.nameEn,
+        description: builtin.description,
+        descEn: builtin.descEn,
+      };
+    });
   }, [apps, pluginApps]);
 
   const filteredApps = useMemo(() => {
     if (!query.trim()) return allApps;
     const q = query.toLowerCase();
-    return allApps.filter(a => a.name.toLowerCase().includes(q) || a.description.toLowerCase().includes(q));
+    return allApps.filter(a =>
+      (a.name || '').toLowerCase().includes(q) ||
+      (a.description || '').toLowerCase().includes(q) ||
+      (a.nameEn && a.nameEn.toLowerCase().includes(q)) ||
+      (a.descEn && a.descEn.toLowerCase().includes(q))
+    );
   }, [allApps, query]);
 
   // Pinned first, then custom order
@@ -232,6 +260,16 @@ function PlatformHome({user, onLogout, siteConfig}) {
   const pct = (v, max) => max ? Math.min(100, Math.round(v / max * 100)) : 0;
   // Default: gold for all apps
   const getColor = (app) => appColors[app.slug] || '#c9a86c';
+  const getAppLabel = (app) => {
+    const builtin = STATIC_APPS.find(a => a.slug === app.slug);
+    if (builtin) return lang === 'en' ? (builtin.nameEn || builtin.name) : builtin.name;
+    return lang === 'en' ? (app.nameEn || app.name || '') : (app.nameZh || app.name || '');
+  };
+  const getAppDescription = (app) => {
+    const builtin = STATIC_APPS.find(a => a.slug === app.slug);
+    if (builtin) return lang === 'en' ? (builtin.descEn || builtin.description) : builtin.description;
+    return lang === 'en' ? (app.descEn || app.description || '') : (app.descriptionZh || app.description || '');
+  };
 
   const saveAppColor = (slug, color) => {
     const next = {...appColors, [slug]: color};
@@ -250,13 +288,14 @@ function PlatformHome({user, onLogout, siteConfig}) {
     if (navigator.clipboard) {
       navigator.clipboard.writeText(url).then(() => {
         const orig = document.title;
-        document.title = `已复制 ${app.name} 链接`;
+        const label = getAppLabel(app);
+        document.title = lang === 'en' ? `Copied ${label} link` : `已复制 ${label} 链接`;
         setTimeout(() => { document.title = orig; }, 1500);
       }).catch(() => {
-        prompt('请手动复制链接:', url);
+        prompt(lang === 'en' ? 'Please copy the link manually:' : '请手动复制链接:', url);
       });
     } else {
-      prompt('请手动复制链接:', url);
+      prompt(lang === 'en' ? 'Please copy the link manually:' : '请手动复制链接:', url);
     }
   };
 
@@ -291,8 +330,8 @@ function PlatformHome({user, onLogout, siteConfig}) {
     if (!query.trim() || aiLoading) return;
     if (!user) { window.location.hash = '#/login'; return; }
     setAiLoading(true); setAiRec('');
-    const appList = allApps.map(a => `- ${a.name}: ${a.description}`).join('\n');
-    const msg = `用户需求: "${query}"\n\n平台可用应用:\n${appList}\n\n请推荐最合适的1-2个应用并简要说明原因，格式简洁。`;
+    const appList = allApps.map(a => `- ${getAppLabel(a)}: ${getAppDescription(a)}`).join('\n');
+    const msg = `User request: "${query}"\n\nAvailable platform apps:\n${appList}\n\nRecommend the best 1-2 apps and briefly explain why, in a concise format.`;
     const token = localStorage.getItem('mf_token');
     const hdrs = {'Content-Type':'application/json'};
     if (token) hdrs['Authorization'] = `Token ${token}`;
@@ -312,7 +351,7 @@ function PlatformHome({user, onLogout, siteConfig}) {
           else if (ev.type==='done') { setAiRec(full); }
         }
       }
-    } catch { setAiRec('推荐失败，请稍后再试'); }
+    } catch { setAiRec(lang === 'en' ? 'Recommendation failed, please try again later' : '推荐失败，请稍后再试'); }
     setAiLoading(false);
   };
 
@@ -326,7 +365,7 @@ function PlatformHome({user, onLogout, siteConfig}) {
         <div className="dash-sw">
           <div className="dash-sw-ic"><Icon name="search" size={14} /></div>
           <input
-            placeholder="搜索应用，或描述需求让 AI 推荐…"
+            placeholder={tr('searching')}
             value={query}
             onChange={e => { setQuery(e.target.value); setAiRec(''); }}
             onKeyDown={e => e.key === 'Enter' && aiRecommend()}
@@ -338,32 +377,35 @@ function PlatformHome({user, onLogout, siteConfig}) {
               onClick={aiRecommend} disabled={aiLoading}
               style={{display:'inline-flex',alignItems:'center',gap:6}}>
               <Icon name="spark" size={12} />
-              {aiLoading ? 'AI 推荐中…' : 'AI 推荐'}
+              {aiLoading ? tr('aiRecommending') : tr('aiRecommend')}
             </button>
           )}
-          <button className="btn btn-s btn-sm" onClick={() => setShowTheme(true)} title="个性化设置" style={{padding:'6px'}}><Icon name="adjust" size={16} /></button>
+          <button className="btn btn-s btn-sm" onClick={() => setShowTheme(true)} title={tr('personalize')} style={{padding:'6px'}}><Icon name="adjust" size={16} /></button>
+          <button className="btn btn-s btn-sm" onClick={() => setLangState(lang === 'en' ? 'zh' : 'en')} style={{padding:'6px 10px'}}>
+              {lang === 'en' ? '中文' : 'EN'}
+          </button>
           {user ? (
             <>
               <span style={{fontSize:12,color:'var(--fg3)',maxWidth:160,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{displayName(user)}</span>
               {user.is_guest
-                ? <button className="btn btn-p btn-sm" onClick={() => { window.location.hash = '#/login'; }}>登录</button>
+                ? <button className="btn btn-p btn-sm" onClick={() => { window.location.hash = '#/login'; }}>{tr('login')}</button>
                 : <>
                     {user.is_staff && (
                       <button className="btn btn-s btn-sm" onClick={() => { window.location.hash = '#/admin'; }}
                         style={{display:'inline-flex',alignItems:'center',gap:4,color:'var(--gold)',borderColor:'var(--gold)'}}>
-                        <Icon name="settings" size={13}/> 后台
+                        <Icon name="settings" size={13}/> {tr('dashboard')}
                       </button>
                     )}
                     <button className="btn btn-s btn-sm" onClick={() => { window.location.hash = '#/profile'; }}
                       style={{display:'inline-flex',alignItems:'center',gap:4}}>
-                      <Icon name="user" size={13}/> 个人中心
+                      <Icon name="user" size={13}/> {tr('profile')}
                     </button>
-                    <button className="btn btn-s btn-sm" onClick={onLogout}>退出</button>
+                    <button className="btn btn-s btn-sm" onClick={onLogout}>{tr('logout')}</button>
                   </>
               }
             </>
           ) : (
-            <button className="btn btn-p btn-sm" onClick={() => { window.location.hash = '#/login'; }}>登录 / 注册</button>
+            <button className="btn btn-p btn-sm" onClick={() => { window.location.hash = '#/login'; }}>{tr('loginRegister')}</button>
           )}
         </div>
       </nav>
@@ -373,58 +415,58 @@ function PlatformHome({user, onLogout, siteConfig}) {
         {user && (
           <div style={{marginBottom:28}}>
             <div className="sec-hd">
-              <div className="sec-title">Token 用量</div>
+              <div className="sec-title">{tr('tokenUsage')}</div>
               <span style={{fontSize:11,color:'var(--fg3)'}}>
-                {user.has_own_key ? '自有 API 密钥 · 无限额度' : quota ? `今日已用 ${pct(u.daily_prompt_count||0, quota.daily_prompt_count)}%` : ''}
+                {user.has_own_key ? tr('ownedKey') : quota ? `${tr('todayUsed')} ${pct(u.daily_prompt_count||0, quota.daily_prompt_count)}%` : ''}
               </span>
             </div>
             <div className="stat-grid">
               <div className="stat-c">
                 <div className="stat-v" style={{color:'var(--gold2)'}}>{(u.prompt_count||0).toLocaleString()}</div>
-                <div className="stat-l">总提问次数</div>
+                <div className="stat-l">{tr('totalQuestions')}</div>
                 {quota && <>
                   <div className="stat-bar"><div className="stat-fill" style={{width:`${pct(u.daily_prompt_count||0,quota.daily_prompt_count)}%`,background:'var(--gold)'}} /></div>
-                  <div style={{fontSize:10,color:'var(--fg3)',marginTop:3}}>今日 {u.daily_prompt_count||0} / {quota.daily_prompt_count}</div>
+                  <div style={{fontSize:10,color:'var(--fg3)',marginTop:3}}>{tr('today')} {u.daily_prompt_count||0} / {quota.daily_prompt_count}</div>
                 </>}
               </div>
               <div className="stat-c">
                 <div className="stat-v" style={{color:'var(--cyan)'}}>{((u.total_tokens||0)/1000).toFixed(1)}<span style={{fontSize:14}}>K</span></div>
-                <div className="stat-l">累计 Token</div>
+                <div className="stat-l">{tr('totalTokens')}</div>
                 <div style={{fontSize:10,color:'var(--fg3)',marginTop:6}}>
-                  输入 {((u.input_tokens||0)/1000).toFixed(1)}K · 输出 {((u.output_tokens||0)/1000).toFixed(1)}K
+                  {tr('input')} {((u.input_tokens||0)/1000).toFixed(1)}K · {tr('output')} {((u.output_tokens||0)/1000).toFixed(1)}K
                 </div>
               </div>
               {quota && <>
                 <div className="stat-c">
                   <div className="stat-v" style={{color:'var(--blue)'}}>{((u.daily_input_tokens||0)/1000).toFixed(1)}<span style={{fontSize:14}}>K</span></div>
-                  <div className="stat-l">今日输入</div>
+                  <div className="stat-l">{tr('todayInput')}</div>
                   <div className="stat-bar"><div className="stat-fill" style={{width:`${pct(u.daily_input_tokens||0,quota.daily_input_tokens)}%`,background:'var(--blue)'}} /></div>
-                  <div style={{fontSize:10,color:'var(--fg3)',marginTop:3}}>限额 {(quota.daily_input_tokens/1000).toFixed(0)}K</div>
+                  <div style={{fontSize:10,color:'var(--fg3)',marginTop:3}}>{tr('limit')} {(quota.daily_input_tokens/1000).toFixed(0)}K</div>
                 </div>
                 <div className="stat-c">
                   <div className="stat-v" style={{color:'var(--green)'}}>{((u.daily_output_tokens||0)/1000).toFixed(1)}<span style={{fontSize:14}}>K</span></div>
-                  <div className="stat-l">今日输出</div>
+                  <div className="stat-l">{tr('todayOutput')}</div>
                   <div className="stat-bar"><div className="stat-fill" style={{width:`${pct(u.daily_output_tokens||0,quota.daily_output_tokens)}%`,background:'var(--green)'}} /></div>
-                  <div style={{fontSize:10,color:'var(--fg3)',marginTop:3}}>限额 {(quota.daily_output_tokens/1000).toFixed(0)}K</div>
+                  <div style={{fontSize:10,color:'var(--fg3)',marginTop:3}}>{tr('limit')} {(quota.daily_output_tokens/1000).toFixed(0)}K</div>
                 </div>
               </>}
             </div>
           </div>
         )}
 
-        {/* 功能导航图谱 */}
+        {/* Feature navigation map */}
         <FeatureNavMap onNavigate={(slug) => { window.location.hash = `#/app/${slug}`; }} />
 
         {/* Apps grid */}
         <div>
           <div className="sec-hd">
-            <div className="sec-title">应用</div>
-            {query.trim() && <span style={{fontSize:12,color:'var(--fg3)'}}>找到 {sortedApps.length} 个</span>}
+            <div className="sec-title">{tr('appCount')}</div>
+            {query.trim() && <span style={{fontSize:12,color:'var(--fg3)'}}>{tr('found')} {sortedApps.length}</span>}
           </div>
           {loading ? (
-            <div className="load">加载中...</div>
+            <div className="load">{tr('loading')}</div>
           ) : sortedApps.length === 0 ? (
-            <div className="empty"><h3>未找到相关应用</h3><p>试试「AI 推荐」</p></div>
+            <div className="empty"><h3>{tr('noApp')}</h3><p>{tr('tryAi')}</p></div>
           ) : (
             <div className="apps-grid2">
               {sortedApps.map(app => {
@@ -453,7 +495,7 @@ function PlatformHome({user, onLogout, siteConfig}) {
                     onClick={() => goApp(app)}
                   >
                     {pinned && <span className="ac2-pinmark"><Icon name="pin" size={11} /></span>}
-                    {app._isPlugin && <span style={{position:'absolute',top:6,left:8,fontSize:9,padding:'1px 5px',borderRadius:8,background:hexToRgba('#c9a86c',0.15),color:'var(--gold)',border:'1px solid var(--gold-dim)',pointerEvents:'none'}}>插件</span>}
+                    {app._isPlugin && <span style={{position:'absolute',top:6,left:8,fontSize:9,padding:'1px 5px',borderRadius:8,background:hexToRgba('#c9a86c',0.15),color:'var(--gold)',border:'1px solid var(--gold-dim)',pointerEvents:'none'}}>{tr('plugin')}</span>}
                     {/* 3-dot menu */}
                     <div className="app-menu-wrap" onClick={e => e.stopPropagation()}>
                       <button className="app-menu-btn"
@@ -463,18 +505,18 @@ function PlatformHome({user, onLogout, siteConfig}) {
                       {openMenu === app.slug && (
                         <div className="app-menu">
                           <div className="app-menu-item" onClick={(e) => { e.stopPropagation(); handleShare(app); setOpenMenu(null); }}>
-                            <Icon name="share" size={12} /> 分享链接
+                            <Icon name="share" size={12} /> {tr('shareLink')}
                           </div>
                           <div className="app-menu-item" onClick={(e) => { e.stopPropagation(); handleFeedback(app); setOpenMenu(null); }}>
-                            <Icon name="message-square" size={12} /> 反馈
+                            <Icon name="message-square" size={12} /> {tr('feedback')}
                           </div>
                           <div className="app-menu-sep" />
                           <div className="app-menu-item" onClick={(e) => { e.stopPropagation(); togglePin(app.slug); setOpenMenu(null); }}>
-                            <Icon name="pin" size={12} /> {pinned ? '取消置顶' : '固定在首位'}
+                            <Icon name="pin" size={12} /> {pinned ? tr('unpin') : tr('pin')}
                           </div>
                           <div className="app-menu-sep" />
                           <div className="app-menu-item" onClick={(e) => { e.stopPropagation(); setEditApp(app); setOpenMenu(null); }}>
-                            <Icon name="palette" size={12} /> 修改应用颜色
+                            <Icon name="palette" size={12} /> {tr('editColor')}
                           </div>
                         </div>
                       )}
@@ -483,9 +525,9 @@ function PlatformHome({user, onLogout, siteConfig}) {
                       <div className="ac2-ico" style={icStyle}>
                         <Icon name={pickAppIcon(app)} size={24} stroke={1.7} />
                       </div>
-                      <div className="ac2-name">{app.name}</div>
+                      <div className="ac2-name">{getAppLabel(app)}</div>
                     </div>
-                    <div className="ac2-desc">{app.description}</div>
+                    <div className="ac2-desc">{getAppDescription(app)}</div>
                     <div className="ac2-foot">
                     </div>
                   </div>
@@ -495,9 +537,9 @@ function PlatformHome({user, onLogout, siteConfig}) {
           )}
           {(aiRec || aiLoading) && (
             <div className="ai-rec">
-              <div className="ai-rec-hd"><Icon name="spark" size={13} /> AI 应用推荐</div>
+              <div className="ai-rec-hd"><Icon name="spark" size={13} /> {tr('aiAppRec')}</div>
               <div className="ai-rec-txt">
-                {aiRec || '思考中...'}
+                {aiRec || tr('thinking')}
                 {aiLoading && <span style={{opacity:.7, animation:'blink 1s infinite'}}>▌</span>}
               </div>
             </div>
@@ -549,24 +591,30 @@ function LazyApp({ slug, fallbackSlug, factory, preload }) {
       .catch(e => setError(e.message || '加载失败'));
   }, [effectiveSlug, preload]);
 
-  if (error) return (
-    <div style={{display:'flex',alignItems:'center',justifyContent:'center',
-                 height:'100vh',flexDirection:'column',gap:16,color:'var(--fg2)'}}>
-      <div style={{color:'var(--danger)'}}>模块加载失败：{error}</div>
-      <button className="btn btn-s" onClick={() => window.location.reload()}>刷新重试</button>
-    </div>
-  );
+  if (error) {
+    const _l = getLang();
+    return (
+      <div style={{display:'flex',alignItems:'center',justifyContent:'center',
+                   height:'100vh',flexDirection:'column',gap:16,color:'var(--fg2)'}}>
+        <div style={{color:'var(--danger)'}}>{t(_l, 'moduleLoadFailed', {error})}</div>
+        <button className="btn btn-s" onClick={() => window.location.reload()}>{t(_l, 'retryRefresh')}</button>
+      </div>
+    );
+  }
 
-  if (!loaded) return (
-    <div style={{display:'flex',alignItems:'center',justifyContent:'center',
-                 height:'100vh',flexDirection:'column',gap:12,
-                 background:'var(--bg)',color:'var(--fg3)'}}>
-      <div style={{width:32,height:32,borderRadius:'50%',
-                   border:'3px solid var(--bg4)',borderTopColor:'var(--gold)',
-                   animation:'spin 0.8s linear infinite'}} />
-      <div style={{fontSize:13}}>正在加载…</div>
-    </div>
-  );
+  if (!loaded) {
+    const _l = getLang();
+    return (
+      <div style={{display:'flex',alignItems:'center',justifyContent:'center',
+                   height:'100vh',flexDirection:'column',gap:12,
+                   background:'var(--bg)',color:'var(--fg3)'}}>
+        <div style={{width:32,height:32,borderRadius:'50%',
+                     border:'3px solid var(--bg4)',borderTopColor:'var(--gold)',
+                     animation:'spin 0.8s linear infinite'}} />
+        <div style={{fontSize:13}}>{t(_l, 'loadingApp')}</div>
+      </div>
+    );
+  }
 
   return factory();
 }
@@ -656,11 +704,14 @@ function Root() {
     window.location.hash = '#/';
   };
 
-  if (!authChecked) return (
-    <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100vh',background:'var(--bg)'}}>
-      <div className="load">初始化中...</div>
-    </div>
-  );
+  if (!authChecked) {
+    const _l = getLang();
+    return (
+      <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100vh',background:'var(--bg)'}}>
+        <div className="load">{t(_l, 'initializing')}</div>
+      </div>
+    );
+  }
 
   if (route === '#/login') {
     if (user && !user.is_guest) {
@@ -698,6 +749,12 @@ function Root() {
     pageContent = <LazyApp slug="doc_reader" factory={() => <DocReaderApp user={user} onLogout={logout} onUpdateUser={setUser} />} />;
   } else if (route === '#/app/banished') {
     pageContent = <LazyApp slug="banished" factory={() => <BanishedApp user={user} onLogout={logout} onUpdateUser={setUser} />} />;
+  } else if (route === '#/app/format_converter') {
+    pageContent = <LazyApp slug="format_converter" factory={() => <FormatConverterApp user={user} onLogout={logout} onUpdateUser={setUser} />} />;
+  } else if (route === '#/app/ssh_manager') {
+    pageContent = <LazyApp slug="ssh_manager" factory={() => <SSHManagerApp user={user} onLogout={logout} onUpdateUser={setUser} />} />;
+  } else if (route === '#/app/silly_tavern') {
+    pageContent = <LazyApp slug="silly_tavern" factory={() => <SillyTavernApp user={user} onLogout={logout} onUpdateUser={setUser} />} />;
   } else if (route === '#/app/chat') {
     pageContent = <LazyApp slug="chat" factory={() => <ChatApp user={user} onLogout={logout} onUpdateUser={setUser} />} />;
   } else if (route === '#/profile') {

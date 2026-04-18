@@ -31,34 +31,70 @@ const BIcon=({name,size=16,color='#fff'})=>{
   return <span style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:size,height:size}}>{icons[name]||null}</span>;
 };
 
+// ── Toast Notification System ────────────────────────────────────────
+const BToastCtx=React.createContext(null);
+function BanishedToastProvider({children}){
+  const[toasts,setToasts]=React.useState([]);
+  const addToast=React.useCallback((msg,type='info',duration=4000)=>{
+    const id=Date.now()+Math.random();
+    setToasts(t=>[...t,{id,msg,type}]);
+    setTimeout(()=>setToasts(t=>t.filter(x=>x.id!==id)),duration);
+  },[]);
+  return(
+    <BToastCtx.Provider value={addToast}>
+      {children}
+      <div style={{position:'fixed',top:52,right:12,zIndex:9999,display:'flex',flexDirection:'column',gap:6,pointerEvents:'none',maxWidth:340}}>
+        {toasts.map(t=>{
+          const colors={info:['rgba(90,138,196,0.18)','rgba(90,138,196,0.5)','#5a8ac4'],success:['rgba(78,200,122,0.18)','rgba(78,200,122,0.5)','#4ec87a'],warning:['rgba(212,154,90,0.18)','rgba(212,154,90,0.5)','#d49a5a'],danger:['rgba(196,90,90,0.18)','rgba(196,90,90,0.5)','#c45a5a']};
+          const[bg,bc,fc]=colors[t.type]||colors.info;
+          return <div key={t.id} style={{padding:'8px 14px',background:bg,border:`1px solid ${bc}`,borderRadius:8,color:fc,fontSize:12,fontWeight:500,backdropFilter:'blur(8px)',boxShadow:'0 4px 12px rgba(0,0,0,0.3)',pointerEvents:'auto',animation:'slideIn 0.25s ease-out'}}>{t.msg}</div>;
+        })}
+      </div>
+    </BToastCtx.Provider>
+  );
+}
+function useBToast(){return React.useContext(BToastCtx);}
+
 // ── HUD ──────────────────────────────────────────────────────────────
-function BanishedHUD({state,speed,onSetSpeed,onToggleRes,syncStatus}){
+function BanishedHUD({state,speed,onSetSpeed,onToggleRes,syncStatus,events}){
   if(!state?.time)return null;
   const {time,resources,population}=state;
-  const SZH={spring:'春',summer:'夏',autumn:'秋',winter:'冬'};
+  const seasonNames={spring:'春',summer:'夏',autumn:'秋',winter:'冬'};
   const SC={spring:'#4ec87a',summer:'#c9a86c',autumn:'#d49a5a',winter:'#9ab4d4'};
   const food=FOOD_KEYS.reduce((a,k)=>a+(resources[k]||0),0);
+  const tickInSeason=TICK_PER_SEASON-(time.tick%TICK_PER_SEASON);
+  const seasonProgress=time.tick%TICK_PER_SEASON;
+  const nextSeason=B_SEASONS[(B_SEASONS.indexOf(time.season)+1)%4];
+  const isWinterComing=nextSeason==='winter'&&seasonProgress>TICK_PER_SEASON*0.6;
   return(
-    <div style={{position:'absolute',top:0,left:0,right:0,display:'flex',alignItems:'center',gap:10,padding:'6px 14px',background:'rgba(8,8,11,0.92)',backdropFilter:'blur(8px)',borderBottom:'1px solid rgba(201,168,108,0.2)',boxShadow:'0 2px 16px rgba(0,0,0,0.5)',zIndex:10,fontSize:13,flexWrap:'wrap'}}>
+    <div style={{position:'absolute',top:0,left:0,right:0,display:'flex',alignItems:'center',gap:8,padding:'5px 12px',background:'rgba(8,8,11,0.94)',backdropFilter:'blur(10px)',borderBottom:'1px solid rgba(201,168,108,0.2)',boxShadow:'0 2px 16px rgba(0,0,0,0.5)',zIndex:10,fontSize:13,flexWrap:'wrap'}}>
       <button className="btn btn-s btn-sm" onClick={onToggleRes} style={{padding:'4px 8px',borderRadius:'6px',background:'rgba(201,168,108,0.12)',border:'1px solid rgba(201,168,108,0.25)'}}><Icon name="menu" size={14}/></button>
-      <span style={{color:SC[time.season],fontWeight:700,fontSize:14,textShadow:'0 0 8px '+SC[time.season],minWidth:14}}>{SZH[time.season]}</span>
-      <span style={{color:'var(--fg3)',fontWeight:500}}>第{time.year}年</span>
-      <div style={{display:'flex',gap:10,marginLeft:6,marginRight:6,flexWrap:'wrap'}}>
-        <span style={{display:'flex',alignItems:'center',gap:3,color:'var(--fg)',fontWeight:600}}><span style={{fontSize:10,color:'var(--fg3)'}}>人口</span>{population.total}</span>
-        <span style={{display:'flex',alignItems:'center',gap:3,color:'var(--gold)',fontWeight:700}}><span style={{fontSize:10,color:'var(--fg3)'}}>金</span>{resources.gold||0}</span>
-        <span style={{display:'flex',alignItems:'center',gap:3,color:'var(--fg2)'}}><span style={{fontSize:10,color:'var(--fg3)'}}>木</span>{resources.logs||0}</span>
-        <span style={{display:'flex',alignItems:'center',gap:3,color:'var(--fg2)'}}><span style={{fontSize:10,color:'var(--fg3)'}}>石</span>{resources.stone||0}</span>
-        <span style={{display:'flex',alignItems:'center',gap:3,color:'#e8903a',fontWeight:500}}><span style={{fontSize:10,color:'var(--fg3)'}}>柴</span>{resources.firewood||0}</span>
-        <span style={{display:'flex',alignItems:'center',gap:3,color:'#8fd0ff',fontWeight:500}}><span style={{fontSize:10,color:'var(--fg3)'}}>劳</span>{Math.floor(resources.labor||0)}</span>
-        <span style={{display:'flex',alignItems:'center',gap:3,color:'#4ec87a',fontWeight:500}}><span style={{fontSize:10,color:'var(--fg3)'}}>食</span>{Math.floor(food)}</span>
-        <span style={{display:'flex',alignItems:'center',gap:3,color:'#ffb86b',fontWeight:500}}><span style={{fontSize:10,color:'var(--fg3)'}}>心情</span>{Math.floor(population.avg_happiness||0)}</span>
+      {/* Season badge */}
+      <div style={{display:'flex',alignItems:'center',gap:4,padding:'3px 10px',borderRadius:6,background:`${SC[time.season]}18`,border:`1px solid ${SC[time.season]}40`}}>
+        <span style={{color:SC[time.season],fontWeight:700,fontSize:13,textShadow:`0 0 8px ${SC[time.season]}`}}>{seasonNames[time.season]}</span>
+        <div style={{width:32,height:4,background:'rgba(255,255,255,0.1)',borderRadius:2,overflow:'hidden'}}>
+          <div style={{width:`${(seasonProgress/TICK_PER_SEASON)*100}%`,height:'100%',background:SC[time.season],borderRadius:2,transition:'width 0.3s'}}/>
+        </div>
       </div>
-      <div style={{display:'flex',gap:5,marginLeft:'auto'}}>
-        {[1,5,10].map(s=>(
-          <button key={s} className={`btn btn-sm ${speed===s?'btn-p':'btn-s'}`} onClick={()=>onSetSpeed(s)} style={{padding:'3px 10px',fontSize:11,borderRadius:'5px',fontWeight:600,transition:'all 0.15s',background:speed===s?'var(--gold)':'rgba(255,255,255,0.07)',border:speed===s?'none':'1px solid rgba(255,255,255,0.12)',color:speed===s?'#000':'var(--fg2)',boxShadow:speed===s?'0 0 10px rgba(201,168,108,0.4)':'none'}}>{s}x</button>
+      {isWinterComing&&<span style={{fontSize:10,padding:'2px 6px',borderRadius:4,background:'rgba(154,180,212,0.2)',color:'#9ab4d4',fontWeight:600,animation:'blink 1.5s infinite'}}>Winter incoming!</span>}
+      <span style={{color:'var(--fg3)',fontWeight:500}}>Year {time.year}</span>
+      <div style={{width:1,height:20,background:'rgba(255,255,255,0.1)'}}/>
+      <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+        <span style={{display:'flex',alignItems:'center',gap:3,color:'var(--fg)',fontWeight:600}}><span style={{fontSize:10,color:'var(--fg3)'}}>Pop</span>{population.total}</span>
+        <span style={{display:'flex',alignItems:'center',gap:3,color:'var(--gold)',fontWeight:700}}><span style={{fontSize:10,color:'var(--fg3)'}}>Gold</span>{resources.gold||0}</span>
+        <span style={{display:'flex',alignItems:'center',gap:3,color:'var(--fg2)'}}><span style={{fontSize:10,color:'var(--fg3)'}}>Wood</span>{resources.logs||0}</span>
+        <span style={{display:'flex',alignItems:'center',gap:3,color:'var(--fg2)'}}><span style={{fontSize:10,color:'var(--fg3)'}}>Stone</span>{resources.stone||0}</span>
+        <span style={{display:'flex',alignItems:'center',gap:3,color:'#e8903a',fontWeight:500}}><span style={{fontSize:10,color:'var(--fg3)'}}>Fire</span>{resources.firewood||0}</span>
+        <span style={{display:'flex',alignItems:'center',gap:3,color:'#8fd0ff',fontWeight:500}}><span style={{fontSize:10,color:'var(--fg3)'}}>Labor</span>{Math.floor(resources.labor||0)}</span>
+        <span style={{display:'flex',alignItems:'center',gap:3,color:food<50?'#c45a5a':'#4ec87a',fontWeight:500}}><span style={{fontSize:10,color:'var(--fg3)'}}>Food</span>{Math.floor(food)}</span>
+        <span style={{display:'flex',alignItems:'center',gap:3,color:'#ffb86b',fontWeight:500}}><span style={{fontSize:10,color:'var(--fg3)'}}>Mood</span>{Math.floor(population.avg_happiness||0)}</span>
+      </div>
+      <div style={{display:'flex',gap:3,marginLeft:'auto',background:'rgba(255,255,255,0.04)',padding:3,borderRadius:6}}>
+        {[{s:0,label:'⏸'},{s:1,label:'1x'},{s:5,label:'5x'},{s:10,label:'10x'}].map(({s,label})=>(
+          <button key={s} className={`btn btn-sm ${speed===s?'btn-p':'btn-s'}`} onClick={()=>onSetSpeed(s)} style={{padding:'3px 8px',fontSize:11,borderRadius:'4px',fontWeight:600,transition:'all 0.15s',background:speed===s?'var(--gold)':'transparent',border:'none',color:speed===s?'#000':'var(--fg2)',boxShadow:speed===s?'0 0 10px rgba(201,168,108,0.4)':'none',minWidth:s===0?28:32}}>{label}</button>
         ))}
       </div>
-      {syncStatus&&<span style={{fontSize:10,padding:'2px 7px',borderRadius:'4px',background:syncStatus.ok?'rgba(78,200,122,0.15)':'rgba(196,90,90,0.15)',color:syncStatus.ok?'#4ec87a':'#c45a5a',fontWeight:500}}>{syncStatus.ok?'✓ 已同步':syncStatus.msg}</span>}
+      {syncStatus&&<span style={{fontSize:10,padding:'2px 7px',borderRadius:'4px',background:syncStatus.ok?'rgba(78,200,122,0.15)':'rgba(196,90,90,0.15)',color:syncStatus.ok?'#4ec87a':'#c45a5a',fontWeight:500}}>{syncStatus.ok?'✓ Synced':syncStatus.msg}</span>}
     </div>
   );
 }
@@ -68,18 +104,18 @@ function BanishedResourcePanel({state,open,onClose}){
   if(!state?.resources)return null;
   const res=state.resources;
   const groups=[
-    {label:'原材料',keys:['logs','stone','iron','coal','labor'],color:'#5ac480',icon:'raw'},
-    {label:'加工品',keys:['firewood','iron_tools','steel_tools'],color:'#c9a86c',icon:'crafted'},
-    {label:'食物',keys:FOOD_KEYS,color:'#3eb87a',icon:'food'},
-    {label:'手工品',keys:['wool','leather','herbs','hide_coat','wool_coat','warm_coat'],color:'#d49a5a',icon:'crafted'},
-    {label:'货币',keys:['gold'],color:'#ffd700',icon:'gold'},
+    {label:'Raw materials',keys:['logs','stone','iron','coal','labor'],color:'#5ac480',icon:'raw'},
+    {label:'Processed goods',keys:['firewood','iron_tools','steel_tools'],color:'#c9a86c',icon:'crafted'},
+    {label:'Food',keys:FOOD_KEYS,color:'#3eb87a',icon:'food'},
+    {label:'Craft goods',keys:['wool','leather','herbs','hide_coat','wool_coat','warm_coat'],color:'#d49a5a',icon:'crafted'},
+    {label:'Currency',keys:['gold'],color:'#ffd700',icon:'gold'},
   ];
-  const seasonName={spring:'春',summer:'夏',autumn:'秋',winter:'冬'};
+  const seasonName={spring:'Spring',summer:'Summer',autumn:'Autumn',winter:'Winter'};
   const prodBuildings=(state.buildings||[]).filter(b=>b.built&&b.workers_max>0);
   return(
     <div style={{position:'absolute',left:open?0:'-220px',top:46,bottom:0,width:200,background:'var(--bg2)',borderRight:'1px solid rgba(201,168,108,0.2)',overflowY:'auto',transition:'left 0.25s cubic-bezier(0.4,0,0.2,1)',zIndex:9,padding:'12px',boxShadow:'2px 0 20px rgba(0,0,0,0.5)'}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12,paddingBottom:8,borderBottom:'1px solid rgba(201,168,108,0.15)'}}>
-        <span style={{fontWeight:700,fontSize:14,color:'var(--gold)'}}>资源</span>
+        <span style={{fontWeight:700,fontSize:14,color:'var(--gold)'}}>Resources</span>
         <button className="btn btn-s btn-sm" onClick={onClose} style={{padding:'4px 6px',borderRadius:'6px',background:'rgba(255,255,255,0.06)'}}><Icon name="x" size={13}/></button>
       </div>
       {groups.map(g=>(
@@ -95,17 +131,17 @@ function BanishedResourcePanel({state,open,onClose}){
       ))}
       {prodBuildings.length>0&&(
         <div style={{marginTop:8,paddingTop:10,borderTop:'1px solid rgba(201,168,108,0.12)'}}>
-          <div style={{fontSize:11,color:'var(--gold)',fontWeight:700,marginBottom:8}}>季度产量总览</div>
+          <div style={{fontSize:11,color:'var(--gold)',fontWeight:700,marginBottom:8}}>Quarterly production overview</div>
           {prodBuildings.slice(0,12).map(b=>{
             const bd=BUILDINGS_DATA[b.type];
             return(
               <div key={b.id} style={{fontSize:11,marginBottom:6,padding:'5px 6px',borderRadius:5,background:'rgba(255,255,255,0.03)'}}>
                 <div style={{display:'flex',justifyContent:'space-between',marginBottom:3}}>
                   <span style={{color:'rgba(255,255,255,0.88)'}}>{bd?.name||b.type}</span>
-                  <span style={{color:'#8fd0ff'}}>本季 {Math.floor(b.yield_current_total||0)}</span>
+                  <span style={{color:'#8fd0ff'}}>This season {Math.floor(b.yield_current_total||0)}</span>
                 </div>
                 <div style={{display:'flex',justifyContent:'space-between',color:'rgba(255,255,255,0.5)'}}>
-                  <span>上季({seasonName[b.yield_last_season]||'-'})</span>
+                  <span>Last season ({seasonName[b.yield_last_season]||'-'})</span>
                   <span>{Math.floor(b.yield_last_total||0)}</span>
                 </div>
               </div>
@@ -129,7 +165,7 @@ function BanishedBuildPanel({state,buildMode,onSetBuild,onCancel}){
         {Object.entries(B_CATS).map(([k,v])=>(
           <button key={k} className={`btn btn-sm ${cat===k?'btn-p':'btn-s'}`} onClick={()=>setCat(k)} style={{fontSize:11,padding:'4px 8px',borderRadius:'6px',fontWeight:600,background:cat===k?catColors[k]||'#5ac480':'rgba(255,255,255,0.06)',border:cat===k?'none':'1px solid rgba(255,255,255,0.1)',color:cat===k?'#fff':'rgba(255,255,255,0.7)',transition:'all 0.2s'}}>{v.name}</button>
         ))}
-        {buildMode&&<button className="btn btn-d btn-sm" onClick={onCancel} style={{fontSize:11,padding:'4px 8px',borderRadius:'6px',fontWeight:600,marginLeft:'auto',background:'rgba(196,90,90,0.2)',border:'1px solid rgba(196,90,90,0.3)',color:'#c45a5a'}}>取消</button>}
+        {buildMode&&<button className="btn btn-d btn-sm" onClick={onCancel} style={{fontSize:11,padding:'4px 8px',borderRadius:'6px',fontWeight:600,marginLeft:'auto',background:'rgba(196,90,90,0.2)',border:'1px solid rgba(196,90,90,0.3)',color:'#c45a5a'}}>Cancel</button>}
       </div>
       <div style={{padding:8}}>
         {Object.entries(BUILDINGS_DATA).filter(([,b])=>b.cat===cat).map(([type,b])=>{
@@ -138,8 +174,8 @@ function BanishedBuildPanel({state,buildMode,onSetBuild,onCancel}){
           return(
             <div key={type} onClick={()=>ok&&onSetBuild(type)} style={{padding:'10px',marginBottom:6,borderRadius:'8px',border:`1.5px solid ${selected?(catColors[cat]||'#5ac480'):'rgba(255,255,255,0.1)'}`,cursor:ok?'pointer':'not-allowed',opacity:ok?1:0.45,background:selected?`${(catColors[cat]||'#5ac480')}20`:'rgba(255,255,255,0.03)',transition:'all 0.2s',boxShadow:selected?`0 0 15px ${(catColors[cat]||'#5ac480')}40`:'none'}} onMouseEnter={e=>{if(ok&&!selected)e.currentTarget.style.background='rgba(255,255,255,0.06)';e.currentTarget.style.transform='translateX(-2px)';}} onMouseLeave={e=>{if(ok&&!selected)e.currentTarget.style.background='rgba(255,255,255,0.03)';e.currentTarget.style.transform='translateX(0)';}}>
               <div style={{fontWeight:600,fontSize:13,marginBottom:4,color:selected?(catColors[cat]||'#5ac480'):'rgba(255,255,255,0.95)'}}>{b.name}</div>
-              <div style={{fontSize:11,color:ok?'rgba(255,255,255,0.6)':'rgba(196,90,90,0.8)',marginBottom:3}}>{Object.entries(b.cost).map(([r,a])=>`${RESOURCE_LABELS[r]||r}:${a}`).join(' ')||'免费'}</div>
-              {b.workers>0&&<div style={{fontSize:10,color:'rgba(255,255,255,0.5)',display:'flex',alignItems:'center',gap:4}}>工人: {b.workers}</div>}
+              <div style={{fontSize:11,color:ok?'rgba(255,255,255,0.6)':'rgba(196,90,90,0.8)',marginBottom:3}}>{Object.entries(b.cost).map(([r,a])=>`${RESOURCE_LABELS[r]||r}:${a}`).join(' ')||'Free'}</div>
+              {b.workers>0&&<div style={{fontSize:10,color:'rgba(255,255,255,0.5)',display:'flex',alignItems:'center',gap:4}}>Workers: {b.workers}</div>}
             </div>
           );
         })}
@@ -163,35 +199,40 @@ function BanishedInfoPanel({selBuilding,selVillager,onClose,onUpgradeBlacksmith,
   if(selVillager){
     const v=selVillager;
     const moodColor=(v.happiness||0)>=70?'#4ec87a':(v.happiness||0)>=50?'#d4b06a':(v.happiness||0)>=35?'#d4905a':'#c45a5a';
+    const lifeStage=(v.age||0)<10?'Child':(v.age||0)<18?'Student':(v.age||0)<55?'Adult':'Elder';
+    const roleLabel=(typeof JOB_LABELS!=='undefined'&&v.job&&JOB_LABELS[v.job])||v.job||lifeStage;
     return(
       <div style={{position:'absolute',bottom:44,left:0,width:250,background:'var(--bg2)',border:'1px solid rgba(201,168,108,0.25)',borderRadius:'0 12px 0 0',padding:14,zIndex:9,boxShadow:'0 -4px 24px rgba(0,0,0,0.5)',backdropFilter:'blur(8px)'}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10,paddingBottom:8,borderBottom:'1px solid rgba(201,168,108,0.15)'}}>
           <div>
             <span style={{fontWeight:700,fontSize:15,color:'var(--fg)'}}>{v.name}</span>
-            <span style={{fontSize:13,color:'var(--fg3)',marginLeft:6}}>({v.age}岁)</span>
+            <span style={{fontSize:13,color:'var(--fg3)',marginLeft:6}}>({v.age})</span>
           </div>
           <button className="btn btn-s btn-sm" onClick={onClose} style={{padding:'4px 6px',borderRadius:'6px',background:'rgba(255,255,255,0.06)'}}><Icon name="x" size={13}/></button>
         </div>
         <div style={{display:'inline-block',fontSize:11,padding:'3px 8px',borderRadius:'4px',background:`${VILLAGER_COLORS[v.state]||'#888'}20`,color:VILLAGER_COLORS[v.state]||'rgba(255,255,255,0.7)',fontWeight:600,marginBottom:10,border:`1px solid ${VILLAGER_COLORS[v.state]||'#888'}40`}}>{v.state}</div>
+        <div style={{fontSize:11,color:'rgba(255,255,255,0.72)',marginBottom:8}}>
+          Role: <strong style={{color:'var(--gold)'}}>{roleLabel}</strong>
+        </div>
         <div style={{marginTop:10}}>
-          <Bar val={v.hunger||0} max={100} color="#e88a1a" label="饱食"/>
-          <Bar val={v.thirst||0} max={100} color="#5ad4e8" label="水分"/>
-          <Bar val={v.warmth||0} max={100} color="#9ab4d4" label="保暖"/>
-          <Bar val={v.health||100} max={100} color="#3eb87a" label="健康"/>
-          <Bar val={v.happiness||0} max={100} color={moodColor} label="心情"/>
+          <Bar val={v.hunger||0} max={100} color="#e88a1a" label="Hunger"/>
+          <Bar val={v.thirst||0} max={100} color="#5ad4e8" label="Thirst"/>
+          <Bar val={v.warmth||0} max={100} color="#9ab4d4" label="Warmth"/>
+          <Bar val={v.health||100} max={100} color="#3eb87a" label="Health"/>
+          <Bar val={v.happiness||0} max={100} color={moodColor} label="Mood"/>
         </div>
         <div style={{fontSize:11,color:moodColor,marginTop:2,fontWeight:700}}>
-          心情状态: {v.mood_tag||'平稳'}
+          Mood: {v.mood_tag||'Stable'}
         </div>
         <div style={{fontSize:10,color:'rgba(255,255,255,0.55)',marginTop:3}}>
-          受饱食、水分、保暖、健康、家庭与住房影响
+          Affected by hunger, thirst, warmth, health, family, and housing
         </div>
-        {v.educated&&<div style={{marginTop:8,fontSize:11,padding:'6px 10px',background:'rgba(90,138,196,0.15)',borderRadius:'6px',color:'#5a8ac4',fontWeight:600,display:'flex',alignItems:'center',gap:6,border:'1px solid rgba(90,138,196,0.3)'}}>受教育 · 效率×2</div>}
+        {v.educated&&<div style={{marginTop:8,fontSize:11,padding:'6px 10px',background:'rgba(90,138,196,0.15)',borderRadius:'6px',color:'#5a8ac4',fontWeight:600,display:'flex',alignItems:'center',gap:6,border:'1px solid rgba(90,138,196,0.3)'}}>Educated - Efficiency x2</div>}
         <div style={{marginTop:8,fontSize:11,color:'rgba(255,255,255,0.7)'}}>
-          携带: {Object.entries(v.carrying||{}).map(([k,n])=>`${RESOURCE_LABELS[k]||k}:${Math.floor(n)}`).join(' ')||'无'} / {v.has_cart?50:10}
+          Carrying: {Object.entries(v.carrying||{}).map(([k,n])=>`${RESOURCE_LABELS[k]||k}:${Math.floor(n)}`).join(' ')||'None'} / {v.has_cart?50:10}
         </div>
         <div style={{marginTop:4,fontSize:11,color:v.has_cart?'#8fd0ff':'rgba(255,255,255,0.5)'}}>
-          {v.has_cart?'已配推车（50格）':'背包（10格）'}
+          {v.has_cart?'Cart equipped (50 slots)':'Backpack (10 slots)'}
         </div>
       </div>
     );
@@ -217,7 +258,7 @@ function BanishedInfoPanel({selBuilding,selVillager,onClose,onUpgradeBlacksmith,
       </div>
       {!b.built&&(
         <div style={{marginBottom:10}}>
-          <div style={{display:'flex',justifyContent:'space-between',fontSize:11,color:'rgba(255,255,255,0.6)',marginBottom:4}}>建造进度</div>
+          <div style={{display:'flex',justifyContent:'space-between',fontSize:11,color:'rgba(255,255,255,0.6)',marginBottom:4}}>Construction progress</div>
           <div style={{height:10,background:'rgba(255,255,255,0.08)',borderRadius:5,overflow:'hidden'}}>
             <div style={{height:'100%',width:`${(b.progress||0)*100}%`,background:'linear-gradient(90deg,#5ac480,#3eb87a)',borderRadius:5,transition:'width 0.3s',boxShadow:'0 0 10px rgba(58,184,122,0.4)'}}/>
           </div>
@@ -226,22 +267,22 @@ function BanishedInfoPanel({selBuilding,selVillager,onClose,onUpgradeBlacksmith,
       )}
       {b.built&&b.workers_max>0&&(
         <div style={{fontSize:12,color:'rgba(255,255,255,0.85)',marginBottom:8,padding:'6px 10px',background:'rgba(58,184,122,0.1)',borderRadius:'6px',display:'flex',alignItems:'center',gap:8}}>
-          <span>工人: <strong style={{color:'#5ac480'}}>{b.workers_assigned}</strong> / {b.workers_max}</span>
+          <span>Workers: <strong style={{color:'#5ac480'}}>{b.workers_assigned}</strong> / {b.workers_max}</span>
         </div>
       )}
       {b.type==='well'&&(
         <div style={{fontSize:12,color:'#5ad4e8',marginBottom:8,padding:'6px 10px',background:'rgba(90,212,232,0.1)',borderRadius:'6px',display:'flex',alignItems:'center',gap:8}}>
-          <span>水量: <strong>{Math.floor(b.water_storage||0)}</strong> / 200</span>
+          <span>Water: <strong>{Math.floor(b.water_storage||0)}</strong> / 200</span>
         </div>
       )}
       {b.type==='forester'&&(
         <div style={{marginBottom:8,padding:'8px 10px',background:'rgba(90,196,128,0.1)',border:'1px solid rgba(90,196,128,0.3)',borderRadius:6}}>
-          <div style={{fontSize:11,color:'rgba(255,255,255,0.8)',marginBottom:6}}>护林范围: 半径{workRange}（圆形）</div>
+          <div style={{fontSize:11,color:'rgba(255,255,255,0.8)',marginBottom:6}}>Forester range: radius {workRange} (circle)</div>
           <div style={{display:'flex',gap:6}}>
             {[
-              {k:'auto',n:'自动'},
-              {k:'cut',n:'伐木'},
-              {k:'plant',n:'种植'},
+              {k:'auto',n:'Auto'},
+              {k:'cut',n:'Cut'},
+              {k:'plant',n:'Plant'},
             ].map(m=>(
               <button key={m.k} className={`btn btn-sm ${(b.forester_mode||'auto')===m.k?'btn-p':'btn-s'}`} onClick={()=>onSetForesterMode&&onSetForesterMode(b.id,m.k)} style={{padding:'4px 8px',fontSize:11,borderRadius:6,fontWeight:600,background:(b.forester_mode||'auto')===m.k?'#5ac480':'rgba(255,255,255,0.06)',border:(b.forester_mode||'auto')===m.k?'none':'1px solid rgba(255,255,255,0.15)',color:(b.forester_mode||'auto')===m.k?'#08130a':'var(--fg2)'}}>
                 {m.n}
@@ -252,7 +293,22 @@ function BanishedInfoPanel({selBuilding,selVillager,onClose,onUpgradeBlacksmith,
       )}
       {b.built&&hasWorkRange&&b.type!=='forester'&&(
         <div style={{marginBottom:8,padding:'7px 10px',background:'rgba(90,196,128,0.1)',border:'1px solid rgba(90,196,128,0.24)',borderRadius:6,fontSize:11,color:'rgba(255,255,255,0.8)'}}>
-          作业范围: 半径{workRange}（圆形）
+          Work range: radius {workRange} (circle)
+        </div>
+      )}
+      {b.built&&b.type==='chapel'&&(
+        <div style={{marginBottom:8,padding:'7px 10px',background:'rgba(152,120,180,0.12)',border:'1px solid rgba(152,120,180,0.28)',borderRadius:6,fontSize:11,color:'rgba(255,255,255,0.82)'}}>
+          Chapel comfort radius: 16
+        </div>
+      )}
+      {b.built&&b.type==='town_hall'&&(
+        <div style={{marginBottom:8,padding:'7px 10px',background:'rgba(201,168,108,0.12)',border:'1px solid rgba(201,168,108,0.28)',borderRadius:6,fontSize:11,color:'rgba(255,255,255,0.82)'}}>
+          Town hall service radius: 18
+        </div>
+      )}
+      {b.built&&b.type==='cemetery'&&(
+        <div style={{marginBottom:8,padding:'7px 10px',background:'rgba(120,136,120,0.12)',border:'1px solid rgba(120,136,120,0.28)',borderRadius:6,fontSize:11,color:'rgba(255,255,255,0.82)'}}>
+          Graves: {b.graves_used||0} / {b.graves_cap||24}
         </div>
       )}
       <div style={{fontSize:11,color:'rgba(255,255,255,0.5)',padding:'6px 10px',background:'rgba(255,255,255,0.03)',borderRadius:'6px',display:'flex',alignItems:'center',gap:6}}>
@@ -260,64 +316,73 @@ function BanishedInfoPanel({selBuilding,selVillager,onClose,onUpgradeBlacksmith,
       </div>
       {b.built&&isHouse&&(
         <div style={{marginTop:8,padding:'8px 10px',background:'rgba(90,160,212,0.12)',border:'1px solid rgba(90,160,212,0.3)',borderRadius:6}}>
-          <div style={{fontSize:11,color:'#8fd0ff',fontWeight:700,marginBottom:6}}>住宅信息</div>
+          <div style={{fontSize:11,color:'#8fd0ff',fontWeight:700,marginBottom:6}}>Housing info</div>
           <div style={{fontSize:11,color:'rgba(255,255,255,0.88)',marginBottom:3}}>
-            居住: {(b.residents||[]).length} / {b.type==='boarding_house'?8:2}
+            Residents: {(b.residents||[]).length} / {b.type==='boarding_house'?8:2}
+          </div>
+          <div style={{fontSize:11,color:b.market_served?'#5ac480':'rgba(255,255,255,0.55)',marginBottom:3}}>
+            Market service: {b.market_label||'未覆盖'}
+          </div>
+          <div style={{fontSize:11,color:b.chapel_served?'#c9a0e8':'rgba(255,255,255,0.55)',marginBottom:3}}>
+            Chapel service: {b.chapel_served?'已覆盖':'未覆盖'}
+          </div>
+          <div style={{fontSize:11,color:b.town_hall_served?'#c9a86c':'rgba(255,255,255,0.55)',marginBottom:3}}>
+            Town hall service: {b.town_hall_served?'已覆盖':'未覆盖'}
           </div>
           <div style={{fontSize:11,color:'rgba(255,255,255,0.72)',marginBottom:6}}>
-            住宅库存: {storageUsed} / {storageCap}
+            Housing storage: {storageUsed} / {storageCap}
           </div>
           <div style={{fontSize:11,color:'rgba(255,255,255,0.85)',marginBottom:3}}>
-            居民: {residentNames.join('、')||'暂无'}
+            Residents: {residentNames.join(', ')||'None'}
           </div>
           <div style={{fontSize:10,color:'rgba(255,255,255,0.55)'}}>
-            库存明细: {storageEntries.slice(0,6).map(([k,n])=>`${RESOURCE_LABELS[k]||k}:${Math.floor(n)}`).join(' ')||'空'}
+            Inventory: {storageEntries.slice(0,6).map(([k,n])=>`${RESOURCE_LABELS[k]||k}:${Math.floor(n)}`).join(' ')||'Empty'}
           </div>
         </div>
       )}
       {b.built&&isStorage&&(
         <div style={{marginTop:8,padding:'8px 10px',background:'rgba(200,160,100,0.12)',border:'1px solid rgba(200,160,100,0.3)',borderRadius:6}}>
-          <div style={{fontSize:11,color:'var(--gold)',fontWeight:700,marginBottom:6}}>仓储信息</div>
+          <div style={{fontSize:11,color:'var(--gold)',fontWeight:700,marginBottom:6}}>Storage info</div>
           <div style={{fontSize:11,color:'rgba(255,255,255,0.9)',marginBottom:5}}>
-            库存/容量: {storageUsed} / {storageCap}
+            Stock / capacity: {storageUsed} / {storageCap}
           </div>
           <div style={{fontSize:10,color:'rgba(255,255,255,0.62)'}}>
-            明细: {storageEntries.slice(0,8).map(([k,n])=>`${RESOURCE_LABELS[k]||k}:${Math.floor(n)}`).join(' ')||'空'}
+            Details: {storageEntries.slice(0,8).map(([k,n])=>`${RESOURCE_LABELS[k]||k}:${Math.floor(n)}`).join(' ')||'Empty'}
           </div>
         </div>
       )}
       {b.built&&isProduction&&!isStorage&&(
         <div style={{marginTop:8,padding:'8px 10px',background:'rgba(90,196,128,0.12)',border:'1px solid rgba(90,196,128,0.3)',borderRadius:6}}>
-          <div style={{fontSize:11,color:'#5ac480',fontWeight:700,marginBottom:6}}>生产库存</div>
+          <div style={{fontSize:11,color:'#5ac480',fontWeight:700,marginBottom:6}}>Production stock</div>
           <div style={{fontSize:11,color:'rgba(255,255,255,0.9)',marginBottom:5}}>
-            库存/容量: {storageUsed} / {storageCap}
+            Stock / capacity: {storageUsed} / {storageCap}
           </div>
           <div style={{fontSize:10,color:'rgba(255,255,255,0.62)'}}>
-            明细: {storageEntries.slice(0,8).map(([k,n])=>`${RESOURCE_LABELS[k]||k}:${Math.floor(n)}`).join(' ')||'空'}
+            Details: {storageEntries.slice(0,8).map(([k,n])=>`${RESOURCE_LABELS[k]||k}:${Math.floor(n)}`).join(' ')||'Empty'}
           </div>
         </div>
       )}
       {b.built&&b.workers_max>0&&(
         <div style={{marginTop:8,padding:'8px 10px',background:'rgba(143,208,255,0.1)',border:'1px solid rgba(143,208,255,0.28)',borderRadius:6}}>
           <div style={{fontSize:11,color:'#8fd0ff',marginBottom:6,fontWeight:700}}>
-            季度产量（当前: {seasonName[time?.season]||'-'}）
+            Seasonal yield (current: {seasonName[time?.season]||'-'})
           </div>
           <div style={{fontSize:11,color:'rgba(255,255,255,0.85)',marginBottom:4}}>
-            本季度: {Object.entries(b.yield_current||{}).map(([k,n])=>`${RESOURCE_LABELS[k]||k}:${Math.floor(n)}`).join(' ')||'暂无'}
+            This season: {Object.entries(b.yield_current||{}).map(([k,n])=>`${RESOURCE_LABELS[k]||k}:${Math.floor(n)}`).join(' ')||'None'}
           </div>
           <div style={{fontSize:11,color:'rgba(255,255,255,0.58)'}}>
-            上季度({seasonName[b.yield_last_season]||'-'}): {Object.entries(b.yield_last||{}).map(([k,n])=>`${RESOURCE_LABELS[k]||k}:${Math.floor(n)}`).join(' ')||'暂无'}
+            Last season ({seasonName[b.yield_last_season]||'-'}): {Object.entries(b.yield_last||{}).map(([k,n])=>`${RESOURCE_LABELS[k]||k}:${Math.floor(n)}`).join(' ')||'None'}
           </div>
         </div>
       )}
       {b.type==='blacksmith'&&b.built&&(
         <div style={{marginTop:10}}>
           <div style={{fontSize:11,color:b.carts_unlocked?'#8fd0ff':'rgba(255,255,255,0.6)',marginBottom:6}}>
-            推车工艺: {b.carts_unlocked?'已解锁（可制造推车）':'未解锁'}
+            Cart technology: {b.carts_unlocked?'Unlocked (can craft carts)':'Locked'}
           </div>
           {!b.carts_unlocked&&(
             <button className="btn btn-sm btn-p" onClick={()=>onUpgradeBlacksmith&&onUpgradeBlacksmith(b.id)} style={{padding:'6px 10px',fontSize:11,borderRadius:6,background:'#8fd0ff',color:'#0b1520',fontWeight:700}}>
-              升级铁匠铺（铁8 木20 工具5 人工10）
+              Upgrade blacksmith (iron 8, wood 20, tools 5, labor 10)
             </button>
           )}
         </div>
@@ -345,14 +410,14 @@ function BanishedMarketPanel({onClose}){
   const place=async()=>{
     if(!amt||!price)return;
     setMsg('');
-    try{await P(`/api/banished/market/order/`,{resource:res,order_type:ot,amount:parseInt(amt),price:parseInt(price)});setMsg('✓ 挂单成功');setAmt('');setPrice('');load();}
+    try{await P(`/api/banished/market/order/`,{resource:res,order_type:ot,amount:parseInt(amt),price:parseInt(price)});setMsg('✓ Order placed');setAmt('');setPrice('');load();}
     catch(e){setMsg('✗ '+e.message);}
   };
   return(
     <div style={{position:'absolute',top:'8%',left:'50%',transform:'translateX(-50%)',width:'min(500px,94vw)',maxHeight:'82vh',background:'linear-gradient(135deg,rgba(15,20,18,0.98) 0%,rgba(8,12,10,0.98) 100%)',border:'1px solid rgba(201,168,108,0.3)',borderRadius:16,overflow:'hidden',zIndex:20,display:'flex',flexDirection:'column',boxShadow:'0 8px 32px rgba(0,0,0,0.6)',backdropFilter:'blur(12px)'}}>
       <div style={{padding:'14px 18px',borderBottom:'1px solid rgba(201,168,108,0.2)',display:'flex',justifyContent:'space-between',alignItems:'center',background:'linear-gradient(90deg,rgba(201,168,108,0.1),transparent)'}}>
         <div style={{display:'flex',alignItems:'center',gap:8}}>
-          <span style={{fontWeight:700,fontSize:16,color:'#c9a86c'}}>全球交易市场</span>
+          <span style={{fontWeight:700,fontSize:16,color:'#c9a86c'}}>Global market</span>
         </div>
         <button className="btn btn-s btn-sm" onClick={onClose} style={{padding:'5px 8px',borderRadius:'6px',background:'rgba(255,255,255,0.06)'}}><Icon name="x" size={15}/></button>
       </div>
@@ -365,29 +430,29 @@ function BanishedMarketPanel({onClose}){
         {summary&&(
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:12}}>
             <div style={{background:'linear-gradient(135deg,rgba(196,90,90,0.12),rgba(196,90,90,0.05))',border:'1px solid rgba(196,90,90,0.25)',borderRadius:10,padding:12}}>
-              <div style={{fontSize:11,color:'#c45a5a',fontWeight:600,marginBottom:6,display:'flex',alignItems:'center',gap:6}}>卖单 (最低5)</div>
+              <div style={{fontSize:11,color:'#c45a5a',fontWeight:600,marginBottom:6,display:'flex',alignItems:'center',gap:6}}>Sell orders (top 5)</div>
               {(summary.sell_orders||[]).slice(0,5).map((o,i)=>(
                 <div key={i} style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:3,padding:'4px 6px',background:'rgba(255,255,255,0.03)',borderRadius:4}}>
                   <span style={{color:'rgba(255,255,255,0.9)'}}>{o.amount}</span><span style={{color:'#c45a5a',fontWeight:600}}>{o.price}💰</span>
                 </div>
               ))}
-              {!(summary.sell_orders?.length)&&<div style={{fontSize:11,color:'rgba(255,255,255,0.4)',textAlign:'center',padding:8}}>暂无卖单</div>}
+              {!(summary.sell_orders?.length)&&<div style={{fontSize:11,color:'rgba(255,255,255,0.4)',textAlign:'center',padding:8}}>No sell orders</div>}
             </div>
             <div style={{background:'linear-gradient(135deg,rgba(58,184,122,0.12),rgba(58,184,122,0.05))',border:'1px solid rgba(58,184,122,0.25)',borderRadius:10,padding:12}}>
-              <div style={{fontSize:11,color:'#3eb87a',fontWeight:600,marginBottom:6,display:'flex',alignItems:'center',gap:6}}>买单 (最高5)</div>
+              <div style={{fontSize:11,color:'#3eb87a',fontWeight:600,marginBottom:6,display:'flex',alignItems:'center',gap:6}}>Buy orders (top 5)</div>
               {(summary.buy_orders||[]).slice(0,5).map((o,i)=>(
                 <div key={i} style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:3,padding:'4px 6px',background:'rgba(255,255,255,0.03)',borderRadius:4}}>
                   <span style={{color:'#3eb87a',fontWeight:600}}>{o.price}💰</span><span style={{color:'rgba(255,255,255,0.9)'}}>{o.amount}</span>
                 </div>
               ))}
-              {!(summary.buy_orders?.length)&&<div style={{fontSize:11,color:'rgba(255,255,255,0.4)',textAlign:'center',padding:8}}>暂无买单</div>}
+              {!(summary.buy_orders?.length)&&<div style={{fontSize:11,color:'rgba(255,255,255,0.4)',textAlign:'center',padding:8}}>No buy orders</div>}
             </div>
           </div>
         )}
-        {summary?.last_price&&<div style={{textAlign:'center',fontSize:14,padding:10,background:'linear-gradient(90deg,transparent,rgba(201,168,108,0.15),transparent)',borderRadius:8,marginBottom:12,color:'#ffd700',fontWeight:700}}>最新成交: {summary.last_price}</div>}
+        {summary?.last_price&&<div style={{textAlign:'center',fontSize:14,padding:10,background:'linear-gradient(90deg,transparent,rgba(201,168,108,0.15),transparent)',borderRadius:8,marginBottom:12,color:'#ffd700',fontWeight:700}}>Last trade: {summary.last_price}</div>}
         {hist.length>0&&(
           <div style={{marginBottom:12}}>
-            <div style={{fontSize:11,color:'rgba(255,255,255,0.6)',marginBottom:6,fontWeight:500}}>成交历史 ({hist.length}笔)</div>
+            <div style={{fontSize:11,color:'rgba(255,255,255,0.6)',marginBottom:6,fontWeight:500}}>Trade history ({hist.length})</div>
             <div style={{display:'flex',alignItems:'flex-end',gap:1.5,height:44,padding:'8px',background:'rgba(255,255,255,0.02)',borderRadius:8}}>
               {hist.slice(-30).map((h,i)=>{
                 const mx=Math.max(...hist.map(x=>x.price)),mn=Math.min(...hist.map(x=>x.price));
@@ -399,15 +464,15 @@ function BanishedMarketPanel({onClose}){
         )}
         <div style={{borderTop:'1px solid rgba(201,168,108,0.15)',paddingTop:12}}>
           <div style={{display:'flex',gap:8,marginBottom:10}}>
-            <button className={`btn btn-sm ${ot==='buy'?'btn-p':'btn-s'}`} onClick={()=>setOt('buy')} style={{flex:1,padding:'8px',fontSize:13,borderRadius:'8px',fontWeight:600,background:ot==='buy'?'linear-gradient(135deg,#3eb87a,#2d9a62)':'rgba(255,255,255,0.06)',border:ot==='buy'?'none':'1px solid rgba(255,255,255,0.1)',color:ot==='buy'?'#fff':'rgba(255,255,255,0.7)'}}>买入</button>
-            <button className={`btn btn-sm ${ot==='sell'?'btn-d':'btn-s'}`} onClick={()=>setOt('sell')} style={{flex:1,padding:'8px',fontSize:13,borderRadius:'8px',fontWeight:600,background:ot==='sell'?'linear-gradient(135deg,#c45a5a,#a33d3d)':'rgba(255,255,255,0.06)',border:ot==='sell'?'none':'1px solid rgba(255,255,255,0.1)',color:ot==='sell'?'#fff':'rgba(255,255,255,0.7)'}}>卖出</button>
+            <button className={`btn btn-sm ${ot==='buy'?'btn-p':'btn-s'}`} onClick={()=>setOt('buy')} style={{flex:1,padding:'8px',fontSize:13,borderRadius:'8px',fontWeight:600,background:ot==='buy'?'linear-gradient(135deg,#3eb87a,#2d9a62)':'rgba(255,255,255,0.06)',border:ot==='buy'?'none':'1px solid rgba(255,255,255,0.1)',color:ot==='buy'?'#fff':'rgba(255,255,255,0.7)'}}>Buy</button>
+            <button className={`btn btn-sm ${ot==='sell'?'btn-d':'btn-s'}`} onClick={()=>setOt('sell')} style={{flex:1,padding:'8px',fontSize:13,borderRadius:'8px',fontWeight:600,background:ot==='sell'?'linear-gradient(135deg,#c45a5a,#a33d3d)':'rgba(255,255,255,0.06)',border:ot==='sell'?'none':'1px solid rgba(255,255,255,0.1)',color:ot==='sell'?'#fff':'rgba(255,255,255,0.7)'}}>Sell</button>
           </div>
           <div style={{display:'flex',gap:10,marginBottom:10}}>
-            <div className="fg" style={{flex:1}}><label style={{fontSize:11,color:'rgba(255,255,255,0.6)',marginBottom:4,display:'block'}}>数量</label><input type="number" value={amt} onChange={e=>setAmt(e.target.value)} placeholder="0" style={{fontSize:13,padding:'8px',borderRadius:'6px'}}/></div>
-            <div className="fg" style={{flex:1}}><label style={{fontSize:11,color:'rgba(255,255,255,0.6)',marginBottom:4,display:'block'}}>单价</label><input type="number" value={price} onChange={e=>setPrice(e.target.value)} placeholder="0" style={{fontSize:13,padding:'8px',borderRadius:'6px'}}/></div>
+            <div className="fg" style={{flex:1}}><label style={{fontSize:11,color:'rgba(255,255,255,0.6)',marginBottom:4,display:'block'}}>Amount</label><input type="number" value={amt} onChange={e=>setAmt(e.target.value)} placeholder="0" style={{fontSize:13,padding:'8px',borderRadius:'6px'}}/></div>
+            <div className="fg" style={{flex:1}}><label style={{fontSize:11,color:'rgba(255,255,255,0.6)',marginBottom:4,display:'block'}}>Price</label><input type="number" value={price} onChange={e=>setPrice(e.target.value)} placeholder="0" style={{fontSize:13,padding:'8px',borderRadius:'6px'}}/></div>
           </div>
-          <button className="btn btn-p" style={{width:'100%',fontSize:13,padding:'10px',borderRadius:'8px',fontWeight:600,background:'linear-gradient(135deg,#c9a86c,#b89760)',border:'none'}} onClick={place}>挂单</button>
-          {msg&&<div style={{fontSize:12,padding:'8px',borderRadius:'6px',textAlign:'center',marginTop:8,background:msg.includes('成功')?'rgba(58,184,122,0.15)':'rgba(196,90,90,0.15)',color:msg.includes('成功')?'#3eb87a':'#c45a5a',fontWeight:500}}>{msg}</div>}
+          <button className="btn btn-p" style={{width:'100%',fontSize:13,padding:'10px',borderRadius:'8px',fontWeight:600,background:'linear-gradient(135deg,#c9a86c,#b89760)',border:'none'}} onClick={place}>Place order</button>
+          {msg&&<div style={{fontSize:12,padding:'8px',borderRadius:'6px',textAlign:'center',marginTop:8,background:msg.includes('Order placed')?'rgba(58,184,122,0.15)':'rgba(196,90,90,0.15)',color:msg.includes('Order placed')?'#3eb87a':'#c45a5a',fontWeight:500}}>{msg}</div>}
         </div>
       </div>
     </div>
@@ -427,35 +492,35 @@ function BanishedAIPanel({token,gameState,onClose}){
     try{
       for await(const chunk of streamSSE(`/api/banished/ai/action/`,{state:gameState,permissions:perms},token)){
         if(chunk.type==='reasoning')setLog(l=>l+chunk.text);
-        if(chunk.type==='action')setLog(l=>l+'\n[动作] '+JSON.stringify(chunk.action));
+        if(chunk.type==='action')setLog(l=>l+'\n[Action] '+JSON.stringify(chunk.action));
         if(chunk.done)break;
       }
-    }catch(e){setLog(l=>l+'\n错误:'+e.message);}
+    }catch(e){setLog(l=>l+'\nError: '+e.message);}
     setStreaming(false);
   };
   return(
     <div style={{position:'absolute',top:'8%',right:0,width:'min(320px,94vw)',maxHeight:'82vh',background:'linear-gradient(135deg,rgba(15,20,18,0.98) 0%,rgba(8,12,10,0.98) 100%)',border:'1px solid rgba(90,138,196,0.3)',borderRadius:'16px 0 0 16px',overflow:'hidden',zIndex:20,display:'flex',flexDirection:'column',boxShadow:'-4px 0 24px rgba(0,0,0,0.5)',backdropFilter:'blur(12px)'}}>
       <div style={{padding:'14px 18px',borderBottom:'1px solid rgba(90,138,196,0.2)',display:'flex',justifyContent:'space-between',alignItems:'center',background:'linear-gradient(90deg,rgba(90,138,196,0.15),transparent)'}}>
         <div style={{display:'flex',alignItems:'center',gap:8}}>
-          <span style={{fontWeight:700,fontSize:16,color:'#5a8ac4'}}>AI 协同</span>
+          <span style={{fontWeight:700,fontSize:16,color:'#5a8ac4'}}>AI Coordination</span>
         </div>
         <button className="btn btn-s btn-sm" onClick={onClose} style={{padding:'5px 8px',borderRadius:'6px',background:'rgba(255,255,255,0.06)'}}><Icon name="x" size={15}/></button>
       </div>
       <div style={{flex:1,overflowY:'auto',padding:14}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14,padding:'10px 12px',background:'rgba(90,138,196,0.1)',borderRadius:8,border:'1px solid rgba(90,138,196,0.2)'}}>
-          <span style={{fontSize:13,color:'rgba(255,255,255,0.9)'}}>运行状态</span>
-          <button className={`btn btn-sm ${active?'btn-p':'btn-s'}`} onClick={toggle} style={{padding:'5px 12px',fontSize:11,borderRadius:'6px',fontWeight:600,background:active?'linear-gradient(135deg,#5a8ac4,#4a7ab4)':'rgba(255,255,255,0.06)',border:active?'none':'1px solid rgba(255,255,255,0.1)',color:active?'#fff':'rgba(255,255,255,0.7)'}}>{active?'● 运行中':'○ 已停止'}</button>
+          <span style={{fontSize:13,color:'rgba(255,255,255,0.9)'}}>Status</span>
+          <button className={`btn btn-sm ${active?'btn-p':'btn-s'}`} onClick={toggle} style={{padding:'5px 12px',fontSize:11,borderRadius:'6px',fontWeight:600,background:active?'linear-gradient(135deg,#5a8ac4,#4a7ab4)':'rgba(255,255,255,0.06)',border:active?'none':'1px solid rgba(255,255,255,0.1)',color:active?'#fff':'rgba(255,255,255,0.7)'}}>{active?'● Running':'○ Stopped'}</button>
         </div>
         <div style={{marginBottom:14}}>
-          <div style={{fontSize:11,color:'rgba(255,255,255,0.6)',marginBottom:8,fontWeight:500,textTransform:'uppercase',letterSpacing:'0.5px'}}>权限设置</div>
-          {[['build','建筑规划'],['assign','工人分配'],['trade','市场交易']].map(([k,lbl])=>(
+          <div style={{fontSize:11,color:'rgba(255,255,255,0.6)',marginBottom:8,fontWeight:500,textTransform:'uppercase',letterSpacing:'0.5px'}}>Permissions</div>
+          {[['build','Build planning'],['assign','Worker assignment'],['trade','Market trading']].map(([k,lbl])=>(
             <div key={k} style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8,padding:'8px 10px',background:'rgba(255,255,255,0.03)',borderRadius:6,transition:'background 0.2s'}} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.06)'} onMouseLeave={e=>e.currentTarget.style.background='rgba(255,255,255,0.03)'}>
               <span style={{fontSize:12,color:'rgba(255,255,255,0.9)'}}>{lbl}</span>
-              <button className={`btn btn-sm ${perms[k]?'btn-p':'btn-s'}`} onClick={()=>savePerms({...perms,[k]:!perms[k]})} style={{fontSize:10,padding:'4px 10px',borderRadius:'5px',fontWeight:600,background:perms[k]?'linear-gradient(135deg,#5a8ac4,#4a7ab4)':'rgba(255,255,255,0.06)',border:perms[k]?'none':'1px solid rgba(255,255,255,0.1)',color:perms[k]?'#fff':'rgba(255,255,255,0.7)'}}>{perms[k]?'✓ 允许':'✗ 禁止'}</button>
+              <button className={`btn btn-sm ${perms[k]?'btn-p':'btn-s'}`} onClick={()=>savePerms({...perms,[k]:!perms[k]})} style={{fontSize:10,padding:'4px 10px',borderRadius:'5px',fontWeight:600,background:perms[k]?'linear-gradient(135deg,#5a8ac4,#4a7ab4)':'rgba(255,255,255,0.06)',border:perms[k]?'none':'1px solid rgba(255,255,255,0.1)',color:perms[k]?'#fff':'rgba(255,255,255,0.7)'}}>{perms[k]?'✓ Allow':'✗ Block'}</button>
             </div>
           ))}
         </div>
-        <button className="btn btn-p" style={{width:'100%',marginBottom:10,padding:'10px',fontSize:13,borderRadius:'8px',fontWeight:600,background:'linear-gradient(135deg,#5a8ac4,#4a7ab4)',border:'none'}} onClick={run} disabled={streaming}>{streaming?'思考中...':'AI决策一次'}</button>
+        <button className="btn btn-p" style={{width:'100%',marginBottom:10,padding:'10px',fontSize:13,borderRadius:'8px',fontWeight:600,background:'linear-gradient(135deg,#5a8ac4,#4a7ab4)',border:'none'}} onClick={run} disabled={streaming}>{streaming?'Thinking...':'Run AI once'}</button>
         {log&&<div style={{background:'linear-gradient(135deg,rgba(90,138,196,0.08),rgba(90,138,196,0.03))',border:'1px solid rgba(90,138,196,0.2)',borderRadius:10,padding:12,fontSize:11,color:'rgba(255,255,255,0.85)',whiteSpace:'pre-wrap',lineHeight:1.7,maxHeight:200,overflowY:'auto',fontFamily:'monospace'}}>{log}{streaming&&<span style={{animation:'blink 1s infinite',color:'#5a8ac4'}}>▌</span>}</div>}
       </div>
     </div>
@@ -469,13 +534,13 @@ function BanishedSavePanel({currentState,onLoad,onClose}){
   const [msg,setMsg]=React.useState('');
   const load=async()=>{try{const d=await F(`/api/banished/saves/`);setSaves(d.saves||[]);}catch{}};
   React.useEffect(()=>{load();},[]);
-  const save=async slot=>{setBusy(true);try{await P(`/api/banished/saves/${slot}/`,{name:`存档${slot}-第${currentState?.time?.year||1}年`});setMsg(`✓ 存档${slot}成功`);load();}catch(e){setMsg('✗ '+e.message);}setBusy(false);};
+  const save=async slot=>{setBusy(true);try{await P(`/api/banished/saves/${slot}/`,{name:`Save ${slot} - Year ${currentState?.time?.year||1}`});setMsg(`✓ Save ${slot} successful`);load();}catch(e){setMsg('✗ '+e.message);}setBusy(false);};
   const loadSlot=async slot=>{setBusy(true);try{const d=await P(`/api/banished/saves/${slot}/load/`,{});onLoad(d.state);onClose();}catch(e){setMsg('✗ '+e.message);}setBusy(false);};
   return(
     <div style={{position:'absolute',top:'8%',left:'50%',transform:'translateX(-50%)',width:'min(400px,94vw)',background:'linear-gradient(135deg,rgba(15,20,18,0.98) 0%,rgba(8,12,10,0.98) 100%)',border:'1px solid rgba(201,168,108,0.3)',borderRadius:16,overflow:'hidden',zIndex:20,boxShadow:'0 8px 32px rgba(0,0,0,0.6)',backdropFilter:'blur(12px)'}}>
       <div style={{padding:'14px 18px',borderBottom:'1px solid rgba(201,168,108,0.2)',display:'flex',justifyContent:'space-between',alignItems:'center',background:'linear-gradient(90deg,rgba(201,168,108,0.1),transparent)'}}>
         <div style={{display:'flex',alignItems:'center',gap:8}}>
-          <span style={{fontWeight:700,fontSize:16,color:'#c9a86c'}}>云存档</span>
+          <span style={{fontWeight:700,fontSize:16,color:'#c9a86c'}}>Cloud Saves</span>
         </div>
         <button className="btn btn-s btn-sm" onClick={onClose} style={{padding:'5px 8px',borderRadius:'6px',background:'rgba(255,255,255,0.06)'}}><Icon name="x" size={15}/></button>
       </div>
@@ -485,12 +550,12 @@ function BanishedSavePanel({currentState,onLoad,onClose}){
           return(
             <div key={slot} style={{display:'flex',alignItems:'center',gap:10,padding:12,background:'linear-gradient(135deg,rgba(201,168,108,0.08),rgba(201,168,108,0.03))',border:'1px solid rgba(201,168,108,0.2)',borderRadius:10,marginBottom:10,transition:'all 0.2s'}} onMouseEnter={e=>e.currentTarget.style.background='linear-gradient(135deg,rgba(201,168,108,0.12),rgba(201,168,108,0.06))'} onMouseLeave={e=>e.currentTarget.style.background='linear-gradient(135deg,rgba(201,168,108,0.08),rgba(201,168,108,0.03))'}>
               <div style={{flex:1}}>
-                <div style={{fontSize:14,fontWeight:600,color:'#c9a86c',marginBottom:2}}>存档 {slot}</div>
-                {sv?<div style={{fontSize:12,color:'rgba(255,255,255,0.6)'}}>{sv.name} · 第{sv.year}年 · {sv.population}人</div>:<div style={{fontSize:12,color:'rgba(255,255,255,0.4)'}}>空插槽</div>}
+                <div style={{fontSize:14,fontWeight:600,color:'#c9a86c',marginBottom:2}}>Save Slot {slot}</div>
+                {sv?<div style={{fontSize:12,color:'rgba(255,255,255,0.6)'}}>{sv.name} · Year {sv.year} · {sv.population} people</div>:<div style={{fontSize:12,color:'rgba(255,255,255,0.4)'}}>Empty slot</div>}
               </div>
               <div style={{display:'flex',gap:6}}>
-                <button className="btn btn-p btn-sm" onClick={()=>save(slot)} disabled={busy} style={{padding:'6px 12px',fontSize:12,borderRadius:'6px',fontWeight:600,background:'linear-gradient(135deg,#c9a86c,#b89760)',border:'none'}}>保存</button>
-                {sv&&<button className="btn btn-s btn-sm" onClick={()=>loadSlot(slot)} disabled={busy} style={{padding:'6px 12px',fontSize:12,borderRadius:'6px',fontWeight:600,background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.1)'}}>读取</button>}
+                <button className="btn btn-p btn-sm" onClick={()=>save(slot)} disabled={busy} style={{padding:'6px 12px',fontSize:12,borderRadius:'6px',fontWeight:600,background:'linear-gradient(135deg,#c9a86c,#b89760)',border:'none'}}>Save</button>
+                {sv&&<button className="btn btn-s btn-sm" onClick={()=>loadSlot(slot)} disabled={busy} style={{padding:'6px 12px',fontSize:12,borderRadius:'6px',fontWeight:600,background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.1)'}}>Load</button>}
               </div>
             </div>
           );
@@ -510,12 +575,12 @@ function BanishedLeaderboard({onClose}){
     <div style={{position:'absolute',top:'8%',left:'50%',transform:'translateX(-50%)',width:'min(400px,94vw)',background:'linear-gradient(135deg,rgba(15,20,18,0.98) 0%,rgba(8,12,10,0.98) 100%)',border:'1px solid rgba(201,168,108,0.3)',borderRadius:16,overflow:'hidden',zIndex:20,boxShadow:'0 8px 32px rgba(0,0,0,0.6)',backdropFilter:'blur(12px)'}}>
       <div style={{padding:'14px 18px',borderBottom:'1px solid rgba(201,168,108,0.2)',display:'flex',justifyContent:'space-between',alignItems:'center',background:'linear-gradient(90deg,rgba(201,168,108,0.1),transparent)'}}>
         <div style={{display:'flex',alignItems:'center',gap:8}}>
-          <span style={{fontWeight:700,fontSize:16,color:'#c9a86c'}}>排行榜</span>
+          <span style={{fontWeight:700,fontSize:16,color:'#c9a86c'}}>Leaderboard</span>
         </div>
         <button className="btn btn-s btn-sm" onClick={onClose} style={{padding:'5px 8px',borderRadius:'6px',background:'rgba(255,255,255,0.06)'}}><Icon name="x" size={15}/></button>
       </div>
       <div style={{padding:12,maxHeight:'60vh',overflowY:'auto'}}>
-        {!board.length&&<div style={{textAlign:'center',color:'rgba(255,255,255,0.4)',padding:24,fontSize:13}}>暂无数据</div>}
+        {!board.length&&<div style={{textAlign:'center',color:'rgba(255,255,255,0.4)',padding:24,fontSize:13}}>No data yet</div>}
         {board.map((e,i)=>{
           const isTop3=i<3;
           return(
@@ -530,12 +595,215 @@ function BanishedLeaderboard({onClose}){
             <span style={{width:28,textAlign:'center',fontSize:isTop3?18:14,fontWeight:isTop3?800:700,color:isTop3?rankColors[i]:'rgba(255,255,255,0.5)'}}>{isTop3?`${i+1}`:`#${i+1}`}</span>
             <span style={{flex:1,fontSize:14,color:'rgba(255,255,255,0.95)',fontWeight:500}}>{e.username}</span>
             <div style={{textAlign:'right'}}>
-              <div style={{color:'#ffd700',fontSize:15,fontWeight:700}}>{e.score}分</div>
-              <div style={{color:'rgba(255,255,255,0.5)',fontSize:11}}>人口{e.population} · 第{e.year}年</div>
+              <div style={{color:'#ffd700',fontSize:15,fontWeight:700}}>{e.score} pts</div>
+              <div style={{color:'rgba(255,255,255,0.5)',fontSize:11}}>Population {e.population} · Year {e.year}</div>
             </div>
           </div>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+// ── Event Log ────────────────────────────────────────────────────────
+function BanishedEventLog({events,onClose}){
+  const typeIcon={population:'+/-',building:'🏗',season:'🍂',resource:'📦',danger:'⚠',trade:'💰'};
+  const typeColor={population:'#8fd0ff',building:'#5ac480',season:'#d49a5a',resource:'#c9a86c',danger:'#c45a5a',trade:'#ffd700'};
+  return(
+    <div style={{position:'absolute',bottom:44,right:240,width:260,maxHeight:'50vh',background:'var(--bg2)',border:'1px solid rgba(201,168,108,0.2)',borderBottom:'none',borderBottomRightRadius:0,borderTopLeftRadius:12,zIndex:9,display:'flex',flexDirection:'column',boxShadow:'-2px -2px 20px rgba(0,0,0,0.5)',backdropFilter:'blur(8px)'}}>
+      <div style={{padding:'8px 12px',borderBottom:'1px solid rgba(201,168,108,0.12)',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+        <span style={{fontSize:12,fontWeight:700,color:'var(--gold)'}}>Event Log</span>
+        <button className="btn btn-s btn-sm" onClick={onClose} style={{padding:'2px 6px',borderRadius:'4px',background:'rgba(255,255,255,0.06)',fontSize:10}}><Icon name="x" size={11}/></button>
+      </div>
+      <div style={{flex:1,overflowY:'auto',padding:6,maxHeight:300}}>
+        {!events.length&&<div style={{textAlign:'center',color:'rgba(255,255,255,0.3)',fontSize:11,padding:16}}>No events yet</div>}
+        {events.slice().reverse().map((ev,i)=>(
+          <div key={i} style={{display:'flex',gap:6,padding:'5px 6px',borderRadius:5,marginBottom:3,background:'rgba(255,255,255,0.02)',fontSize:11}}>
+            <span style={{color:typeColor[ev.type]||'#888',fontWeight:700,minWidth:16}}>{typeIcon[ev.type]||'•'}</span>
+            <span style={{color:'rgba(255,255,255,0.8)',flex:1}}>{ev.msg}</span>
+            <span style={{color:'rgba(255,255,255,0.3)',fontSize:10,whiteSpace:'nowrap'}}>Y{ev.year}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Minimap ─────────────────────────────────────────────────────────
+function BanishedMinimap({state,engine,onClick}){
+  const canvasRef=React.useRef(null);
+  const drawRef=React.useRef(null);
+  const TILE_COLORS={[B_TILE.GRASS]:'#2a3a24',[B_TILE.RIVER]:'#1e4a5a',[B_TILE.MOUNTAIN]:'#5a5a5a',[B_TILE.FOREST]:'#1a4a1a',[B_TILE.STONE]:'#6a6a6a',[B_TILE.IRON]:'#4a4a5a',[B_TILE.DIRT_ROAD]:'#4a3a28',[B_TILE.BORDER]:'#111',[B_TILE.STONE_ROAD]:'#6a6a6a',[B_TILE.WOOD_BRIDGE]:'#5a3a1a',[B_TILE.STONE_BRIDGE]:'#7a7a7a'};
+  React.useEffect(()=>{
+    const c=canvasRef.current;if(!c||!state?.map?.tiles)return;
+    const ctx=c.getContext('2d');
+    const tiles=state.map.tiles;
+    const w=tiles[0]?.length||64,h=tiles.length||64;
+    const scale=c.width/w;
+    ctx.fillStyle='#0a0a0c';ctx.fillRect(0,0,c.width,c.height);
+    for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+      ctx.fillStyle=TILE_COLORS[tiles[y][x]]||'#2a3a24';
+      ctx.fillRect(x*scale,y*scale,Math.ceil(scale),Math.ceil(scale));
+    }
+    // Draw buildings
+    (state.buildings||[]).forEach(b=>{
+      if(!b.built)return;
+      ctx.fillStyle=BUILDING_COLORS[b.type]||'#888';
+      const bx=b.x*scale,by=b.y*scale,bw=(b.w||2)*scale,bh=(b.h||2)*scale;
+      ctx.fillRect(bx,by,Math.max(2,bw),Math.max(2,bh));
+    });
+    drawRef.current=()=>{
+      // Viewport rect
+      if(!engine)return;
+      const cz=engine.zoom;
+      const vx=engine.camX/cz*scale,vy=engine.camY/cz*scale;
+      const vw=engine.canvas.width/cz*scale,vh=engine.canvas.height/cz*scale;
+      ctx.strokeStyle='#c9a86c';ctx.lineWidth=1.5;ctx.strokeRect(vx,vy,vw,vh);
+    };
+    drawRef.current();
+  },[state,engine]);
+  // Separate effect for viewport redraw on camera move
+  React.useEffect(()=>{
+    if(!engine)return;
+    let raf;
+    const redraw=()=>{if(drawRef.current)drawRef.current();raf=requestAnimationFrame(redraw);};
+    raf=requestAnimationFrame(redraw);
+    return()=>cancelAnimationFrame(raf);
+  },[engine]);
+  const handleClick=e=>{
+    if(!engine||!state?.map?.tiles)return;
+    const rect=e.currentTarget.getBoundingClientRect();
+    const mx=e.clientX-rect.left,my=e.clientY-rect.top;
+    const tiles=state.map.tiles,w=tiles[0]?.length||64,h=tiles.length||64;
+    const scale=e.currentTarget.width/w;
+    const tx=mx/scale,ty=my/scale;
+    engine.camX=tx*engine.zoom-engine.canvas.width/2;
+    engine.camY=ty*engine.zoom-engine.canvas.height/2;
+    engine._clampCam();
+  };
+  return(
+    <div style={{position:'absolute',top:46,right:6,zIndex:9,borderRadius:8,overflow:'hidden',border:'1px solid rgba(201,168,108,0.3)',boxShadow:'0 2px 12px rgba(0,0,0,0.4)',background:'rgba(0,0,0,0.6)'}}>
+      <canvas ref={canvasRef} width={150} height={150} onClick={handleClick} style={{display:'block',cursor:'pointer',width:150,height:150}}/>
+      <div style={{fontSize:9,color:'rgba(255,255,255,0.4)',textAlign:'center',padding:'2px 0',background:'rgba(0,0,0,0.5)'}}>Click to navigate</div>
+    </div>
+  );
+}
+
+// ── Population Overview Panel ───────────────────────────────────────
+function BanishedPopulationPanel({state,onSelectVillager,onClose,onSetProfessionTarget}){
+  if(!state?.villagers)return null;
+  const vs=state.villagers;
+  const professionTargets=state.profession_targets||{};
+  const[sortBy,setSortBy]=React.useState('state');
+  const professionJobs=['laborer','builder','teacher','doctor','vendor','merchant','woodcutter','forester','gatherer','hunter','fishing_dock','herbalist','blacksmith','tailor','farm','orchard','pasture','mine','quarry'];
+  const professionCounts={};
+  vs.filter(v=>v.state!=='dead').forEach(v=>{const job=v.job||'laborer';professionCounts[job]=(professionCounts[job]||0)+1;});
+  const sorted=[...vs].sort((a,b)=>{
+    if(sortBy==='name')return(a.name||'').localeCompare(b.name||'');
+    if(sortBy==='health')return(a.health||0)-(b.health||0);
+    if(sortBy==='hunger')return(a.hunger||0)-(b.hunger||0);
+    if(sortBy==='happiness')return(a.happiness||0)-(b.happiness||0);
+    // by state: sick/hungry/thirsty first
+    const urgency=v=>v.health<30?0:v.thirst<30?1:v.hunger<30?2:v.warmth<30?3:v.state==='idle'?4:5;
+    return urgency(a)-urgency(b);
+  });
+  const stateGroups={};sorted.forEach(v=>{const s=v.state||'idle';if(!stateGroups[s])stateGroups[s]=[];stateGroups[s].push(v);});
+  const criticalCount=vs.filter(v=>v.health<30||v.thirst<20||v.hunger<20||v.warmth<20).length;
+  return(
+    <div style={{position:'absolute',top:'8%',left:'50%',transform:'translateX(-50%)',width:'min(520px,94vw)',maxHeight:'78vh',background:'linear-gradient(135deg,rgba(15,20,18,0.98) 0%,rgba(8,12,10,0.98) 100%)',border:'1px solid rgba(201,168,108,0.3)',borderRadius:16,overflow:'hidden',zIndex:20,display:'flex',flexDirection:'column',boxShadow:'0 8px 32px rgba(0,0,0,0.6)',backdropFilter:'blur(12px)'}}>
+      <div style={{padding:'12px 16px',borderBottom:'1px solid rgba(201,168,108,0.2)',display:'flex',justifyContent:'space-between',alignItems:'center',background:'linear-gradient(90deg,rgba(201,168,108,0.1),transparent)'}}>
+        <div style={{display:'flex',alignItems:'center',gap:8}}>
+          <span style={{fontWeight:700,fontSize:15,color:'#c9a86c'}}>Population</span>
+          <span style={{fontSize:12,padding:'2px 8px',borderRadius:4,background:'rgba(255,255,255,0.06)',color:'var(--fg2)',fontWeight:500}}>{vs.length} villagers</span>
+          {criticalCount>0&&<span style={{fontSize:11,padding:'2px 8px',borderRadius:4,background:'rgba(196,90,90,0.2)',color:'#c45a5a',fontWeight:600}}>{criticalCount} critical</span>}
+        </div>
+        <button className="btn btn-s btn-sm" onClick={onClose} style={{padding:'4px 7px',borderRadius:'6px',background:'rgba(255,255,255,0.06)'}}><Icon name="x" size={14}/></button>
+      </div>
+      <div style={{display:'flex',gap:4,padding:'8px 12px',borderBottom:'1px solid rgba(255,255,255,0.06)',flexWrap:'wrap'}}>
+        {[['state','Status'],['name','Name'],['health','Health'],['hunger','Hunger'],['happiness','Mood']].map(([k,l])=>(
+          <button key={k} className="btn btn-sm" onClick={()=>setSortBy(k)} style={{fontSize:10,padding:'3px 8px',borderRadius:4,fontWeight:sortBy===k?700:500,background:sortBy===k?'rgba(201,168,108,0.15)':'transparent',border:sortBy===k?'1px solid rgba(201,168,108,0.3)':'1px solid transparent',color:sortBy===k?'var(--gold)':'var(--fg3)',transition:'all 0.15s'}}>{l}</button>
+        ))}
+      </div>
+      <div style={{padding:'10px 12px',borderBottom:'1px solid rgba(255,255,255,0.06)',background:'rgba(255,255,255,0.02)'}}>
+        <div style={{fontSize:11,color:'var(--gold)',fontWeight:700,marginBottom:8}}>Profession Targets</div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6}}>
+          {professionJobs.map(job=>{
+            const current=professionCounts[job]||0;
+            const target=professionTargets[job]??current;
+            const label=(typeof JOB_LABELS!=='undefined'&&JOB_LABELS[job])||job;
+            return(
+              <div key={job} style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:6,padding:'5px 6px',borderRadius:6,background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.04)'}}>
+                <div style={{minWidth:0}}>
+                  <div style={{fontSize:10,color:'rgba(255,255,255,0.88)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{label}</div>
+                  <div style={{fontSize:9,color:'rgba(255,255,255,0.45)'}}>Now {current}</div>
+                </div>
+                <div style={{display:'flex',alignItems:'center',gap:4}}>
+                  <button className="btn btn-sm" onClick={()=>onSetProfessionTarget&&onSetProfessionTarget(job,Math.max(0,target-1))} style={{padding:'1px 6px',fontSize:11,borderRadius:4,background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.08)',color:'var(--fg2)'}}>-</button>
+                  <span style={{fontSize:10,color:'var(--gold)',fontWeight:700,minWidth:16,textAlign:'center'}}>{target}</span>
+                  <button className="btn btn-sm" onClick={()=>onSetProfessionTarget&&onSetProfessionTarget(job,target+1)} style={{padding:'1px 6px',fontSize:11,borderRadius:4,background:'rgba(201,168,108,0.12)',border:'1px solid rgba(201,168,108,0.2)',color:'var(--gold)'}}>+</button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      <div style={{flex:1,overflowY:'auto',padding:8}}>
+        {sorted.map((v,i)=>{
+          const isCritical=v.health<30||v.thirst<20||v.hunger<20||v.warmth<20;
+          const barColor=val=>val>70?'#4ec87a':val>40?'#d49a5a':'#c45a5a';
+          return(
+            <div key={v.id||i} onClick={()=>{onSelectVillager(v);onClose();}} style={{display:'flex',alignItems:'center',gap:8,padding:'7px 10px',marginBottom:3,borderRadius:8,cursor:'pointer',border:isCritical?'1px solid rgba(196,90,90,0.25)':'1px solid transparent',background:isCritical?'rgba(196,90,90,0.06)':'rgba(255,255,255,0.02)',transition:'all 0.15s'}} onMouseEnter={e=>e.currentTarget.style.background=isCritical?'rgba(196,90,90,0.1)':'rgba(255,255,255,0.05)'} onMouseLeave={e=>e.currentTarget.style.background=isCritical?'rgba(196,90,90,0.06)':'rgba(255,255,255,0.02)'}>
+              <span style={{width:20,textAlign:'center',fontSize:10,color:VILLAGER_COLORS[v.state]||'#888',fontWeight:700}}>●</span>
+              <span style={{width:60,fontSize:12,color:'rgba(255,255,255,0.9)',fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{v.name}</span>
+              <span style={{fontSize:10,padding:'2px 6px',borderRadius:3,background:`${VILLAGER_COLORS[v.state]||'#888'}18`,color:VILLAGER_COLORS[v.state]||'#888',fontWeight:600,minWidth:48,textAlign:'center'}}>{v.state}</span>
+              <div style={{display:'flex',gap:4,flex:1}}>
+                {[['♥',v.health,100,'#3eb87a'],['🍽',v.hunger,100,'#e88a1a'],['💧',v.thirst,100,'#5ad4e8'],['🔥',v.warmth,100,'#9ab4d4'],['☺',v.happiness,100,'#ffb86b']].map(([icon,val,max,col])=>(
+                  <div key={icon} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',gap:1}}>
+                    <span style={{fontSize:8}}>{icon}</span>
+                    <div style={{width:'100%',height:3,background:'rgba(255,255,255,0.08)',borderRadius:2,overflow:'hidden'}}>
+                      <div style={{width:`${Math.max(0,Math.min(100,(val/max)*100))}%`,height:'100%',background:barColor(val),borderRadius:2,transition:'width 0.3s'}}/>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── Game Over Overlay ───────────────────────────────────────────────
+function BanishedGameOver({state,onRestart,onBack}){
+  const stats=state?.stats||{};
+  const peakPop=stats.peak_pop||state?.population?.total||0;
+  const yearsSurvived=state?.time?.year||1;
+  const totalGold=stats.total_gold_earned||0;
+  const buildingsBuilt=(state?.buildings||[]).length;
+  const score=peakPop*10+Math.floor(totalGold/10)+yearsSurvived*5;
+  return(
+    <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.88)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:1000,backdropFilter:'blur(8px)'}}>
+      <div style={{textAlign:'center',padding:40,maxWidth:440}}>
+        <div style={{fontSize:48,fontWeight:800,color:'#c45a5a',marginBottom:8,fontFamily:'var(--serif)',textShadow:'0 0 32px rgba(196,90,90,0.5)'}}>All Lost</div>
+        <p style={{color:'rgba(255,255,255,0.6)',fontSize:14,marginBottom:32,lineHeight:1.8}}>Your village has perished. The wilderness reclaims the land.</p>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:32}}>
+          {[['Years survived',yearsSurvived,'#c9a86c'],['Peak population',peakPop,'#8fd0ff'],['Total gold earned',totalGold,'#ffd700'],['Buildings built',buildingsBuilt,'#5ac480']].map(([label,val,col])=>(
+            <div key={label} style={{padding:'14px 12px',background:'rgba(255,255,255,0.04)',borderRadius:10,border:'1px solid rgba(255,255,255,0.08)'}}>
+              <div style={{fontSize:11,color:'rgba(255,255,255,0.5)',marginBottom:4}}>{label}</div>
+              <div style={{fontSize:22,color:col,fontWeight:800}}>{val}</div>
+            </div>
+          ))}
+        </div>
+        <div style={{marginBottom:28,padding:'14px 20px',background:'linear-gradient(135deg,rgba(201,168,108,0.15),rgba(201,168,108,0.05))',borderRadius:10,border:'1px solid rgba(201,168,108,0.3)'}}>
+          <div style={{fontSize:11,color:'rgba(255,255,255,0.5)',marginBottom:4}}>Final Score</div>
+          <div style={{fontSize:32,color:'#ffd700',fontWeight:800}}>{score}</div>
+        </div>
+        <div style={{display:'flex',gap:12,justifyContent:'center'}}>
+          <button className="btn btn-p" onClick={onRestart} style={{padding:'12px 28px',fontSize:14,borderRadius:10,fontWeight:600,background:'var(--gold)',border:'none',color:'#000'}}>New Game</button>
+          <button className="btn btn-s" onClick={onBack} style={{padding:'12px 28px',fontSize:14,borderRadius:10,fontWeight:600,background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.15)',color:'var(--fg)'}}>Return Home</button>
+        </div>
       </div>
     </div>
   );
@@ -557,12 +825,12 @@ function BanishedMapSetup({onConfirm,onCancel}){
   });
 
   const presets={
-    default:{name:'默认平衡',mountain_threshold:0.72,forest_density:0.52,forest_river_distance:5,stone_threshold:0.934,iron_threshold:0.957,terrain_freq:0.0008,forest_freq_mult:1.2},
-    mountainous:{name:'山地丰富',mountain_threshold:0.60,forest_density:0.50,forest_river_distance:4,stone_threshold:0.92,iron_threshold:0.95,terrain_freq:0.0018,forest_freq_mult:1.4},
-    forested:{name:'森林茂密',mountain_threshold:0.75,forest_density:0.40,forest_river_distance:3,stone_threshold:0.94,iron_threshold:0.956,terrain_freq:0.0010,forest_freq_mult:1.8},
-    flat:{name:'平原广阔',mountain_threshold:0.82,forest_density:0.55,forest_river_distance:6,stone_threshold:0.93,iron_threshold:0.955,terrain_freq:0.0004,forest_freq_mult:0.8},
-    rich:{name:'矿物丰富',mountain_threshold:0.70,forest_density:0.50,forest_river_distance:5,stone_threshold:0.88,iron_threshold:0.93,terrain_freq:0.0012,forest_freq_mult:1.2},
-    harsh:{name:'严酷荒原',mountain_threshold:0.58,forest_density:0.62,forest_river_distance:7,stone_threshold:0.955,iron_threshold:0.965,terrain_freq:0.0028,forest_freq_mult:2.4},
+    default:{name:'Balanced',mountain_threshold:0.72,forest_density:0.52,forest_river_distance:5,stone_threshold:0.934,iron_threshold:0.957,terrain_freq:0.0008,forest_freq_mult:1.2},
+    mountainous:{name:'Mountainous',mountain_threshold:0.60,forest_density:0.50,forest_river_distance:4,stone_threshold:0.92,iron_threshold:0.95,terrain_freq:0.0018,forest_freq_mult:1.4},
+    forested:{name:'Forest Rich',mountain_threshold:0.75,forest_density:0.40,forest_river_distance:3,stone_threshold:0.94,iron_threshold:0.956,terrain_freq:0.0010,forest_freq_mult:1.8},
+    flat:{name:'Plains',mountain_threshold:0.82,forest_density:0.55,forest_river_distance:6,stone_threshold:0.93,iron_threshold:0.955,terrain_freq:0.0004,forest_freq_mult:0.8},
+    rich:{name:'Mineral Rich',mountain_threshold:0.70,forest_density:0.50,forest_river_distance:5,stone_threshold:0.88,iron_threshold:0.93,terrain_freq:0.0012,forest_freq_mult:1.2},
+    harsh:{name:'Harsh Wasteland',mountain_threshold:0.58,forest_density:0.62,forest_river_distance:7,stone_threshold:0.955,iron_threshold:0.965,terrain_freq:0.0028,forest_freq_mult:2.4},
   };
 
   const applyPreset=(key)=>{
@@ -573,16 +841,16 @@ function BanishedMapSetup({onConfirm,onCancel}){
   return(
     <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.85)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:1000,padding:20}}>
       <div style={{background:'var(--bg2)',borderRadius:16,padding:28,maxWidth:680,width:'100%',maxHeight:'90vh',overflow:'auto',border:'1px solid rgba(201,168,108,0.2)',boxShadow:'0 8px 40px rgba(0,0,0,0.6)'}}>
-        <h2 style={{margin:'0 0 20px',fontSize:22,color:'var(--gold)',fontFamily:'var(--serif)',fontWeight:700,letterSpacing:'2px'}}>世界生成设置</h2>
+        <h2 style={{margin:'0 0 20px',fontSize:22,color:'var(--gold)',fontFamily:'var(--serif)',fontWeight:700,letterSpacing:'2px'}}>World Generation Settings</h2>
 
         {/* 预设选择 */}
         <div style={{marginBottom:24}}>
-          <div style={{fontSize:13,color:'var(--fg3)',marginBottom:10,fontWeight:600,letterSpacing:'1px'}}>快速预设</div>
+          <div style={{fontSize:13,color:'var(--fg3)',marginBottom:10,fontWeight:600,letterSpacing:'1px'}}>Quick Presets</div>
           <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))',gap:8}}>
             {Object.entries(presets).map(([key,p])=>(
               <button key={key} onClick={()=>applyPreset(key)} style={{padding:'10px 12px',borderRadius:8,border:params.preset===key?'2px solid var(--gold)':'1px solid rgba(201,168,108,0.25)',background:params.preset===key?'rgba(201,168,108,0.15)':'rgba(255,255,255,0.04)',color:'var(--fg)',fontSize:12,cursor:'pointer',transition:'all 0.2s',textAlign:'left'}}>
                 <div style={{fontWeight:600,marginBottom:2,color:params.preset===key?'var(--gold)':'var(--fg2)'}}>{p.name}</div>
-                <div style={{fontSize:10,color:'var(--fg3)',opacity:0.8}}>{key==='default'?'平衡的各种地形':key==='mountainous'?'更多山地和矿石':key==='forested'?'茂密的森林':key==='flat'?'广阔平原':key==='rich'?'丰富矿物资源':'严酷的生存环境'}</div>
+                <div style={{fontSize:10,color:'var(--fg3)',opacity:0.8}}>{key==='default'?'A balanced mix of terrain':key==='mountainous'?'More mountains and ore':key==='forested'?'Dense forests':key==='flat'?'Wide plains':key==='rich'?'Abundant minerals':'A harsh survival environment'}</div>
               </button>
             ))}
           </div>
@@ -590,12 +858,12 @@ function BanishedMapSetup({onConfirm,onCancel}){
 
         {/* 详细参数 */}
         <div style={{marginBottom:24}}>
-          <div style={{fontSize:13,color:'var(--fg3)',marginBottom:12,fontWeight:600,letterSpacing:'1px'}}>高级参数</div>
+          <div style={{fontSize:13,color:'var(--fg3)',marginBottom:12,fontWeight:600,letterSpacing:'1px'}}>Advanced Parameters</div>
 
           {/* 山脉 */}
           <div style={{marginBottom:16,padding:14,background:'rgba(0,0,0,0.2)',borderRadius:10}}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-              <label style={{fontSize:12,fontWeight:600,color:'var(--fg2)'}}>🏔️ 山脉阈值 <span style={{fontSize:10,color:'var(--fg3)',fontWeight:400}}>越低越多山地</span></label>
+              <label style={{fontSize:12,fontWeight:600,color:'var(--fg2)'}}>🏔️ Mountain threshold <span style={{fontSize:10,color:'var(--fg3)',fontWeight:400}}>Lower means more mountains</span></label>
               <span style={{fontSize:12,color:'var(--gold)',fontWeight:600}}>{params.mountain_threshold.toFixed(2)}</span>
             </div>
             <input type="range" min="0.45" max="0.90" step="0.01" value={params.mountain_threshold} onChange={e=>setParams({...params,mountain_threshold:parseFloat(e.target.value),preset:'custom'})} style={{width:'100%',cursor:'pointer'}}/>
@@ -604,12 +872,12 @@ function BanishedMapSetup({onConfirm,onCancel}){
           {/* 森林 */}
           <div style={{marginBottom:16,padding:14,background:'rgba(0,0,0,0.2)',borderRadius:10}}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-              <label style={{fontSize:12,fontWeight:600,color:'var(--fg2)'}}>🌲 森林密度 <span style={{fontSize:10,color:'var(--fg3)',fontWeight:400}}>越低森林越茂密</span></label>
+              <label style={{fontSize:12,fontWeight:600,color:'var(--fg2)'}}>🌲 Forest density <span style={{fontSize:10,color:'var(--fg3)',fontWeight:400}}>Lower means denser forests</span></label>
               <span style={{fontSize:12,color:'var(--gold)',fontWeight:600}}>{params.forest_density.toFixed(2)}</span>
             </div>
             <input type="range" min="0.20" max="0.80" step="0.01" value={params.forest_density} onChange={e=>setParams({...params,forest_density:parseFloat(e.target.value),preset:'custom'})} style={{width:'100%',cursor:'pointer'}}/>
             <div style={{marginTop:8,display:'flex',justifyContent:'space-between'}}>
-              <label style={{fontSize:11,color:'var(--fg3)'}}>河边距离: {params.forest_river_distance}格</label>
+              <label style={{fontSize:11,color:'var(--fg3)'}}>River distance: {params.forest_river_distance} tiles</label>
               <input type="range" min="1" max="14" step="1" value={params.forest_river_distance} onChange={e=>setParams({...params,forest_river_distance:parseInt(e.target.value),preset:'custom'})} style={{width:120,cursor:'pointer'}}/>
             </div>
           </div>
@@ -617,16 +885,16 @@ function BanishedMapSetup({onConfirm,onCancel}){
           {/* 矿物 */}
           <div style={{marginBottom:16,padding:14,background:'rgba(0,0,0,0.2)',borderRadius:10}}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-              <label style={{fontSize:12,fontWeight:600,color:'var(--fg2)'}}>⛏️ 石矿/铁矿 <span style={{fontSize:10,color:'var(--fg3)',fontWeight:400}}>越低矿物越丰富</span></label>
+              <label style={{fontSize:12,fontWeight:600,color:'var(--fg2)'}}>⛏️ Stone / iron ore <span style={{fontSize:10,color:'var(--fg3)',fontWeight:400}}>Lower means more minerals</span></label>
               <span style={{fontSize:12,color:'var(--gold)',fontWeight:600}}>{params.stone_threshold.toFixed(3)} / {params.iron_threshold.toFixed(3)}</span>
             </div>
             <div style={{marginTop:8}}>
               <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}>
-                <label style={{fontSize:11,color:'var(--fg3)'}}>石矿阈值</label>
+                <label style={{fontSize:11,color:'var(--fg3)'}}>Stone threshold</label>
                 <input type="range" min="0.70" max="0.99" step="0.001" value={params.stone_threshold} onChange={e=>setParams({...params,stone_threshold:parseFloat(e.target.value),preset:'custom'})} style={{width:150,cursor:'pointer'}}/>
               </div>
               <div style={{display:'flex',justifyContent:'space-between'}}>
-                <label style={{fontSize:11,color:'var(--fg3)'}}>铁矿阈值</label>
+                <label style={{fontSize:11,color:'var(--fg3)'}}>Iron threshold</label>
                 <input type="range" min="0.75" max="0.995" step="0.001" value={params.iron_threshold} onChange={e=>setParams({...params,iron_threshold:parseFloat(e.target.value),preset:'custom'})} style={{width:150,cursor:'pointer'}}/>
               </div>
             </div>
@@ -635,16 +903,16 @@ function BanishedMapSetup({onConfirm,onCancel}){
           {/* 地形规模 */}
           <div style={{padding:14,background:'rgba(0,0,0,0.2)',borderRadius:10}}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-              <label style={{fontSize:12,fontWeight:600,color:'var(--fg2)'}}>🌍 地形频率 <span style={{fontSize:10,color:'var(--fg3)',fontWeight:400}}>越大越崎岖，越小越平缓</span></label>
+              <label style={{fontSize:12,fontWeight:600,color:'var(--fg2)'}}>🌍 Terrain frequency <span style={{fontSize:10,color:'var(--fg3)',fontWeight:400}}>Higher is rougher, lower is smoother</span></label>
               <span style={{fontSize:12,color:'var(--gold)',fontWeight:600}}>{params.terrain_freq.toFixed(4)}</span>
             </div>
             <input type="range" min="0.0002" max="0.0080" step="0.0001" value={params.terrain_freq} onChange={e=>setParams({...params,terrain_freq:parseFloat(e.target.value),preset:'custom'})} style={{width:'100%',cursor:'pointer'}}/>
             <div style={{marginTop:8,display:'flex',justifyContent:'space-between',fontSize:10,color:'var(--fg3)'}}>
-              <span>平缓连片</span>
-              <span>崎岖破碎</span>
+              <span>Smooth</span>
+              <span>Rugged</span>
             </div>
             <div style={{marginTop:10,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-              <label style={{fontSize:11,color:'var(--fg3)'}}>地形细节频率: {params.forest_freq_mult.toFixed(1)}</label>
+              <label style={{fontSize:11,color:'var(--fg3)'}}>Terrain detail frequency: {params.forest_freq_mult.toFixed(1)}</label>
               <input type="range" min="0.6" max="3.5" step="0.1" value={params.forest_freq_mult} onChange={e=>setParams({...params,forest_freq_mult:parseFloat(e.target.value),preset:'custom'})} style={{width:150,cursor:'pointer'}}/>
             </div>
           </div>
@@ -652,8 +920,8 @@ function BanishedMapSetup({onConfirm,onCancel}){
 
         {/* 按钮 */}
         <div style={{display:'flex',gap:12}}>
-          <button onClick={onCancel} style={{flex:1,padding:'12px 20px',borderRadius:8,border:'1px solid rgba(255,255,255,0.15)',background:'rgba(255,255,255,0.05)',color:'var(--fg)',fontSize:14,cursor:'pointer',transition:'all 0.2s'}}>取消</button>
-          <button onClick={()=>onConfirm(params)} style={{flex:1,padding:'12px 20px',borderRadius:8,border:'none',background:'var(--gold)',color:'#000',fontSize:14,fontWeight:600,cursor:'pointer',transition:'all 0.2s',boxShadow:'0 4px 16px rgba(201,168,108,0.3)'}}>生成世界</button>
+          <button onClick={onCancel} style={{flex:1,padding:'12px 20px',borderRadius:8,border:'1px solid rgba(255,255,255,0.15)',background:'rgba(255,255,255,0.05)',color:'var(--fg)',fontSize:14,cursor:'pointer',transition:'all 0.2s'}}>Cancel</button>
+          <button onClick={()=>onConfirm(params)} style={{flex:1,padding:'12px 20px',borderRadius:8,border:'none',background:'var(--gold)',color:'#000',fontSize:14,fontWeight:600,cursor:'pointer',transition:'all 0.2s',boxShadow:'0 4px 16px rgba(201,168,108,0.3)'}}>Generate World</button>
         </div>
       </div>
     </div>
@@ -686,26 +954,26 @@ function BanishedLobby({onNewGame,onLoadGame,onBack}){
       <div style={{position:'absolute',top:-80,left:'50%',transform:'translateX(-50%)',width:500,height:300,background:'radial-gradient(ellipse,rgba(201,168,108,0.08),transparent 70%)',filter:'blur(40px)',pointerEvents:'none'}}/>
       {showBoard&&<BanishedLeaderboard onClose={()=>setShowBoard(false)}/>}
       <div style={{position:'relative',zIndex:1,textAlign:'center'}}>
-        <h1 style={{fontFamily:'var(--serif)',fontSize:44,color:'var(--gold)',margin:'0 0 8px',fontWeight:700,textShadow:'0 0 32px rgba(201,168,108,0.5)',letterSpacing:'3px'}}>放逐之城</h1>
-        <p style={{color:'var(--fg3)',fontSize:13,textAlign:'center',maxWidth:380,lineHeight:1.9,margin:'0 0 28px',fontWeight:400}}>在蛮荒之地建立并繁荣你的城市<br/>合理分配资源，养活村民，抵御严冬</p>
+        <h1 style={{fontFamily:'var(--serif)',fontSize:44,color:'var(--gold)',margin:'0 0 8px',fontWeight:700,textShadow:'0 0 32px rgba(201,168,108,0.5)',letterSpacing:'3px'}}>Banished City</h1>
+        <p style={{color:'var(--fg3)',fontSize:13,textAlign:'center',maxWidth:380,lineHeight:1.9,margin:'0 0 28px',fontWeight:400}}>Build and grow your city in the wilderness.<br/>Manage resources wisely, feed your villagers, and survive the winter.</p>
         <div style={{display:'flex',flexDirection:'column',gap:10,width:'min(280px,90vw)',margin:'0 auto'}}>
-          <button className="btn btn-p" onClick={cont} disabled={busy} style={{padding:'13px 20px',fontSize:15,borderRadius:'10px',fontWeight:600,background:'var(--gold)',border:'none',color:'#000',boxShadow:'0 4px 20px rgba(201,168,108,0.35)',transition:'all 0.25s'}} onMouseEnter={e=>{e.currentTarget.style.transform='translateY(-2px)';e.currentTarget.style.boxShadow='0 6px 28px rgba(201,168,108,0.5)';}} onMouseLeave={e=>{e.currentTarget.style.transform='translateY(0)';e.currentTarget.style.boxShadow='0 4px 20px rgba(201,168,108,0.35)';}}>{busy?'加载中...':'继续游戏'}</button>
-          <button className="btn btn-s" onClick={()=>setShowMapSetup(true)} style={{padding:'13px 20px',fontSize:15,borderRadius:'10px',fontWeight:600,background:'rgba(255,255,255,0.06)',border:'1px solid rgba(201,168,108,0.25)',color:'var(--fg)',transition:'all 0.25s'}} onMouseEnter={e=>{e.currentTarget.style.background='rgba(201,168,108,0.1)';e.currentTarget.style.transform='translateY(-2px)';}} onMouseLeave={e=>{e.currentTarget.style.background='rgba(255,255,255,0.06)';e.currentTarget.style.transform='translateY(0)';}}>新游戏</button>
+          <button className="btn btn-p" onClick={cont} disabled={busy} style={{padding:'13px 20px',fontSize:15,borderRadius:'10px',fontWeight:600,background:'var(--gold)',border:'none',color:'#000',boxShadow:'0 4px 20px rgba(201,168,108,0.35)',transition:'all 0.25s'}} onMouseEnter={e=>{e.currentTarget.style.transform='translateY(-2px)';e.currentTarget.style.boxShadow='0 6px 28px rgba(201,168,108,0.5)';}} onMouseLeave={e=>{e.currentTarget.style.transform='translateY(0)';e.currentTarget.style.boxShadow='0 4px 20px rgba(201,168,108,0.35)';}}>{busy?'Loading...':'Continue Game'}</button>
+          <button className="btn btn-s" onClick={()=>setShowMapSetup(true)} style={{padding:'13px 20px',fontSize:15,borderRadius:'10px',fontWeight:600,background:'rgba(255,255,255,0.06)',border:'1px solid rgba(201,168,108,0.25)',color:'var(--fg)',transition:'all 0.25s'}} onMouseEnter={e=>{e.currentTarget.style.background='rgba(201,168,108,0.1)';e.currentTarget.style.transform='translateY(-2px)';}} onMouseLeave={e=>{e.currentTarget.style.background='rgba(255,255,255,0.06)';e.currentTarget.style.transform='translateY(0)';}}>New Game</button>
         </div>
         {saves.length>0&&(
           <div style={{marginTop:20,width:'min(300px,90vw)',marginLeft:'auto',marginRight:'auto'}}>
-            <div style={{fontSize:12,color:'rgba(255,255,255,0.5)',marginBottom:8,textAlign:'center',fontWeight:500,letterSpacing:'1px'}}>云存档</div>
+            <div style={{fontSize:12,color:'rgba(255,255,255,0.5)',marginBottom:8,textAlign:'center',fontWeight:500,letterSpacing:'1px'}}>Cloud Saves</div>
             {saves.map(s=>(
               <button key={s.slot} className="btn btn-s" style={{width:'100%',marginBottom:8,padding:'10px 14px',fontSize:13,display:'flex',justifyContent:'space-between',alignItems:'center',borderRadius:'8px',background:'linear-gradient(135deg,rgba(201,168,108,0.1),rgba(201,168,108,0.05))',border:'1px solid rgba(201,168,108,0.2)',transition:'all 0.2s'}} onClick={()=>loadSlot(s.slot)} disabled={busy} onMouseEnter={e=>{e.currentTarget.style.background='linear-gradient(135deg,rgba(201,168,108,0.15),rgba(201,168,108,0.08))';e.currentTarget.style.transform='translateX(4px)';}} onMouseLeave={e=>{e.currentTarget.style.background='linear-gradient(135deg,rgba(201,168,108,0.1),rgba(201,168,108,0.05))';e.currentTarget.style.transform='translateX(0)';}}>
-                <span style={{color:'rgba(255,255,255,0.9)'}}>{s.name||`存档${s.slot}`}</span>
-                <span style={{color:'rgba(255,255,255,0.5)',fontSize:12}}>第{s.year}年 · {s.population}人</span>
+                <span style={{color:'rgba(255,255,255,0.9)'}}>{s.name||`Save ${s.slot}`}</span>
+                <span style={{color:'rgba(255,255,255,0.5)',fontSize:12}}>Year {s.year} · {s.population} people</span>
               </button>
             ))}
           </div>
         )}
         <div style={{display:'flex',gap:10,marginTop:20,justifyContent:'center'}}>
-          <button className="btn btn-s btn-sm" onClick={()=>setShowBoard(true)} style={{padding:'7px 14px',fontSize:12,borderRadius:'7px',fontWeight:600,background:'rgba(201,168,108,0.1)',border:'1px solid rgba(201,168,108,0.3)',color:'var(--gold)',transition:'all 0.2s'}} onMouseEnter={e=>e.currentTarget.style.background='rgba(201,168,108,0.18)'} onMouseLeave={e=>e.currentTarget.style.background='rgba(201,168,108,0.1)'}>排行榜</button>
-          <button className="btn btn-s btn-sm" onClick={onBack} style={{padding:'7px 14px',fontSize:12,borderRadius:'7px',fontWeight:600,background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.1)',color:'var(--fg3)',transition:'all 0.2s'}} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.09)'} onMouseLeave={e=>e.currentTarget.style.background='rgba(255,255,255,0.05)'}>← 返回主页</button>
+          <button className="btn btn-s btn-sm" onClick={()=>setShowBoard(true)} style={{padding:'7px 14px',fontSize:12,borderRadius:'7px',fontWeight:600,background:'rgba(201,168,108,0.1)',border:'1px solid rgba(201,168,108,0.3)',color:'var(--gold)',transition:'all 0.2s'}} onMouseEnter={e=>e.currentTarget.style.background='rgba(201,168,108,0.18)'} onMouseLeave={e=>e.currentTarget.style.background='rgba(201,168,108,0.1)'}>Leaderboard</button>
+          <button className="btn btn-s btn-sm" onClick={onBack} style={{padding:'7px 14px',fontSize:12,borderRadius:'7px',fontWeight:600,background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.1)',color:'var(--fg3)',transition:'all 0.2s'}} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.09)'} onMouseLeave={e=>e.currentTarget.style.background='rgba(255,255,255,0.05)'}>← Back to Home</button>
         </div>
       </div>
       {showMapSetup&&<BanishedMapSetup onConfirm={onNewGame} onCancel={()=>setShowMapSetup(false)}/>}
@@ -729,27 +997,97 @@ function BanishedGameView({initialState,token,onBack}){
   const [showMarket,setShowMarket]=React.useState(false);
   const [showAI,setShowAI]=React.useState(false);
   const [showSave,setShowSave]=React.useState(false);
-  const [gatherType,setGatherType]=React.useState(null); // stone | iron | wood | null
+  const [showPop,setShowPop]=React.useState(false);
+  const [showLog,setShowLog]=React.useState(false);
+  const [gatherType,setGatherType]=React.useState(null);
   const [syncStatus,setSyncStatus]=React.useState(null);
+  const [events,setEvents]=React.useState([]);
+  const [gameOver,setGameOver]=React.useState(false);
+  const prevPopRef=React.useRef(initialState?.population?.total||0);
+  const prevBuildingsRef=React.useRef((initialState?.buildings||[]).map(b=>b.id+b.built).join(','));
+  const prevSeasonRef=React.useRef(initialState?.time?.season);
+  const addToast=useBToast();
+  const engineInstanceRef=React.useRef(null);
+
+  const addEvent=(msg,type='info')=>{
+    const year=gs?.time?.year||1;
+    setEvents(prev=>[...prev.slice(-49),{msg,type,year}]);
+  };
 
   React.useEffect(()=>{
     const resize=()=>{if(canvasRef.current){canvasRef.current.width=window.innerWidth;canvasRef.current.height=window.innerHeight;}};
     resize();window.addEventListener('resize',resize);return()=>window.removeEventListener('resize',resize);
   },[]);
 
+  // Keyboard shortcuts
+  React.useEffect(()=>{
+    const handler=e=>{
+      // Don't capture when typing in inputs
+      if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA')return;
+      if(e.code==='Space'){e.preventDefault();const ns=speed===0?1:0;setSpeed(ns);if(engineRef.current)engineRef.current.setSpeed(ns);}
+      if(e.key==='Escape'){setBuildMode(null);setGatherType(null);if(engineRef.current)engineRef.current.cancelBuildMode();setShowMarket(false);setShowAI(false);setShowSave(false);setShowPop(false);setShowLog(false);}
+      if(e.key==='b'||e.key==='B')setShowBuild(b=>!b);
+      if(e.key==='m'||e.key==='M')setShowMarket(m=>!m);
+      if(e.key==='p'||e.key==='P')setShowPop(p=>!p);
+      if(e.key==='l'||e.key==='L')setShowLog(l=>!l);
+      if(e.key==='1'){setSpeed(1);if(engineRef.current)engineRef.current.setSpeed(1);}
+      if(e.key==='2'){setSpeed(5);if(engineRef.current)engineRef.current.setSpeed(5);}
+      if(e.key==='3'){setSpeed(10);if(engineRef.current)engineRef.current.setSpeed(10);}
+      if(e.key==='0'){setSpeed(0);if(engineRef.current)engineRef.current.setSpeed(0);}
+    };
+    window.addEventListener('keydown',handler);
+    return()=>window.removeEventListener('keydown',handler);
+  },[speed]);
+
   React.useEffect(()=>{
     if(!canvasRef.current||!gs)return;
     const eng=new BanishedEngine(canvasRef.current,gs,upd=>{
-      if(upd.state)setGs(s=>({...s,...upd.state}));
+      if(upd.state){
+        setGs(s=>{
+          const newState={...s,...upd.state};
+          // Event detection
+          const newPop=newState.population?.total||0;
+          const oldPop=prevPopRef.current;
+          if(newPop<oldPop){addEvent(`Villager perished (${oldPop} → ${newPop})`,'danger');addToast(`A villager has perished! Population: ${newPop}`,'danger');if(newPop===0)setGameOver(true);}
+          else if(newPop>oldPop){addEvent(`New villager! (${oldPop} → ${newPop})`,'population');addToast(`New villager born! Population: ${newPop}`,'success');}
+          prevPopRef.current=newPop;
+          // Building completion
+          const newBKey=(newState.buildings||[]).map(b=>b.id+b.built).join(',');
+          if(newBKey!==prevBuildingsRef.current){
+            const oldBs=(s.buildings||[]);
+            (newState.buildings||[]).forEach(nb=>{
+              if(nb.built){
+                const ob=oldBs.find(x=>x.id===nb.id);
+                if(ob&&!ob.built){const bd=BUILDINGS_DATA[nb.type];addEvent(`${bd?.name||nb.type} completed!`,'building');addToast(`${bd?.name||nb.type} construction complete!`,'success');}
+              }
+            });
+            prevBuildingsRef.current=newBKey;
+          }
+          // Season change
+          const newSeason=newState.time?.season;
+          if(newSeason&&newSeason!==prevSeasonRef.current){
+            const sn={spring:'Spring',summer:'Summer',autumn:'Autumn',winter:'Winter'};
+            addEvent(`${sn[newSeason]} has arrived (Year ${newState.time?.year})`,'season');
+            if(newSeason==='winter')addToast('Winter has come! Ensure firewood supply!','warning',6000);
+            prevSeasonRef.current=newSeason;
+          }
+          // Resource warnings
+          const food=FOOD_KEYS.reduce((a,k)=>a+(newState.resources?.[k]||0),0);
+          if(food<30&&food>0&&Math.random()<0.01)addToast('Food supplies critically low!','warning');
+          if((newState.resources?.firewood||0)<10&&newSeason==='winter')addToast('Firewood dangerously low for winter!','danger');
+          return newState;
+        });
+      }
       if(upd.selectedBuilding!==undefined){setSelBuilding(upd.selectedBuilding);if(upd.selectedBuilding)setSelVillager(null);}
       if(upd.selectedVillager!==undefined){setSelVillager(upd.selectedVillager);if(upd.selectedVillager)setSelBuilding(null);}
       if(upd.buildError!==undefined)setBuildError(upd.buildError);
     });
     engineRef.current=eng;
+    engineInstanceRef.current=eng;
     eng.start(async(newState,prev,elapsed)=>{
-      setSyncStatus({ok:false,msg:'同步中...'});
-      try{const r=await P(`/api/banished/game/sync/`,{state:newState,elapsed_seconds:elapsed});setSyncStatus({ok:true,msg:r.warnings?.length?`⚠ ${r.warnings[0]}`:'已同步'});}
-      catch{setSyncStatus({ok:false,msg:'失败'});}
+      setSyncStatus({ok:false,msg:'Syncing...'});
+      try{const r=await P(`/api/banished/game/sync/`,{state:newState,elapsed_seconds:elapsed});setSyncStatus({ok:true,msg:r.warnings?.length?`⚠ ${r.warnings[0]}`:'Synced'});}
+      catch{setSyncStatus({ok:false,msg:'Failed'});}
     });
     return()=>eng.destroy();
   },[]);
@@ -759,86 +1097,75 @@ function BanishedGameView({initialState,token,onBack}){
   const handleCancelBuild=()=>{setBuildMode(null);if(engineRef.current)engineRef.current.cancelBuildMode();};
   const handleGatherType=typ=>{
     if(!engineRef.current)return;
-    if(gatherType===typ){
-      engineRef.current.cancelGatheringMode();
-      setGatherType(null);
-      return;
-    }
-    setBuildMode(null);
-    setGatherType(typ);
-    engineRef.current.setGatheringMode(typ);
+    if(gatherType===typ){engineRef.current.cancelGatheringMode();setGatherType(null);return;}
+    setBuildMode(null);setGatherType(typ);engineRef.current.setGatheringMode(typ);
   };
-  const handleClearGather=typ=>{
-    if(!engineRef.current)return;
-    engineRef.current.clearGatheringZones(typ);
-  };
+  const handleClearGather=typ=>{if(engineRef.current)engineRef.current.clearGatheringZones(typ);};
   const handleToggleWorkerPolicy=()=>{
     const next=workerPolicy==='natural_only'?'balanced':'natural_only';
-    setWorkerPolicy(next);
-    if(engineRef.current)engineRef.current.setWorkerPolicy(next);
+    setWorkerPolicy(next);if(engineRef.current)engineRef.current.setWorkerPolicy(next);
   };
-  const handleLoad=state=>{if(engineRef.current){engineRef.current.pause();engineRef.current.destroy();}setGs(state);};
-  const handleUpgradeBlacksmith=(buildingId)=>{
+  const handleLoad=state=>{if(engineRef.current){engineRef.current.pause();engineRef.current.destroy();}setGs(state);setGameOver(false);};
+  const handleUpgradeBlacksmith=buildingId=>{
     if(!engineRef.current)return;
     const r=engineRef.current.upgradeBlacksmith(buildingId);
-    if(!r?.ok){
-      setBuildError(r?.msg||'升级失败');
-    }else{
-      setBuildError(null);
-    }
+    if(!r?.ok)setBuildError(r?.msg||'Upgrade failed');else setBuildError(null);
   };
   const handleSetForesterMode=(buildingId,mode)=>{
     if(!engineRef.current)return;
     const r=engineRef.current.setForesterMode(buildingId,mode);
-    if(!r?.ok)setBuildError(r?.msg||'设置失败');
-    else setBuildError(null);
+    if(!r?.ok)setBuildError(r?.msg||'Settings failed');else setBuildError(null);
   };
+  const handleSetProfessionTarget=(job,count)=>{
+    if(!engineRef.current)return;
+    engineRef.current.setProfessionTarget(job,count);
+  };
+  const handleSelectVillager=v=>{setSelVillager(v);setSelBuilding(null);};
+
+  if(gameOver)return<BanishedGameOver state={gs} onRestart={()=>{setGameOver(false);onBack();}} onBack={()=>{window.location.hash='#/';}}/>;
+
+  const ToolBtn=({active,onClick,label,color,shortcut})=>(
+    <button className={`btn btn-sm ${active?'btn-p':'btn-s'}`} onClick={onClick} title={shortcut?`${label} (${shortcut})`:label} style={{padding:'4px 10px',fontSize:11,borderRadius:'6px',fontWeight:600,background:active?(color||'var(--gold)'):'rgba(255,255,255,0.06)',border:active?'none':'1px solid rgba(255,255,255,0.12)',color:active?(color==='#5a8ac4'?'#fff':'#000'):'var(--fg2)',transition:'all 0.15s'}}>{label}</button>
+  );
 
   return(
     <div style={{position:'relative',width:'100vw',height:'100vh',overflow:'hidden',background:'var(--bg)'}}>
       <canvas ref={canvasRef} style={{position:'absolute',top:0,left:0,cursor:buildMode?'crosshair':'default'}}/>
       <BanishedHUD state={gs} speed={speed} onSetSpeed={handleSpeed} onToggleRes={()=>setShowRes(r=>!r)} syncStatus={syncStatus}/>
       <BanishedResourcePanel state={gs} open={showRes} onClose={()=>setShowRes(false)}/>
+      <BanishedMinimap state={gs} engine={engineInstanceRef.current}/>
       {showBuild&&<BanishedBuildPanel state={gs} buildMode={buildMode} onSetBuild={handleBuild} onCancel={handleCancelBuild}/>}
       <BanishedInfoPanel selBuilding={selBuilding} selVillager={selVillager} onClose={()=>{setSelBuilding(null);setSelVillager(null);}} onUpgradeBlacksmith={handleUpgradeBlacksmith} onSetForesterMode={handleSetForesterMode} time={gs?.time}/>
       {showMarket&&<BanishedMarketPanel onClose={()=>setShowMarket(false)}/>}
       {showAI&&<BanishedAIPanel token={token} gameState={gs} onClose={()=>setShowAI(false)}/>}
       {showSave&&<BanishedSavePanel currentState={gs} onLoad={handleLoad} onClose={()=>setShowSave(false)}/>}
+      {showPop&&<BanishedPopulationPanel state={gs} onSelectVillager={handleSelectVillager} onClose={()=>setShowPop(false)} onSetProfessionTarget={handleSetProfessionTarget}/>}
+      {showLog&&<BanishedEventLog events={events} onClose={()=>setShowLog(false)}/>}
       {buildError&&(
         <div style={{position:'absolute',bottom:54,left:'50%',transform:'translateX(-50%)',background:'rgba(196,90,90,0.95)',padding:'7px 14px',borderRadius:8,fontSize:13,zIndex:30,cursor:'pointer',fontWeight:600,boxShadow:'0 4px 16px rgba(196,90,90,0.4)',border:'1px solid rgba(196,90,90,0.5)',display:'flex',alignItems:'center',gap:6,whiteSpace:'nowrap'}} onClick={()=>setBuildError(null)}>⚠ {buildError}</div>
       )}
-      <div style={{position:'absolute',bottom:0,left:0,right:0,display:'flex',alignItems:'center',gap:6,padding:'6px 12px',background:'var(--bg2)',borderTop:'1px solid rgba(201,168,108,0.2)',zIndex:10,backdropFilter:'blur(12px)',boxShadow:'0 -2px 16px rgba(0,0,0,0.4)'}}>
-        <button className={`btn btn-sm ${showBuild?'btn-p':'btn-s'}`} onClick={()=>setShowBuild(b=>!b)} style={{padding:'5px 11px',fontSize:12,borderRadius:'7px',fontWeight:600,background:showBuild?'var(--gold)':'rgba(255,255,255,0.06)',border:showBuild?'none':'1px solid rgba(255,255,255,0.12)',color:showBuild?'#000':'var(--fg2)'}}>建造</button>
-        <button className={`btn btn-sm ${showMarket?'btn-p':'btn-s'}`} onClick={()=>setShowMarket(m=>!m)} style={{padding:'5px 11px',fontSize:12,borderRadius:'7px',fontWeight:600,background:showMarket?'var(--gold)':'rgba(255,255,255,0.06)',border:showMarket?'none':'1px solid rgba(255,255,255,0.12)',color:showMarket?'#000':'var(--fg2)'}}>市场</button>
-        <button className={`btn btn-sm ${showAI?'btn-p':'btn-s'}`} onClick={()=>setShowAI(a=>!a)} style={{padding:'5px 11px',fontSize:12,borderRadius:'7px',fontWeight:600,background:showAI?'#5a8ac4':'rgba(255,255,255,0.06)',border:showAI?'none':'1px solid rgba(255,255,255,0.12)',color:showAI?'#fff':'var(--fg2)'}}>AI</button>
-        <button className={`btn btn-sm ${showSave?'btn-p':'btn-s'}`} onClick={()=>setShowSave(s=>!s)} style={{padding:'5px 11px',fontSize:12,borderRadius:'7px',fontWeight:600,background:showSave?'var(--gold)':'rgba(255,255,255,0.06)',border:showSave?'none':'1px solid rgba(255,255,255,0.12)',color:showSave?'#000':'var(--fg2)'}}>存档</button>
-        <button className={`btn btn-sm ${gatherType==='stone'?'btn-p':'btn-s'}`} onClick={()=>handleGatherType('stone')} style={{padding:'5px 9px',fontSize:12,borderRadius:'7px',fontWeight:600,background:gatherType==='stone'?'#9f9f9f':'rgba(255,255,255,0.06)',border:gatherType==='stone'?'none':'1px solid rgba(255,255,255,0.12)',color:gatherType==='stone'?'#111':'var(--fg2)'}}>框石头</button>
-        <button className={`btn btn-sm ${gatherType==='iron'?'btn-p':'btn-s'}`} onClick={()=>handleGatherType('iron')} style={{padding:'5px 9px',fontSize:12,borderRadius:'7px',fontWeight:600,background:gatherType==='iron'?'#707070':'rgba(255,255,255,0.06)',border:gatherType==='iron'?'none':'1px solid rgba(255,255,255,0.12)',color:gatherType==='iron'?'#fff':'var(--fg2)'}}>框铁块</button>
-        <button className={`btn btn-sm ${gatherType==='wood'?'btn-p':'btn-s'}`} onClick={()=>handleGatherType('wood')} style={{padding:'5px 9px',fontSize:12,borderRadius:'7px',fontWeight:600,background:gatherType==='wood'?'#4ea86d':'rgba(255,255,255,0.06)',border:gatherType==='wood'?'none':'1px solid rgba(255,255,255,0.12)',color:gatherType==='wood'?'#08130a':'var(--fg2)'}}>框树木</button>
-        <button className="btn btn-s btn-sm" onClick={()=>{handleClearGather('stone');handleClearGather('iron');handleClearGather('wood');}} style={{padding:'5px 8px',fontSize:11,borderRadius:'7px',fontWeight:600,background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.12)',color:'var(--fg3)'}}>清采集框</button>
-        <button
-          className={`btn btn-sm ${workerPolicy==='natural_only'?'btn-p':'btn-s'}`}
-          onClick={handleToggleWorkerPolicy}
-          style={{
-            padding:'5px 11px',
-            fontSize:12,
-            borderRadius:'7px',
-            fontWeight:600,
-            background:workerPolicy==='natural_only'?'#5ac480':'rgba(255,255,255,0.06)',
-            border:workerPolicy==='natural_only'?'none':'1px solid rgba(255,255,255,0.12)',
-            color:workerPolicy==='natural_only'?'#08130a':'var(--fg2)',
-            display:'flex',
-            alignItems:'center',
-            gap:4
-          }}
-          title="开启后，小人只会优先分配到自然资源岗位"
-        >
-          {workerPolicy==='natural_only'?'仅自然采集':'全部岗位'}
-        </button>
-        <div style={{margin:'0 auto',display:'flex',gap:4,alignItems:'center'}}>
-          <button className="btn btn-s btn-sm" onClick={()=>{if(engineRef.current){const e=engineRef.current,nz=Math.min(e.maxZoom,e.zoom*1.25),cx=e.canvas.width/2,cy=e.canvas.height/2,wx=(cx+e.camX)/e.zoom,wy=(cy+e.camY)/e.zoom;e.zoom=nz;e.camX=wx*nz-cx;e.camY=wy*nz-cy;e._clampCam();}}} style={{padding:'4px 10px',fontSize:14,borderRadius:'6px',fontWeight:700,background:'rgba(255,255,255,0.08)',border:'1px solid rgba(255,255,255,0.15)',color:'var(--fg)',lineHeight:1}}>+</button>
-          <button className="btn btn-s btn-sm" onClick={()=>{if(engineRef.current){const e=engineRef.current,nz=Math.max(e.minZoom,e.zoom*0.8),cx=e.canvas.width/2,cy=e.canvas.height/2,wx=(cx+e.camX)/e.zoom,wy=(cy+e.camY)/e.zoom;e.zoom=nz;e.camX=wx*nz-cx;e.camY=wy*nz-cy;e._clampCam();}}} style={{padding:'4px 10px',fontSize:14,borderRadius:'6px',fontWeight:700,background:'rgba(255,255,255,0.08)',border:'1px solid rgba(255,255,255,0.15)',color:'var(--fg)',lineHeight:1}}>−</button>
-          <button className="btn btn-s btn-sm" onClick={onBack} style={{padding:'5px 10px',fontSize:11,borderRadius:'6px',fontWeight:500,background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.12)',color:'var(--fg3)',marginLeft:4}}>← 返回</button>
+      {/* Bottom Toolbar */}
+      <div style={{position:'absolute',bottom:0,left:0,right:0,display:'flex',alignItems:'center',gap:4,padding:'5px 10px',background:'rgba(8,8,11,0.94)',borderTop:'1px solid rgba(201,168,108,0.2)',zIndex:10,backdropFilter:'blur(12px)',boxShadow:'0 -2px 16px rgba(0,0,0,0.4)'}}>
+        {/* Main actions */}
+        <ToolBtn active={showBuild} onClick={()=>setShowBuild(b=>!b)} label="Build" shortcut="B"/>
+        <ToolBtn active={showMarket} onClick={()=>setShowMarket(m=>!m)} label="Market" shortcut="M"/>
+        <ToolBtn active={showAI} onClick={()=>setShowAI(a=>!a)} label="AI" color="#5a8ac4" shortcut="A"/>
+        <ToolBtn active={showSave} onClick={()=>setShowSave(s=>!s)} label="Save" shortcut="S"/>
+        <ToolBtn active={showPop} onClick={()=>setShowPop(p=>!p)} label="People" shortcut="P"/>
+        <ToolBtn active={showLog} onClick={()=>setShowLog(l=>!l)} label="Log" shortcut="L"/>
+        <div style={{width:1,height:20,background:'rgba(255,255,255,0.1)'}}/>
+        {/* Gather zones */}
+        <ToolBtn active={gatherType==='stone'} onClick={()=>handleGatherType('stone')} label="Stone" color="#9f9f9f"/>
+        <ToolBtn active={gatherType==='iron'} onClick={()=>handleGatherType('iron')} label="Iron" color="#707070"/>
+        <ToolBtn active={gatherType==='wood'} onClick={()=>handleGatherType('wood')} label="Wood" color="#4ea86d"/>
+        <button className="btn btn-s btn-sm" onClick={()=>{handleClearGather('stone');handleClearGather('iron');handleClearGather('wood');}} style={{padding:'4px 7px',fontSize:10,borderRadius:'6px',fontWeight:500,background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.1)',color:'var(--fg3)'}}>Clear</button>
+        <div style={{width:1,height:20,background:'rgba(255,255,255,0.1)'}}/>
+        <ToolBtn active={workerPolicy==='natural_only'} onClick={handleToggleWorkerPolicy} label={workerPolicy==='natural_only'?'Natural':'All jobs'} color="#5ac480"/>
+        {/* Zoom + back */}
+        <div style={{margin:'0 auto',display:'flex',gap:3,alignItems:'center'}}>
+          <button className="btn btn-s btn-sm" onClick={()=>{if(engineRef.current){const e=engineRef.current,nz=Math.min(e.maxZoom,e.zoom*1.25),cx=e.canvas.width/2,cy=e.canvas.height/2,wx=(cx+e.camX)/e.zoom,wy=(cy+e.camY)/e.zoom;e.zoom=nz;e.camX=wx*nz-cx;e.camY=wy*nz-cy;e._clampCam();}}} style={{padding:'3px 9px',fontSize:14,borderRadius:'5px',fontWeight:700,background:'rgba(255,255,255,0.08)',border:'1px solid rgba(255,255,255,0.12)',color:'var(--fg)',lineHeight:1}}>+</button>
+          <button className="btn btn-s btn-sm" onClick={()=>{if(engineRef.current){const e=engineRef.current,nz=Math.max(e.minZoom,e.zoom*0.8),cx=e.canvas.width/2,cy=e.canvas.height/2,wx=(cx+e.camX)/e.zoom,wy=(cy+e.camY)/e.zoom;e.zoom=nz;e.camX=wx*nz-cx;e.camY=wy*nz-cy;e._clampCam();}}} style={{padding:'3px 9px',fontSize:14,borderRadius:'5px',fontWeight:700,background:'rgba(255,255,255,0.08)',border:'1px solid rgba(255,255,255,0.12)',color:'var(--fg)',lineHeight:1}}>−</button>
+          <button className="btn btn-s btn-sm" onClick={onBack} style={{padding:'4px 10px',fontSize:10,borderRadius:'5px',fontWeight:500,background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.1)',color:'var(--fg3)',marginLeft:2}}>← Back</button>
         </div>
       </div>
     </div>
@@ -854,17 +1181,21 @@ function BanishedApp({user,onLogout,onUpdateUser}){
   const newGame=async(mapParams)=>{
     setStarting(true);
     try{const d=await P(`/api/banished/game/new/`,{map_params:mapParams});setGs(d.state);setView('game');}
-    catch(e){alert('创建游戏失败:'+e.message);}
+    catch(e){alert('Failed to create game: '+e.message);}
     setStarting(false);
   };
   const loadGame=state=>{setGs(state);setView('game');};
   if(starting)return(
     <div style={{height:'100vh',display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',gap:12}}>
-      <div style={{color:'var(--gold)',fontSize:16}}>正在生成世界…</div>
-      <div style={{color:'var(--fg3)',fontSize:12}}>地形生成中，请稍候</div>
+      <div style={{color:'var(--gold)',fontSize:16}}>Generating world…</div>
+      <div style={{color:'var(--fg3)',fontSize:12}}>Generating terrain, please wait</div>
     </div>
   );
   if(view==='lobby'||!gs)return<BanishedLobby onNewGame={newGame} onLoadGame={loadGame} onBack={()=>window.location.hash='#/'}/>;
-  return<BanishedGameView initialState={gs} token={token} onBack={()=>setView('lobby')}/>;
+  return(
+    <BanishedToastProvider>
+      <BanishedGameView initialState={gs} token={token} onBack={()=>setView('lobby')}/>
+    </BanishedToastProvider>
+  );
 }
 {% endverbatim %}

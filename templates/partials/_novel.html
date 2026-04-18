@@ -1,6 +1,7 @@
 {% verbatim %}
 // ── User Panel App ────────────────────────────────────────────
 function UserPanelApp({user, onLogout, onUpdateUser, siteConfig}) {
+  const lang = getLang();
   const [tab, setTab] = useState('profile');
   const [apiKey, setApiKey] = useState('');
   const [keyInfo, setKeyInfo] = useState(null);
@@ -43,17 +44,17 @@ function UserPanelApp({user, onLogout, onUpdateUser, siteConfig}) {
     try {
       const d = await P(`${API}/auth/user-api-key/`, {api_key: apiKey.trim()});
       setKeyInfo(d); setApiKey('');
-      setKeyMsg('✓ API 密钥已保存'); setTimeout(() => setKeyMsg(''), 2500);
-    } catch (e) { setKeyMsg('保存失败：' + e.message); }
+      setKeyMsg(lang==='en'?'✓ API key saved':'✓ API 密钥已保存'); setTimeout(() => setKeyMsg(''), 2500);
+    } catch (e) { setKeyMsg((lang==='en'?'Save failed: ':'保存失败：') + e.message); }
   };
 
   const deleteApiKey = async () => {
-    const confirmed = await showConfirm('确认删除 API 密钥？');
+    const confirmed = await showConfirm(lang==='en'?'Delete API key?':'确认删除 API 密钥？');
     if (!confirmed) return;
     try {
       await F(`${API}/auth/user-api-key/`, {method: 'DELETE'});
       setKeyInfo({has_key: false, preview: null});
-      setKeyMsg('✓ API 密钥已删除'); setTimeout(() => setKeyMsg(''), 2500);
+      setKeyMsg(lang==='en'?'✓ API key removed':'✓ API 密钥已删除'); setTimeout(() => setKeyMsg(''), 2500);
     } catch {}
   };
 
@@ -64,13 +65,13 @@ function UserPanelApp({user, onLogout, onUpdateUser, siteConfig}) {
     return `${(b / 1024 / 1024).toFixed(2)} MB`;
   };
 
-  const fmtType = (t) => ({'pdf':'PDF','image':'图片','doc':'文档','code':'代码','other':'其他'}[t] || t);
+  const fmtType = (t) => ({'pdf':'PDF','image':lang==='en'?'Image':'图片','doc':lang==='en'?'Document':'文档','code':lang==='en'?'Code':'代码','other':lang==='en'?'Other':'其他'}[t] || t);
 
   const validateFile = (file) => {
     const parts = file.name.split('.');
     const ext = parts.length > 1 ? '.' + parts.pop().toLowerCase() : '';
-    if (!ALLOWED_EXTS.includes(ext)) return `不支持 ${ext||'此'} 格式，仅允许 PDF、图片、文档、代码文件`;
-    if (file.size > 10 * 1024 * 1024) return '单个文件不能超过 10 MB';
+    if (!ALLOWED_EXTS.includes(ext)) return lang==='en' ? `${ext||'this'} format not supported · allowed: PDF, images, docs, code` : `不支持 ${ext||'此'} 格式，仅允许 PDF、图片、文档、代码文件`;
+    if (file.size > 10 * 1024 * 1024) return lang==='en' ? 'File exceeds 10 MB limit' : '单个文件不能超过 10 MB';
     return null;
   };
 
@@ -94,11 +95,11 @@ function UserPanelApp({user, onLogout, onUpdateUser, siteConfig}) {
           setCloudUsed(d.used_bytes || 0);
           setCloudQuota(d.quota_bytes || cloudQuota);
         } else {
-          try { setUploadError(JSON.parse(xhr.responseText).error || '上传失败'); } catch { setUploadError('上传失败'); }
+          try { setUploadError(JSON.parse(xhr.responseText).error || (lang==='en'?'Upload failed':'上传失败')); } catch { setUploadError(lang==='en'?'Upload failed':'上传失败'); }
         }
         resolve();
       };
-      xhr.onerror = () => { setUploading(false); setUploadError('网络错误，上传失败'); resolve(); };
+      xhr.onerror = () => { setUploading(false); setUploadError(lang==='en'?'Network error, upload failed':'网络错误，上传失败'); resolve(); };
       xhr.open('POST', `${API}/auth/cloud/`);
       if (token) xhr.setRequestHeader('Authorization', `Token ${token}`);
       xhr.send(formData);
@@ -110,13 +111,13 @@ function UserPanelApp({user, onLogout, onUpdateUser, siteConfig}) {
   };
 
   const handleDelete = async (id) => {
-    const confirmed = await showConfirm('确认删除此文件？');
+    const confirmed = await showConfirm(lang==='en'?'Delete this file?':'确认删除此文件？');
     if (!confirmed) return;
     try {
       const d = await F(`${API}/auth/cloud/${id}/`, {method: 'DELETE'});
       setCloudFiles(prev => prev.filter(f => f.id !== id));
       setCloudUsed(d.used_bytes || 0);
-    } catch (e) { showAlert('删除失败：' + e.message, '删除失败'); }
+    } catch (e) { showAlert((lang==='en'?'Delete failed: ':'删除失败：') + e.message, lang==='en'?'Error':'删除失败'); }
   };
 
   const handleDownload = (id) => {
@@ -133,14 +134,14 @@ function UserPanelApp({user, onLogout, onUpdateUser, siteConfig}) {
     <div style={{minHeight:'100vh', background:'var(--bg)', display:'flex', flexDirection:'column'}}>
       <nav style={{height:52, background:'var(--bg2)', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', padding:'0 24px', gap:14, flexShrink:0}}>
         <button className="btn btn-s btn-sm" onClick={() => window.location.hash='#/'} style={{display:'inline-flex',alignItems:'center',gap:6}}>
-          <Icon name="home" size={14} /> 返回首页
+          <Icon name="home" size={14} /> {lang==='en'?'Back to Home':'返回首页'}
         </button>
         <div style={{fontFamily:'var(--serif)', fontSize:17, fontWeight:600, color:'var(--gold2)', marginLeft:4, display:'flex', alignItems:'center', gap:6}}>
-          <Icon name="user" size={14}/> 个人中心
+          <Icon name="user" size={14}/> {lang==='en'?'Profile':'个人中心'}
         </div>
         <div style={{marginLeft:'auto', display:'flex', alignItems:'center', gap:12}}>
           <span style={{fontSize:12, color:'var(--fg3)', maxWidth:200, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{user?.email}</span>
-          {!isGuest && <button className="btn btn-s btn-sm" onClick={onLogout}>退出登录</button>}
+          {!isGuest && <button className="btn btn-s btn-sm" onClick={onLogout}>{lang==='en'?'Log out':'退出登录'}</button>}
         </div>
       </nav>
 
@@ -148,47 +149,47 @@ function UserPanelApp({user, onLogout, onUpdateUser, siteConfig}) {
         {isGuest ? (
           <div className="card" style={{textAlign:'center', padding:48}}>
             <div style={{fontSize:48, marginBottom:12}}>🔒</div>
-            <h3 style={{fontFamily:'var(--serif)', color:'var(--fg2)', marginBottom:8}}>请先登录</h3>
-            <p style={{color:'var(--fg3)', fontSize:13, marginBottom:20}}>个人中心和云盘功能需要登录才能使用</p>
-            <button className="btn btn-p" onClick={() => window.location.hash='#/login'}>立即登录</button>
+            <h3 style={{fontFamily:'var(--serif)', color:'var(--fg2)', marginBottom:8}}>{lang==='en'?'Please log in':'请先登录'}</h3>
+            <p style={{color:'var(--fg3)', fontSize:13, marginBottom:20}}>{lang==='en'?'Profile and cloud storage require login':'个人中心和云盘功能需要登录才能使用'}</p>
+            <button className="btn btn-p" onClick={() => window.location.hash='#/login'}>{lang==='en'?'Log in now':'立即登录'}</button>
           </div>
         ) : (
           <>
             <div className="tabs">
               <div className={`tab${tab==='profile'?' on':''}`} onClick={() => setTab('profile')}>
-                <span style={{display:'inline-flex',alignItems:'center',gap:5}}><Icon name="user" size={13}/> 基本信息</span>
+                <span style={{display:'inline-flex',alignItems:'center',gap:5}}><Icon name="user" size={13}/> {lang==='en'?'Info':'基本信息'}</span>
               </div>
               <div className={`tab${tab==='cloud'?' on':''}`} onClick={() => setTab('cloud')}>
-                <span style={{display:'inline-flex',alignItems:'center',gap:5}}><Icon name="cloud-drive" size={13}/> 我的云盘</span>
+                <span style={{display:'inline-flex',alignItems:'center',gap:5}}><Icon name="cloud-drive" size={13}/> {lang==='en'?'Cloud Drive':'我的云盘'}</span>
               </div>
               <div className={`tab${tab==='plugins'?' on':''}`} onClick={() => setTab('plugins')}>
-                <span style={{display:'inline-flex',alignItems:'center',gap:5}}><Icon name="plug" size={13}/> 我的插件</span>
+                <span style={{display:'inline-flex',alignItems:'center',gap:5}}><Icon name="plug" size={13}/> {lang==='en'?'My Plugins':'我的插件'}</span>
               </div>
             </div>
 
             {tab === 'profile' && (
               <div>
                 <div className="card" style={{marginBottom:16}}>
-                  <h3 style={{fontFamily:'var(--serif)',fontSize:16,marginBottom:14,color:'var(--gold2)'}}>账号信息</h3>
+                  <h3 style={{fontFamily:'var(--serif)',fontSize:16,marginBottom:14,color:'var(--gold2)'}}>{lang==='en'?'Account':'账号信息'}</h3>
                   <div className="g2">
                     <div>
-                      <div style={{fontSize:11,color:'var(--fg3)',marginBottom:3}}>邮箱</div>
+                      <div style={{fontSize:11,color:'var(--fg3)',marginBottom:3}}>{lang==='en'?'Email':'邮箱'}</div>
                       <div style={{fontSize:14}}>{user?.email}</div>
                     </div>
                     <div>
-                      <div style={{fontSize:11,color:'var(--fg3)',marginBottom:3}}>注册日期</div>
+                      <div style={{fontSize:11,color:'var(--fg3)',marginBottom:3}}>{lang==='en'?'Joined':'注册日期'}</div>
                       <div style={{fontSize:14}}>{user?.joined || '—'}</div>
                     </div>
                     <div>
-                      <div style={{fontSize:11,color:'var(--fg3)',marginBottom:3}}>账号类型</div>
+                      <div style={{fontSize:11,color:'var(--fg3)',marginBottom:3}}>{lang==='en'?'Role':'账号类型'}</div>
                       <div style={{fontSize:14}}>
                         {user?.is_staff
-                          ? <span style={{color:'var(--gold)'}}>管理员</span>
-                          : <span style={{color:'var(--green)'}}>普通用户</span>}
+                          ? <span style={{color:'var(--gold)'}}>{lang==='en'?'Admin':'管理员'}</span>
+                          : <span style={{color:'var(--green)'}}>{lang==='en'?'User':'普通用户'}</span>}
                       </div>
                     </div>
                     <div>
-                      <div style={{fontSize:11,color:'var(--fg3)',marginBottom:3}}>云盘空间</div>
+                      <div style={{fontSize:11,color:'var(--fg3)',marginBottom:3}}>{lang==='en'?'Storage':'云盘空间'}</div>
                       <div style={{fontSize:14}}>{fmtBytes(cloudUsed)} / {fmtBytes(cloudQuota)}</div>
                     </div>
                   </div>
@@ -202,50 +203,50 @@ function UserPanelApp({user, onLogout, onUpdateUser, siteConfig}) {
                     <div style={{display:'flex', alignItems:'center', gap:8}}>
                       <Icon name="coins" size={16} style={{color:'var(--gold)'}}/>
                       <div>
-                        <div style={{fontSize:11, color:'var(--fg3)'}}>我的积分</div>
+                        <div style={{fontSize:11, color:'var(--fg3)'}}>{lang==='en'?'My Points':'我的积分'}</div>
                         <div style={{fontSize:22, fontWeight:700, color:'var(--gold)', lineHeight:1.2}}>
                           {(user?.points || 0).toFixed(2)}
                         </div>
                       </div>
                     </div>
                     <div style={{fontSize:11, color:'var(--fg3)', textAlign:'right', lineHeight:1.7}}>
-                      1积分 = 5万输入Token<br/>1积分 = 2万输出Token
+                      {lang==='en'?<>1 pt = 50K input tokens<br/>1 pt = 20K output tokens</>:<>1积分 = 5万输入Token<br/>1积分 = 2万输出Token</>}
                     </div>
                   </div>
                   {(user?.points || 0) > 0 && (
                     <div style={{marginTop:8, fontSize:11, color:'var(--green)', display:'flex', alignItems:'center', gap:4}}>
-                      <Icon name="check" size={11}/> 有积分余额，已自动绕过每日免费配额限制
+                      <Icon name="check" size={11}/> {lang==='en'?'Points balance active · daily quota bypass enabled':'有积分余额，已自动绕过每日免费配额限制'}
                     </div>
                   )}
                   {(user?.pending_donations || 0) > 0 && (
                     <div style={{marginTop:6, fontSize:11, color:'var(--gold)', display:'flex', alignItems:'center', gap:4}}>
-                      <Icon name="clock" size={11}/> {user.pending_donations} 条赞赏申请待管理员审核
+                      <Icon name="clock" size={11}/> {lang==='en'?`${user.pending_donations} donation request(s) pending review`:`${user.pending_donations} 条赞赏申请待管理员审核`}
                     </div>
                   )}
                 </div>
 
                 <div className="card">
-                  <h3 style={{fontFamily:'var(--serif)',fontSize:16,marginBottom:4,color:'var(--gold2)'}}>自定义 API 密钥</h3>
+                  <h3 style={{fontFamily:'var(--serif)',fontSize:16,marginBottom:4,color:'var(--gold2)'}}>{lang==='en'?'Custom API Key':'自定义 API 密钥'}</h3>
                   <p style={{fontSize:12,color:'var(--fg3)',marginBottom:14,lineHeight:1.7}}>
-                    配置后，所有 AI 功能将使用您自己的密钥，不消耗平台共享配额。
+                    {lang==='en'?'Your own key will be used for all AI features, independent of platform quota.':'配置后，所有 AI 功能将使用您自己的密钥，不消耗平台共享配额。'}
                   </p>
                   {keyInfo?.has_key ? (
                     <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
                       <div style={{background:'var(--bg3)',border:'1px solid var(--border2)',borderRadius:6,padding:'6px 12px',fontFamily:'var(--mono)',fontSize:13,color:'var(--fg2)',display:'inline-flex',alignItems:'center',gap:6}}>
                         <Icon name="key" size={13}/> {keyInfo.preview}
                       </div>
-                      <button className="btn btn-d btn-sm" onClick={deleteApiKey}>删除密钥</button>
+                      <button className="btn btn-d btn-sm" onClick={deleteApiKey}>{lang==='en'?'Delete key':'删除密钥'}</button>
                       {keyMsg && <span style={{fontSize:12,color:'var(--green)'}}>{keyMsg}</span>}
                     </div>
                   ) : (
                     <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'flex-end'}}>
                       <div className="fg" style={{flex:1,minWidth:220,marginBottom:0}}>
-                        <label>API 密钥</label>
+                        <label>{lang==='en'?'API Key':'API 密钥'}</label>
                         <input type="password" placeholder="sk-..." value={apiKey}
                           onChange={e => setApiKey(e.target.value)}
                           onKeyDown={e => e.key==='Enter' && saveApiKey()} />
                       </div>
-                      <button className="btn btn-p" onClick={saveApiKey} disabled={!apiKey.trim()}>保存</button>
+                      <button className="btn btn-p" onClick={saveApiKey} disabled={!apiKey.trim()}>{lang==='en'?'Save':'保存'}</button>
                       {keyMsg && <span style={{fontSize:12,color:keyMsg.startsWith('✓')?'var(--green)':'var(--red)'}}>{keyMsg}</span>}
                     </div>
                   )}
@@ -259,7 +260,7 @@ function UserPanelApp({user, onLogout, onUpdateUser, siteConfig}) {
                 <div className="card" style={{marginBottom:14}}>
                   <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
                     <div style={{fontSize:13,fontWeight:500,display:'flex',alignItems:'center',gap:6}}>
-                      <Icon name="cloud-drive" size={16}/> 存储空间
+                      <Icon name="cloud-drive" size={16}/> {lang==='en'?'Storage':'存储空间'}
                     </div>
                     <div style={{fontSize:12,color:'var(--fg3)',fontFamily:'var(--mono)'}}>
                       {fmtBytes(cloudUsed)} / {fmtBytes(cloudQuota)}
@@ -271,7 +272,7 @@ function UserPanelApp({user, onLogout, onUpdateUser, siteConfig}) {
                       background: usedPct>90?'var(--red)':usedPct>70?'var(--orange)':'var(--gold)',
                     }}/>
                   </div>
-                  <div style={{fontSize:11,color:'var(--fg3)',marginTop:4}}>已用 {usedPct}%，共 50 MB 免费空间</div>
+                  <div style={{fontSize:11,color:'var(--fg3)',marginTop:4}}>{lang==='en'?`Used ${usedPct}% · 50 MB free`:`已用 ${usedPct}%，共 50 MB 免费空间`}</div>
                 </div>
 
                 {/* Upload zone */}
@@ -294,7 +295,7 @@ function UserPanelApp({user, onLogout, onUpdateUser, siteConfig}) {
                   <Icon name="cloud-up" size={32} style={{color:'var(--gold)',opacity:.7,display:'block',margin:'0 auto 10px'}}/>
                   {uploading ? (
                     <>
-                      <div style={{fontSize:13,color:'var(--fg2)',marginBottom:8}}>上传中 {uploadProgress}%</div>
+                      <div style={{fontSize:13,color:'var(--fg2)',marginBottom:8}}>{lang==='en'?`Uploading ${uploadProgress}%`:`上传中 ${uploadProgress}%`}</div>
                       <div style={{height:4,background:'var(--bg4)',borderRadius:2,maxWidth:200,margin:'0 auto'}}>
                         <div style={{height:'100%',borderRadius:2,background:'var(--gold)',width:`${uploadProgress}%`,transition:'width .2s'}}/>
                       </div>
@@ -302,10 +303,10 @@ function UserPanelApp({user, onLogout, onUpdateUser, siteConfig}) {
                   ) : (
                     <>
                       <div style={{fontSize:13,color:'var(--fg2)',marginBottom:4}}>
-                        拖拽文件到此处，或 <span style={{color:'var(--gold)'}}>点击选择文件</span>
+                        {lang==='en'?<>Drag files here or <span style={{color:'var(--gold)'}}>click to select</span></>:<>拖拽文件到此处，或 <span style={{color:'var(--gold)'}}>点击选择文件</span></>}
                       </div>
                       <div style={{fontSize:11,color:'var(--fg3)'}}>
-                        支持 PDF · 图片 · 文档 · 代码 · 单个文件最大 10 MB
+                        {lang==='en'?'PDF · Images · Docs · Code · max 10 MB each':'支持 PDF · 图片 · 文档 · 代码 · 单个文件最大 10 MB'}
                       </div>
                     </>
                   )}
@@ -318,9 +319,9 @@ function UserPanelApp({user, onLogout, onUpdateUser, siteConfig}) {
 
                 {/* File list */}
                 {cloudLoading ? (
-                  <div className="load">加载中...</div>
+                  <div className="load">{lang==='en'?'Loading...':'加载中...'}</div>
                 ) : cloudFiles.length === 0 ? (
-                  <div className="empty"><h3>云盘为空</h3><p>上传您的第一个文件吧</p></div>
+                  <div className="empty"><h3>{lang==='en'?'Drive is empty':'云盘为空'}</h3><p>{lang==='en'?'Upload your first file to get started':'上传您的第一个文件吧'}</p></div>
                 ) : cloudFiles.map(f => (
                   <div key={f.id} style={{
                     display:'flex',alignItems:'center',gap:12,padding:'10px 14px',
@@ -339,11 +340,11 @@ function UserPanelApp({user, onLogout, onUpdateUser, siteConfig}) {
                     <div style={{display:'flex',gap:6,flexShrink:0}}>
                       <button className="btn btn-s btn-sm" onClick={() => handleDownload(f.id)}
                         style={{display:'inline-flex',alignItems:'center',gap:4}}>
-                        <Icon name="download" size={12}/> 下载
+                        <Icon name="download" size={12}/> {lang==='en'?'Download':'下载'}
                       </button>
                       <button className="btn btn-sm" onClick={() => handleDelete(f.id)}
                         style={{background:'rgba(196,90,90,.12)',color:'var(--red)',border:'1px solid rgba(196,90,90,.2)',display:'inline-flex',alignItems:'center',gap:4}}>
-                        <Icon name="trash" size={12}/> 删除
+                        <Icon name="trash" size={12}/> {lang==='en'?'Delete':'删除'}
                       </button>
                     </div>
                   </div>
@@ -362,6 +363,7 @@ function UserPanelApp({user, onLogout, onUpdateUser, siteConfig}) {
 }
 
 function MemoryForgeApp({user, onLogout, onUpdateUser}) {
+  const lang = getLang();
 
   const [v, setV] = useState('home');
   const [ps, setPs] = useState([]);
@@ -395,7 +397,7 @@ function MemoryForgeApp({user, onLogout, onUpdateUser}) {
   if (cfg && !cfg.configured) return (
     <>
       <div style={{position:'fixed',top:14,left:14,zIndex:999}}>
-        <button className="btn btn-s btn-sm" onClick={() => { window.location.hash = '#/'; }}>← 返回 MineAI</button>
+        <button className="btn btn-s btn-sm" onClick={() => { window.location.hash = '#/'; }}>← {lang==='en'?'Back to MineAI':'返回 MineAI'}</button>
       </div>
       <Setup
         onDone={() => { F(`${API}/core/config/`).then(setCfg); }}
@@ -411,43 +413,43 @@ function MemoryForgeApp({user, onLogout, onUpdateUser}) {
     <div className="app">
       <div className={`sb-ov${sbOpen?' open':''}`} onClick={()=>setSbOpen(false)}/>
       <div className={`sb${sbOpen?' open':''}`}>
-        <div className="sb-back" onClick={() => { window.location.hash = '#/'; }}>← 返回 MineAI</div>
-        <div className="sb-hd"><h1>记忆熔炉</h1><p>无限记忆·长篇创作</p></div>
+        <div className="sb-back" onClick={() => { window.location.hash = '#/'; }}>← {lang==='en'?'Back to MineAI':'返回 MineAI'}</div>
+          <div className="sb-hd"><h1>{lang==='en'?'Memory Forge':'记忆熔炉'}</h1><p>{lang==='en'?'Infinite Memory · Long-form Writing':'无限记忆·长篇创作'}</p></div>
         <div className="sb-nav">
-          <div className="ns"><div className="ns-t">导航</div>
-            <div className={`ni ${v==='home'?'on':''}`} onClick={()=>goTo('home')}><i><Icon name="home" size={14} /></i>工作台</div>
+          <div className="ns"><div className="ns-t">{lang==='en'?'Navigation':'导航'}</div>
+            <div className={`ni ${v==='home'?'on':''}`} onClick={()=>goTo('home')}><i><Icon name="home" size={14} /></i>{lang==='en'?'Workspace':'工作台'}</div>
           </div>
           {ap && <div className="ns"><div className="ns-t">{ap.title}</div>
-            <div className={`ni ${v==='project'?'on':''}`} onClick={()=>goTo('project')}><i><Icon name="book" size={14} /></i>章节管理</div>
-            <div className={`ni ${v==='write'?'on':''}`} onClick={()=>goTo('write')}><i><Icon name="pen" size={14} /></i>写作工坊</div>
-            <div className={`ni ${v==='pyramid'?'on':''}`} onClick={()=>goTo('pyramid')}><i><Icon name="layers" size={14} /></i>记忆金字塔</div>
-            <div className={`ni ${v==='timeline'?'on':''}`} onClick={()=>goTo('timeline')}><i><Icon name="clock" size={14} /></i>时间线</div>
-            <div className={`ni ${v==='chars'?'on':''}`} onClick={()=>goTo('chars')}><i><Icon name="user" size={14} /></i>角色图鉴</div>
-            <div className={`ni ${v==='chat'?'on':''}`} onClick={()=>goTo('chat')}><i><Icon name="chat" size={14} /></i>剧情顾问</div>
-            <div className={`ni ${v==='logs'?'on':''}`} onClick={()=>goTo('logs')}><i><Icon name="clipboard" size={14} /></i>运行日志</div>
+            <div className={`ni ${v==='project'?'on':''}`} onClick={()=>goTo('project')}><i><Icon name="book" size={14} /></i>{lang==='en'?'Chapters':'章节管理'}</div>
+            <div className={`ni ${v==='write'?'on':''}`} onClick={()=>goTo('write')}><i><Icon name="pen" size={14} /></i>{lang==='en'?'Writing Workshop':'写作工坊'}</div>
+            <div className={`ni ${v==='pyramid'?'on':''}`} onClick={()=>goTo('pyramid')}><i><Icon name="layers" size={14} /></i>{lang==='en'?'Memory Pyramid':'记忆金字塔'}</div>
+            <div className={`ni ${v==='timeline'?'on':''}`} onClick={()=>goTo('timeline')}><i><Icon name="clock" size={14} /></i>{lang==='en'?'Timeline':'时间线'}</div>
+            <div className={`ni ${v==='chars'?'on':''}`} onClick={()=>goTo('chars')}><i><Icon name="user" size={14} /></i>{lang==='en'?'Characters':'角色图鉴'}</div>
+            <div className={`ni ${v==='chat'?'on':''}`} onClick={()=>goTo('chat')}><i><Icon name="chat" size={14} /></i>{lang==='en'?'Plot Advisor':'剧情顾问'}</div>
+            <div className={`ni ${v==='logs'?'on':''}`} onClick={()=>goTo('logs')}><i><Icon name="clipboard" size={14} /></i>{lang==='en'?'Logs':'运行日志'}</div>
           </div>}
           <div style={{marginTop:'auto'}}>
             <div style={{padding:'10px 8px 0',borderTop:'1px solid var(--border)'}}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'0 4px',marginBottom:6}}>
-                <span style={{fontSize:10,color:'var(--fg3)',letterSpacing:1}}>TOKEN 用量</span>
-                <button onClick={refreshUser} style={{background:'none',color:'var(--fg3)',fontSize:9,padding:'1px 5px',border:'1px solid var(--border)',borderRadius:3,cursor:'pointer'}}>刷新</button>
+                <span style={{fontSize:10,color:'var(--fg3)',letterSpacing:1}}>{lang==='en'?'TOKEN USAGE':'TOKEN 用量'}</span>
+                <button onClick={refreshUser} style={{background:'none',color:'var(--fg3)',fontSize:9,padding:'1px 5px',border:'1px solid var(--border)',borderRadius:3,cursor:'pointer'}}>{lang==='en'?'↻':'刷新'}</button>
               </div>
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:4,padding:'0 4px',marginBottom:8}}>
                 <div style={{background:'var(--bg3)',borderRadius:4,padding:'5px 6px',textAlign:'center'}}>
                   <div style={{fontFamily:'var(--mono)',fontSize:16,color:'var(--gold2)',fontWeight:500}}>{(u.prompt_count||0).toLocaleString()}</div>
-                  <div style={{fontSize:9,color:'var(--fg3)',marginTop:1,letterSpacing:.5}}>提交次数</div>
+                  <div style={{fontSize:9,color:'var(--fg3)',marginTop:1,letterSpacing:.5}}>{lang==='en'?'Requests':'提交次数'}</div>
                 </div>
                 <div style={{background:'var(--bg3)',borderRadius:4,padding:'5px 6px',textAlign:'center'}}>
                   <div style={{fontFamily:'var(--mono)',fontSize:16,color:'var(--cyan)',fontWeight:500}}>{((u.total_tokens||0)/1000).toFixed(1)}K</div>
-                  <div style={{fontSize:9,color:'var(--fg3)',marginTop:1,letterSpacing:.5}}>总Token</div>
+                  <div style={{fontSize:9,color:'var(--fg3)',marginTop:1,letterSpacing:.5}}>{lang==='en'?'Tokens':'总Token'}</div>
                 </div>
                 <div style={{background:'var(--bg3)',borderRadius:4,padding:'4px 6px',textAlign:'center'}}>
                   <div style={{fontFamily:'var(--mono)',fontSize:13,color:'var(--blue)',fontWeight:500}}>{((u.input_tokens||0)/1000).toFixed(1)}K</div>
-                  <div style={{fontSize:9,color:'var(--fg3)',marginTop:1,letterSpacing:.5}}>输入</div>
+                  <div style={{fontSize:9,color:'var(--fg3)',marginTop:1,letterSpacing:.5}}>{lang==='en'?'In':'输入'}</div>
                 </div>
                 <div style={{background:'var(--bg3)',borderRadius:4,padding:'4px 6px',textAlign:'center'}}>
                   <div style={{fontFamily:'var(--mono)',fontSize:13,color:'var(--green)',fontWeight:500}}>{((u.output_tokens||0)/1000).toFixed(1)}K</div>
-                  <div style={{fontSize:9,color:'var(--fg3)',marginTop:1,letterSpacing:.5}}>输出</div>
+                  <div style={{fontSize:9,color:'var(--fg3)',marginTop:1,letterSpacing:.5}}>{lang==='en'?'Out':'输出'}</div>
                 </div>
               </div>
             </div>
@@ -459,11 +461,11 @@ function MemoryForgeApp({user, onLogout, onUpdateUser}) {
               <div style={{display:'flex',gap:6}}>
                 {user ? (
                   <>
-                    <div className={`ni ${v==='settings'?'on':''}`} style={{flex:1,padding:'5px 8px',margin:0}} onClick={()=>goTo('settings')}><i><Icon name="settings" size={14} /></i>设置</div>
-                    <button onClick={onLogout} style={{padding:'5px 11px',borderRadius:'var(--r)',background:'var(--bg4)',color:'var(--fg3)',border:'1px solid var(--border2)',fontSize:13,cursor:'pointer',display:'inline-flex',alignItems:'center',justifyContent:'center'}} title="退出登录"><Icon name="logout" size={14} /></button>
+                    <div className={`ni ${v==='settings'?'on':''}`} style={{flex:1,padding:'5px 8px',margin:0}} onClick={()=>goTo('settings')}><i><Icon name="settings" size={14} /></i>{lang==='en'?'Settings':'设置'}</div>
+                    <button onClick={onLogout} style={{padding:'5px 11px',borderRadius:'var(--r)',background:'var(--bg4)',color:'var(--fg3)',border:'1px solid var(--border2)',fontSize:13,cursor:'pointer',display:'inline-flex',alignItems:'center',justifyContent:'center'}} title={lang==='en'?'Log out':'退出登录'}><Icon name="logout" size={14} /></button>
                   </>
                 ) : (
-                  <button onClick={() => window.location.hash = '#/login'} style={{flex:1,padding:'5px 8px',borderRadius:'var(--r)',background:'var(--bg4)',color:'var(--fg3)',border:'1px solid var(--border2)',fontSize:13,cursor:'pointer'}} title="登录/注册">前往登录 / 注册</button>
+                  <button onClick={() => window.location.hash = '#/login'} style={{flex:1,padding:'5px 8px',borderRadius:'var(--r)',background:'var(--bg4)',color:'var(--fg3)',border:'1px solid var(--border2)',fontSize:13,cursor:'pointer'}} title={lang==='en'?'Log in / Sign up':'登录/注册'}>{lang==='en'?'Log in / Sign up':'前往登录 / 注册'}</button>
                 )}
               </div>
             </div>
@@ -474,10 +476,17 @@ function MemoryForgeApp({user, onLogout, onUpdateUser}) {
         <div className="top">
           <button className="menu-btn" onClick={()=>setSbOpen(o=>!o)}><Icon name="menu" size={18} /></button>
           <span className="top-t">
-            {v==='home'&&'工作台'}{v==='project'&&ap?.title}{v==='write'&&'写作工坊'}{v==='pyramid'&&'记忆金字塔'}
-            {v==='timeline'&&'故事时间线'}{v==='chars'&&'角色图鉴'}{v==='chat'&&'剧情顾问'}{v==='logs'&&'运行日志'}{v==='settings'&&'系统设置'}
+            {v==='home'&&(lang==='en'?'Workspace':'工作台')}
+            {v==='project'&&ap?.title}
+            {v==='write'&&(lang==='en'?'Writing Workshop':'写作工坊')}
+            {v==='pyramid'&&(lang==='en'?'Memory Pyramid':'记忆金字塔')}
+            {v==='timeline'&&(lang==='en'?'Story Timeline':'故事时间线')}
+            {v==='chars'&&(lang==='en'?'Characters':'角色图鉴')}
+            {v==='chat'&&(lang==='en'?'Plot Advisor':'剧情顾问')}
+            {v==='logs'&&(lang==='en'?'Logs':'运行日志')}
+            {v==='settings'&&(lang==='en'?'Settings':'系统设置')}
           </span>
-          {ap && <span className="top-b">{ap.genre||'小说'}</span>}
+          {ap && <span className="top-b">{ap.genre||(lang==='en'?'Novel':'小说')}</span>}
         </div>
         <div className="ct">
           {v==='home'&&<Home ps={ps} onSel={selP} onRef={loadPs} user={user} />}
@@ -649,8 +658,8 @@ function Setup({onDone, platformConfigured, platformAllowed}) {
   return (
     <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100vh',background:'var(--bg)'}}>
       <div style={{textAlign:'center',maxWidth:420,padding:40}}>
-        <h1 style={{fontFamily:'var(--serif)',fontSize:34,color:'var(--gold2)',marginBottom:6}}>记忆熔炉</h1>
-        <p style={{color:'var(--fg3)',marginBottom:30,fontSize:13}}>AI长篇小说创作引擎 · 无限层级记忆系统</p>
+        <h1 style={{fontFamily:'var(--serif)',fontSize:34,color:'var(--gold2)',marginBottom:6}}>{lang === 'en' ? 'Memory Forge' : '记忆熔炉'}</h1>
+        <p style={{color:'var(--fg3)',marginBottom:30,fontSize:13}}>{lang === 'en' ? 'AI long-form novel engine · infinite-layer memory system' : 'AI长篇小说创作引擎 · 无限层级记忆系统'}</p>
         <div className="card" style={{textAlign:'left',marginBottom:16,borderColor:'var(--border2)'}}>
           <p style={{fontSize:12,color:'var(--fg2)',lineHeight:1.8}}>
             {showPlatformLoginTip
@@ -675,6 +684,7 @@ function Setup({onDone, platformConfigured, platformAllowed}) {
 }
 
 function Home({ps, onSel, onRef, user}) {
+  const lang = getLang();
   const [show, setShow] = useState(false);
   const [f, setF] = useState({title:'',genre:'',synopsis:'',style_guide:'',world_setting:''});
   const [cr, setCr] = useState(false);
@@ -696,7 +706,7 @@ function Home({ps, onSel, onRef, user}) {
     <div>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
         <div><h2 style={{fontFamily:'var(--serif)',fontSize:26}}>作品广场</h2><p style={{color:'var(--fg3)',fontSize:12,marginTop:3}}>选择一部作品或创建新作</p></div>
-        <button className="btn btn-p" onClick={()=>{ if(requireLogin()) setShow(true); }}>+ 新建作品</button>
+        <button className="btn btn-p" onClick={()=>{ if(requireLogin()) setShow(true); }}>{lang==='en'?'+ New Project':'+ 新建作品'}</button>
       </div>
       {ps.length===0?<div className="empty"><h3>还没有作品</h3><p>创建您的第一部小说，开始AI辅助无限记忆创作之旅</p></div>:
       <div className="g2">{ps.map(p=>(
@@ -711,21 +721,21 @@ function Home({ps, onSel, onRef, user}) {
       {show&&<div className="modal-ov" onClick={()=>!gen&&setShow(false)}><div className="modal" onClick={e=>e.stopPropagation()} style={{position:'relative', overflow:'hidden'}}>
         {gen && <div style={{position:'absolute',top:0,left:0,right:0,height:3,background:'linear-gradient(to right, transparent, var(--gold), transparent)',animation:'shimmer 1.5s infinite linear', backgroundSize:'200% 100%', zIndex:2}} />}
         <h2 style={{display:'flex', alignItems:'center', gap:8}}>
-          新建作品 {gen && <span style={{fontSize:12, color:'var(--gold)', fontWeight:'normal', animation:'ai-pulse 2s infinite', padding:'2px 8px', borderRadius:10, background:'rgba(219,185,122,0.1)', display:'inline-flex', alignItems:'center', gap:4}}><Icon name="spark" size={12} /> 脑洞生成中...</span>}
+          {lang==='en'?'New Project':'新建作品'} {gen && <span style={{fontSize:12, color:'var(--gold)', fontWeight:'normal', animation:'ai-pulse 2s infinite', padding:'2px 8px', borderRadius:10, background:'rgba(219,185,122,0.1)', display:'inline-flex', alignItems:'center', gap:4}}><Icon name="spark" size={12} /> {lang==='en'?'Generating ideas...':'脑洞生成中...'}</span>}
         </h2>
         
-        <div className="fg"><label>书名 *</label><input className={gen?'input-shimmer':''} disabled={gen} value={f.title} onChange={e=>setF({...f,title:e.target.value})} placeholder="输入书名..."/></div>
-        <div className="fg"><label>类型</label><input className={gen?'input-shimmer':''} disabled={gen} value={f.genre} onChange={e=>setF({...f,genre:e.target.value})} placeholder="玄幻、仙侠、都市、科幻..."/></div>
-        <div className="fg"><label>简介</label><textarea className={gen?'input-shimmer':''} disabled={gen} value={f.synopsis} onChange={e=>setF({...f,synopsis:e.target.value})} placeholder="故事简介..." rows={3}/></div>
-        <div className="fg"><label>风格指导</label><textarea className={gen?'input-shimmer':''} disabled={gen} value={f.style_guide} onChange={e=>setF({...f,style_guide:e.target.value})} placeholder="写作风格偏好..." rows={2}/></div>
-        <div className="fg"><label>世界设定</label><textarea className={gen?'input-shimmer':''} disabled={gen} value={f.world_setting} onChange={e=>setF({...f,world_setting:e.target.value})} placeholder="世界观设定..." rows={3}/></div>
+        <div className="fg"><label>{lang==='en'?'Title *':'书名 *'}</label><input className={gen?'input-shimmer':''} disabled={gen} value={f.title} onChange={e=>setF({...f,title:e.target.value})} placeholder={lang==='en'?'Enter title...':'输入书名...'}/></div>
+        <div className="fg"><label>{lang==='en'?'Genre':'类型'}</label><input className={gen?'input-shimmer':''} disabled={gen} value={f.genre} onChange={e=>setF({...f,genre:e.target.value})} placeholder={lang==='en'?'Fantasy, Xianxia, urban, sci-fi...':'玄幻、仙侠、都市、科幻...'}/></div>
+        <div className="fg"><label>{lang==='en'?'Synopsis':'简介'}</label><textarea className={gen?'input-shimmer':''} disabled={gen} value={f.synopsis} onChange={e=>setF({...f,synopsis:e.target.value})} placeholder={lang==='en'?'Story summary...':'故事简介...'} rows={3}/></div>
+        <div className="fg"><label>{lang==='en'?'Style Guide':'风格指导'}</label><textarea className={gen?'input-shimmer':''} disabled={gen} value={f.style_guide} onChange={e=>setF({...f,style_guide:e.target.value})} placeholder={lang==='en'?'Writing style preferences...':'写作风格偏好...'} rows={2}/></div>
+        <div className="fg"><label>{lang==='en'?'World Building':'世界设定'}</label><textarea className={gen?'input-shimmer':''} disabled={gen} value={f.world_setting} onChange={e=>setF({...f,world_setting:e.target.value})} placeholder={lang==='en'?'World setting...':'世界观设定...'} rows={3}/></div>
         <div style={{display:'flex',gap:8,justifyContent:'flex-end', marginTop:20}}>
           <button className={`btn btn-ai ${gen?'generating':''}`} onClick={autoGen} disabled={gen} style={{marginRight:'auto',display:'inline-flex',alignItems:'center',gap:6}}>
             <Icon name="spark" size={12} />
-            {gen?'脑洞持续展开中...':'AI 脑洞补全'}
+            {gen?(lang==='en'?'Idea generation in progress...':'脑洞持续展开中...'):(lang==='en'?'AI Idea Expansion':'AI 脑洞补全')}
           </button>
-          <button className="btn btn-s" onClick={()=>setShow(false)} disabled={gen}>取消</button>
-          <button className="btn btn-p" onClick={create} disabled={cr||gen}>{cr?'创建中...':'创建作品'}</button>
+          <button className="btn btn-s" onClick={()=>setShow(false)} disabled={gen}>{lang==='en'?'Cancel':'取消'}</button>
+          <button className="btn btn-p" onClick={create} disabled={cr||gen}>{cr?(lang==='en'?'Creating...':'创建中...'):(lang==='en'?'Create Project':'创建作品')}</button>
         </div>
       </div></div>}
     </div>
@@ -776,7 +786,7 @@ function Proj({p, onRef, goWrite, user}) {
         <div className="fg"><label>标题</label><input value={nc.title} onChange={e=>setNc({...nc,title:e.target.value})}/></div>
         <div className="fg"><label>大纲</label><textarea value={nc.outline} onChange={e=>setNc({...nc,outline:e.target.value})} rows={4}/></div>
         <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}>
-          <button className="btn btn-s" onClick={()=>setShowAdd(false)}>取消</button>
+          <button className="btn btn-s" onClick={()=>setShowAdd(false)}>{lang==='en'?'Cancel':'取消'}</button>
           <button className="btn btn-p" onClick={addCh}>添加</button>
         </div>
       </div></div>}
@@ -947,7 +957,7 @@ function Write({p, onRef, onUsage, user}) {
               onKeyDown={e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey))submitCustom();}}
             />
             <div className="row">
-              <button className="btn btn-s btn-sm" onClick={()=>setCustomModal(false)}>取消</button>
+              <button className="btn btn-s btn-sm" onClick={()=>setCustomModal(false)}>{lang==='en'?'Cancel':'取消'}</button>
               <button className="btn btn-p" onClick={submitCustom} disabled={!customPrompt.trim()}>确认润色</button>
             </div>
           </div>
@@ -1041,7 +1051,15 @@ function Pyramid({pid, user}) {
         </button>
       </div>
       {st&&<div className="stats-g">
-        {[['节点',st.total_nodes],['链接',st.total_links],['快照',st.total_snapshots],['角色',st.characters],['角色快照',st.char_snapshots],['时间线事件',st.timeline_events],['预估Token',(st.estimated_tokens/1000).toFixed(0)+'K']].map(([l,v],i)=>(
+        {[
+          [lang==='en'?'Nodes':'节点',st.total_nodes],
+          [lang==='en'?'Links':'链接',st.total_links],
+          [lang==='en'?'Snapshots':'快照',st.total_snapshots],
+          [lang==='en'?'Characters':'角色',st.characters],
+          [lang==='en'?'Character Snapshots':'角色快照',st.char_snapshots],
+          [lang==='en'?'Timeline Events':'时间线事件',st.timeline_events],
+          [lang==='en'?'Estimated Tokens':'预估Token',(st.estimated_tokens/1000).toFixed(0)+'K']
+        ].map(([l,v],i)=>(
           <div key={i} className="sc"><div className="sv" style={{fontSize:22}}>{v}</div><div className="sl">{l}</div></div>
         ))}
       </div>}
@@ -1072,7 +1090,7 @@ function Pyramid({pid, user}) {
           </button>
         </div>
         {rr&&<div style={{marginTop:10}}>
-          <div style={{fontSize:11,color:'var(--fg3)',marginBottom:6}}>检索到 {rr.chars} 字符 (~{rr.estimated_tokens} tokens)</div>
+          <div style={{fontSize:11,color:'var(--fg3)',marginBottom:6}}>{lang==='en' ? `Retrieved ${rr.chars} characters (~${rr.estimated_tokens} tokens)` : `检索到 ${rr.chars} 字符 (~${rr.estimated_tokens} tokens)`}</div>
           <div style={{background:'var(--bg)',border:'1px solid var(--border)',borderRadius:'var(--r)',padding:12,maxHeight:350,overflow:'auto',fontSize:12,lineHeight:1.6,whiteSpace:'pre-wrap',color:'var(--fg2)'}}>{rr.context}</div>
         </div>}
       </div>
@@ -1093,7 +1111,7 @@ function Pyramid({pid, user}) {
         <h2>{nd.title}</h2>
         <div style={{display:'flex',gap:6,flexWrap:'wrap',margin:'8px 0'}}>
           <span className="tag">层级{nd.level}: {nd.level_name}</span>
-          <span className="tag">类型: {nd.node_type}</span>
+          <span className="tag">{lang==='en'?'Type':'类型'}: {nd.node_type}</span>
           <span className="tag">版本: v{nd.version}</span>
           <span className="tag">重要度: {nd.importance}</span>
           <span className="tag">访问: {nd.access_count}次</span>
@@ -1317,7 +1335,7 @@ function Chars({pid, user}) {
         <div className="fg"><label>描述</label><textarea value={f.description} onChange={e=>setF({...f,description:e.target.value})} rows={3}/></div>
         <div className="fg"><label>性格特征 (逗号分隔)</label><input value={f.traits} onChange={e=>setF({...f,traits:e.target.value})} placeholder="勇敢，狡诈，忠诚..."/></div>
         <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}>
-          <button className="btn btn-s" onClick={()=>setShowAdd(false)}>取消</button>
+          <button className="btn btn-s" onClick={()=>setShowAdd(false)}>{lang==='en'?'Cancel':'取消'}</button>
           <button className="btn btn-p" onClick={addC}>添加</button>
         </div>
       </div></div>}
@@ -1433,7 +1451,7 @@ function AdminPanelApp({user, onLogout}) {
     try {
       const d = await F(`${API}/auth/admin/users/${q ? '?q=' + encodeURIComponent(q) : ''}`);
       setUsers(d.users || []);
-    } catch (e) { setPointsMsg('搜索失败：' + e.message); }
+    } catch (e) { setPointsMsg((lang==='en'?'Search failed: ':'搜索失败：') + e.message); }
     setUsersLoading(false);
   };
 
@@ -1455,7 +1473,9 @@ function AdminPanelApp({user, onLogout}) {
     if (isNaN(delta)) { setPointsMsg('请输入有效数字'); return; }
     try {
       const d = await P(`${API}/auth/admin/users/${selected.id}/points/`, {delta});
-      setPointsMsg(`✓ 积分已更新：${delta > 0 ? '+' : ''}${delta}，当前 ${d.points.toFixed(2)}`);
+      setPointsMsg(lang==='en'
+        ? `✓ Points updated: ${delta > 0 ? '+' : ''}${delta}, current ${d.points.toFixed(2)}`
+        : `✓ 积分已更新：${delta > 0 ? '+' : ''}${delta}，当前 ${d.points.toFixed(2)}`);
       setUsers(prev => prev.map(u => u.id === selected.id ? {...u, points: d.points} : u));
       setSelected(prev => prev ? {...prev, points: d.points} : null);
       setPointsDelta('');
@@ -1466,8 +1486,10 @@ function AdminPanelApp({user, onLogout}) {
     setReviewMsg('');
     try {
       const d = await P(`${API}/auth/admin/donations/${id}/review/`, {action});
-      const verb = action === 'approve' ? '已批准' : '已拒绝';
-      setReviewMsg(`✓ ${verb}：${d.user_email}${action === 'approve' ? '，+' + d.points_granted + '积分' : ''}`);
+      const verb = action === 'approve' ? (lang==='en'?'approved':'已批准') : (lang==='en'?'rejected':'已拒绝');
+      setReviewMsg(lang==='en'
+        ? `✓ ${verb}: ${d.user_email}${action === 'approve' ? ', +' + d.points_granted + ' points' : ''}`
+        : `✓ ${verb}：${d.user_email}${action === 'approve' ? '，+' + d.points_granted + '积分' : ''}`);
       setDonations(prev => prev.filter(r => r.id !== id));
       setPendingCount(prev => Math.max(0, prev - 1));
     } catch (e) { setReviewMsg('操作失败：' + e.message); }
@@ -1479,14 +1501,14 @@ function AdminPanelApp({user, onLogout}) {
     <div style={{minHeight:'100vh', background:'var(--bg)', display:'flex', flexDirection:'column'}}>
       <nav style={{height:52, background:'var(--bg2)', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', padding:'0 24px', gap:14, flexShrink:0}}>
         <button className="btn btn-s btn-sm" onClick={() => window.location.hash='#/'} style={{display:'inline-flex',alignItems:'center',gap:6}}>
-          <Icon name="home" size={14}/> 返回首页
+          <Icon name="home" size={14}/> {lang==='en'?'Back to Home':'返回首页'}
         </button>
         <div style={{fontFamily:'var(--serif)', fontSize:17, fontWeight:600, color:'var(--gold2)', display:'flex', alignItems:'center', gap:6}}>
-          <Icon name="settings" size={14}/> 管理后台
+          <Icon name="settings" size={14}/> {lang==='en'?'Admin Panel':'管理后台'}
         </div>
         <div style={{marginLeft:'auto', display:'flex', alignItems:'center', gap:12}}>
           <span style={{fontSize:12, color:'var(--fg3)'}}>{user?.email}</span>
-          <button className="btn btn-s btn-sm" onClick={onLogout}>退出</button>
+          <button className="btn btn-s btn-sm" onClick={onLogout}>{lang==='en'?'Log out':'退出'}</button>
         </div>
       </nav>
 
@@ -1494,14 +1516,14 @@ function AdminPanelApp({user, onLogout}) {
         <div className="tabs" style={{marginBottom:20}}>
           <div className={`tab${adminTab==='donations'?' on':''}`} onClick={() => setAdminTab('donations')}
             style={{display:'inline-flex', alignItems:'center', gap:6}}>
-            <Icon name="heart" size={13}/> 赞赏审核
+            <Icon name="heart" size={13}/> {lang==='en'?'Donation Review':'赞赏审核'}
             {pendingCount > 0 && (
               <span style={{background:'var(--gold)', color:'var(--bg)', borderRadius:10, padding:'0 6px', fontSize:10, fontWeight:700}}>{pendingCount}</span>
             )}
           </div>
           <div className={`tab${adminTab==='users'?' on':''}`} onClick={() => setAdminTab('users')}
             style={{display:'inline-flex', alignItems:'center', gap:6}}>
-            <Icon name="user" size={13}/> 用户管理
+            <Icon name="user" size={13}/> {lang==='en'?'User Management':'用户管理'}
           </div>
         </div>
 
@@ -1513,7 +1535,7 @@ function AdminPanelApp({user, onLogout}) {
                 <button key={s} className="btn btn-s btn-sm"
                   onClick={() => loadDonations(s)}
                   style={{fontSize:12}}>
-                  {s==='pending'?'待审核':s==='approved'?'已批准':'已拒绝'}
+                  {lang==='en' ? (s==='pending'?'Pending':s==='approved'?'Approved':'Rejected') : (s==='pending'?'待审核':s==='approved'?'已批准':'已拒绝')}
                 </button>
               ))}
             </div>
@@ -1525,8 +1547,8 @@ function AdminPanelApp({user, onLogout}) {
                 border: `1px solid ${reviewMsg.startsWith('✓') ? 'rgba(94,184,122,.25)' : 'rgba(196,90,90,.25)'}`,
               }}>{reviewMsg}</div>
             )}
-            {donationsLoading ? <div className="load">加载中...</div> :
-              donations.length === 0 ? <div className="empty"><h3>暂无记录</h3></div> :
+            {donationsLoading ? <div className="load">{lang==='en'?'Loading...':'加载中...'}</div> :
+              donations.length === 0 ? <div className="empty"><h3>{lang==='en'?'No records yet':'暂无记录'}</h3></div> :
               donations.map(r => (
                 <div key={r.id} style={{
                   display:'flex', alignItems:'center', gap:12,
@@ -1536,24 +1558,24 @@ function AdminPanelApp({user, onLogout}) {
                   <div style={{flex:1, minWidth:0}}>
                     <div style={{fontSize:13, fontWeight:500, marginBottom:2}}>{r.email}</div>
                     <div style={{fontSize:11, color:'var(--fg3)'}}>
-                      备注：<span style={{color:'var(--fg2)'}}>{r.note || '（未填写）'}</span>
+                      {lang==='en'?'Note:':'备注：'}<span style={{color:'var(--fg2)'}}>{r.note || (lang==='en'?'(not provided)':'（未填写）')}</span>
                       <span style={{margin:'0 8px'}}>·</span>{r.created_at}
                     </div>
                   </div>
                   <div style={{textAlign:'center', flexShrink:0, marginRight:8}}>
                     <div style={{fontSize:14, fontWeight:700, color:'var(--gold)'}}>{r.amount_points}</div>
-                    <div style={{fontSize:10, color:'var(--fg3)'}}>积分</div>
+                    <div style={{fontSize:10, color:'var(--fg3)'}}>{lang==='en'?'Points':'积分'}</div>
                   </div>
                   {r.status === 'pending' && (
                     <div style={{display:'flex', gap:6, flexShrink:0}}>
                       <button className="btn btn-p btn-sm"
                         onClick={() => reviewDonation(r.id, 'approve')}
                         style={{display:'inline-flex',alignItems:'center',gap:4}}>
-                        <Icon name="check" size={12}/> 批准
+                        <Icon name="check" size={12}/> {lang==='en'?'Approve':'批准'}
                       </button>
                       <button className="btn btn-sm" onClick={() => reviewDonation(r.id, 'reject')}
                         style={{background:'rgba(196,90,90,.12)',color:'var(--red)',border:'1px solid rgba(196,90,90,.2)',display:'inline-flex',alignItems:'center',gap:4}}>
-                        <Icon name="x" size={12}/> 拒绝
+                        <Icon name="x" size={12}/> {lang==='en'?'Reject':'拒绝'}
                       </button>
                     </div>
                   )}
@@ -1577,17 +1599,17 @@ function AdminPanelApp({user, onLogout}) {
               <div className="card" style={{marginBottom:14}}>
                 <form onSubmit={e => { e.preventDefault(); searchUsers(query); }} style={{display:'flex', gap:8}}>
                   <div className="fg" style={{flex:1, marginBottom:0}}>
-                    <input placeholder="搜索邮箱..." value={query} onChange={e => setQuery(e.target.value)} style={{marginBottom:0}} />
+                    <input placeholder={lang==='en'?'Search email...':'搜索邮箱...'} value={query} onChange={e => setQuery(e.target.value)} style={{marginBottom:0}} />
                   </div>
                   <button className="btn btn-p" type="submit" disabled={usersLoading}
                     style={{display:'inline-flex',alignItems:'center',gap:5,whiteSpace:'nowrap'}}>
-                    <Icon name="search" size={14}/> 搜索
+                    <Icon name="search" size={14}/> {lang==='en'?'Search':'搜索'}
                   </button>
                 </form>
               </div>
 
-              {usersLoading ? <div className="load">加载中...</div> :
-                users.length === 0 ? <div className="empty"><h3>未找到用户</h3></div> :
+              {usersLoading ? <div className="load">{lang==='en'?'Loading...':'加载中...'}</div> :
+                users.length === 0 ? <div className="empty"><h3>{lang==='en'?'No users found':'未找到用户'}</h3></div> :
                 users.map(u => (
                   <div key={u.id} onClick={() => { setSelected(u); setPointsMsg(''); setPointsDelta(''); }}
                     style={{
@@ -1601,11 +1623,11 @@ function AdminPanelApp({user, onLogout}) {
                     </div>
                     <div style={{flex:1, minWidth:0}}>
                       <div style={{fontSize:13,fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{u.email}</div>
-                      <div style={{fontSize:11,color:'var(--fg3)',marginTop:2}}>加入 {u.joined} · {fmtTokens(u.total_tokens)} token</div>
+                      <div style={{fontSize:11,color:'var(--fg3)',marginTop:2}}>{lang==='en' ? `Joined ${u.joined} · ${fmtTokens(u.total_tokens)} tokens` : `加入 ${u.joined} · ${fmtTokens(u.total_tokens)} token`}</div>
                     </div>
                     <div style={{textAlign:'right',flexShrink:0}}>
                       <div style={{fontSize:14,fontWeight:600,color:u.points>0?'var(--gold)':'var(--fg3)'}}>{u.points.toFixed(2)}</div>
-                      <div style={{fontSize:10,color:'var(--fg3)'}}>积分</div>
+                      <div style={{fontSize:10,color:'var(--fg3)'}}>{lang==='en'?'Points':'积分'}</div>
                     </div>
                   </div>
                 ))
@@ -1620,7 +1642,7 @@ function AdminPanelApp({user, onLogout}) {
                   </h3>
                   <div style={{marginBottom:12, fontSize:13, wordBreak:'break-all', color:'var(--fg2)'}}>{selected.email}</div>
                   <div style={{marginBottom:16}}>
-                    <div style={{fontSize:11,color:'var(--fg3)',marginBottom:2}}>当前积分</div>
+                    <div style={{fontSize:11,color:'var(--fg3)',marginBottom:2}}>{lang==='en'?'Current Points':'当前积分'}</div>
                     <div style={{fontSize:24,fontWeight:700,color:'var(--gold)'}}>{selected.points.toFixed(2)}</div>
                   </div>
                   <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:16,fontSize:11,textAlign:'center'}}>
@@ -1634,13 +1656,13 @@ function AdminPanelApp({user, onLogout}) {
                     </div>
                   </div>
                   <div className="fg" style={{marginBottom:10}}>
-                    <label>增减积分（正数增加，负数扣减）</label>
+                    <label>{lang==='en'?'Add/Remove points (positive adds, negative subtracts)':'增减积分（正数增加，负数扣减）'}</label>
                     <input type="number" step="0.01" placeholder="如：10 或 -5"
                       value={pointsDelta} onChange={e => setPointsDelta(e.target.value)}
                       onKeyDown={e => e.key==='Enter' && addPoints()} />
                   </div>
                   <button className="btn btn-p" onClick={addPoints} disabled={pointsDelta===''} style={{width:'100%', marginBottom:8}}>
-                    <Icon name="coins" size={14}/> 确认更新积分
+                    <Icon name="coins" size={14}/> {lang==='en'?'Confirm Point Update':'确认更新积分'}
                   </button>
                   {pointsMsg && (
                     <div style={{
@@ -1658,12 +1680,12 @@ function AdminPanelApp({user, onLogout}) {
                 </div>
               )}
               <div className="card" style={{marginTop:14}}>
-                <h4 style={{fontSize:13,color:'var(--gold2)',marginBottom:10}}><Icon name="coins" size={13}/> 积分规则</h4>
+                <h4 style={{fontSize:13,color:'var(--gold2)',marginBottom:10}}><Icon name="coins" size={13}/> {lang==='en'?'Point Rules':'积分规则'}</h4>
                 <div style={{fontSize:12,color:'var(--fg3)',lineHeight:1.8}}>
-                  <div><strong style={{color:'var(--gold)'}}>赞赏1元=10积分</strong></div>
-                  <div>1 积分 = <strong style={{color:'var(--fg2)'}}>5万</strong> 输入Token</div>
-                  <div>1 积分 = <strong style={{color:'var(--fg2)'}}>2万</strong> 输出Token</div>
-                  <div style={{marginTop:6,fontSize:11}}>有积分自动绕过每日免费配额</div>
+                  <div><strong style={{color:'var(--gold)'}}>{lang==='en'?'1 RMB tip = 10 points':'赞赏1元=10积分'}</strong></div>
+                  <div>{lang==='en' ? <>1 point = <strong style={{color:'var(--fg2)'}}>50K</strong> input tokens</> : <>1 积分 = <strong style={{color:'var(--fg2)'}}>5万</strong> 输入Token</>}</div>
+                  <div>{lang==='en' ? <>1 point = <strong style={{color:'var(--fg2)'}}>20K</strong> output tokens</> : <>1 积分 = <strong style={{color:'var(--fg2)'}}>2万</strong> 输出Token</>}</div>
+                  <div style={{marginTop:6,fontSize:11}}>{lang==='en'?'With points, the daily free quota is bypassed automatically':'有积分自动绕过每日免费配额'}</div>
                 </div>
               </div>
             </div>

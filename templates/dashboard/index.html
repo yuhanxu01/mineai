@@ -1,6 +1,6 @@
 {% extends 'dashboard/base.html' %}
-{% block title %}首页概览{% endblock %}
-{% block page_title %}首页概览{% endblock %}
+{% block title %}Dashboard{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
 
 {% block content %}
 <!-- 统计卡片 -->
@@ -8,47 +8,47 @@
   <div class="stat-card">
     <div class="stat-icon">{% include 'dashboard/_icon.html' with name='user' size=20 %}</div>
     <div class="stat-value">{{ stats.user_count }}</div>
-    <div class="stat-label">注册用户</div>
-    <div class="stat-sub">{{ stats.active_user_count }} 个活跃</div>
+    <div class="stat-label">Registered Users</div>
+    <div class="stat-sub">{{ stats.active_user_count }} active</div>
   </div>
   <div class="stat-card">
     <div class="stat-icon">{% include 'dashboard/_icon.html' with name='pen' size=20 %}</div>
     <div class="stat-value">{{ stats.project_count }}</div>
-    <div class="stat-label">写作项目</div>
-    <div class="stat-sub">共 {{ stats.chapter_count }} 章节</div>
+    <div class="stat-label">Writing Projects</div>
+    <div class="stat-sub">{{ stats.chapter_count }} chapters total</div>
   </div>
   <div class="stat-card">
     <div class="stat-icon">{% include 'dashboard/_icon.html' with name='book' size=20 %}</div>
     <div class="stat-value">{{ stats.novel_count }}</div>
-    <div class="stat-label">共享小说</div>
-    <div class="stat-sub">{{ stats.published_novel_count }} 已发布</div>
+    <div class="stat-label">Shared Novels</div>
+    <div class="stat-sub">{{ stats.published_novel_count }} published</div>
   </div>
   <div class="stat-card">
     <div class="stat-icon">{% include 'dashboard/_icon.html' with name='chat' size=20 %}</div>
     <div class="stat-value">{{ stats.comment_count }}</div>
-    <div class="stat-label">评论总数</div>
+    <div class="stat-label">Total Comments</div>
   </div>
   <div class="stat-card">
     <div class="stat-icon">{% include 'dashboard/_icon.html' with name='search' size=20 %}</div>
     <div class="stat-value">{{ stats.ocr_count }}</div>
-    <div class="stat-label">OCR 项目</div>
+    <div class="stat-label">OCR Projects</div>
   </div>
   <div class="stat-card">
     <div class="stat-icon">{% include 'dashboard/_icon.html' with name='layers' size=20 %}</div>
     <div class="stat-value">{{ stats.memory_node_count }}</div>
-    <div class="stat-label">记忆节点</div>
-    <div class="stat-sub">{{ stats.character_count }} 个角色</div>
+    <div class="stat-label">Memory Nodes</div>
+    <div class="stat-sub">{{ stats.character_count }} characters</div>
   </div>
   <div class="stat-card">
     <div class="stat-icon">{% include 'dashboard/_icon.html' with name='bolt' size=20 %}</div>
     <div class="stat-value">{{ stats.total_tokens|default:0 }}</div>
-    <div class="stat-label">总 Token 用量</div>
-    <div class="stat-sub">共 {{ stats.total_prompts|default:0 }} 次请求</div>
+    <div class="stat-label">Total Tokens</div>
+    <div class="stat-sub">{{ stats.total_prompts|default:0 }} requests total</div>
   </div>
   <div class="stat-card">
     <div class="stat-icon">{% include 'dashboard/_icon.html' with name='lock' size=20 %}</div>
     <div class="stat-value">{{ stats.code_count }}</div>
-    <div class="stat-label">验证码记录</div>
+    <div class="stat-label">Verification Codes</div>
   </div>
 </div>
 
@@ -56,30 +56,30 @@
   <!-- 最近用户 -->
   <div class="card">
     <div class="card-header">
-      <h2><span class="with-ic">{% include 'dashboard/_icon.html' with name='spark' size=16 %}最近注册用户</span></h2>
-      <a href="{% url 'dashboard:user_list' %}" class="btn btn-outline btn-sm">查看全部</a>
+      <h2><span class="with-ic">{% include 'dashboard/_icon.html' with name='spark' size=16 %}Recent Users</span></h2>
+      <a href="{% url 'dashboard:user_list' %}" class="btn btn-outline btn-sm">View all</a>
     </div>
     <div class="table-wrap">
       <table>
         <thead>
-          <tr><th>邮箱</th><th>状态</th><th>权限</th></tr>
+          <tr><th>Email</th><th>Status</th><th>Role</th></tr>
         </thead>
         <tbody>
           {% for u in recent_users %}
           <tr>
             <td><a href="{% url 'dashboard:user_edit' u.pk %}">{{ u.email }}</a></td>
             <td>
-              {% if u.is_active %}<span class="badge badge-success">正常</span>
-              {% else %}<span class="badge badge-danger">禁用</span>{% endif %}
+              {% if u.is_active %}<span class="badge badge-success">Active</span>
+              {% else %}<span class="badge badge-danger">Disabled</span>{% endif %}
             </td>
             <td>
-              {% if u.is_superuser %}<span class="badge badge-accent">超管</span>
-              {% elif u.is_staff %}<span class="badge badge-info">员工</span>
-              {% else %}<span class="badge badge-muted">普通</span>{% endif %}
+              {% if u.is_superuser %}<span class="badge badge-accent">Superuser</span>
+              {% elif u.is_staff %}<span class="badge badge-info">Staff</span>
+              {% else %}<span class="badge badge-muted">User</span>{% endif %}
             </td>
           </tr>
           {% empty %}
-          <tr><td colspan="3" class="td-muted" style="text-align:center;padding:20px">暂无用户</td></tr>
+          <tr><td colspan="3" class="td-muted" style="text-align:center;padding:20px">No users yet</td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -89,13 +89,13 @@
   <!-- 最近小说 -->
   <div class="card">
     <div class="card-header">
-      <h2><span class="with-ic">{% include 'dashboard/_icon.html' with name='book' size=16 %}最新共享小说</span></h2>
-      <a href="{% url 'dashboard:novel_list' %}" class="btn btn-outline btn-sm">查看全部</a>
+      <h2><span class="with-ic">{% include 'dashboard/_icon.html' with name='book' size=16 %}Latest Shared Novels</span></h2>
+      <a href="{% url 'dashboard:novel_list' %}" class="btn btn-outline btn-sm">View all</a>
     </div>
     <div class="table-wrap">
       <table>
         <thead>
-          <tr><th>书名</th><th>作者</th><th>状态</th></tr>
+          <tr><th>Title</th><th>Author</th><th>Status</th></tr>
         </thead>
         <tbody>
           {% for novel in recent_novels %}
@@ -103,12 +103,12 @@
             <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ novel.title }}</td>
             <td class="td-muted">{{ novel.author.email }}</td>
             <td>
-              {% if novel.status == 'published' %}<span class="badge badge-success">已发布</span>
-              {% else %}<span class="badge badge-muted">草稿</span>{% endif %}
+              {% if novel.status == 'published' %}<span class="badge badge-success">Published</span>
+              {% else %}<span class="badge badge-muted">Draft</span>{% endif %}
             </td>
           </tr>
           {% empty %}
-          <tr><td colspan="3" class="td-muted" style="text-align:center;padding:20px">暂无小说</td></tr>
+          <tr><td colspan="3" class="td-muted" style="text-align:center;padding:20px">No novels yet</td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -119,13 +119,13 @@
 <!-- 最近评论 -->
 <div class="card">
   <div class="card-header">
-    <h2><span class="with-ic">{% include 'dashboard/_icon.html' with name='chat' size=16 %}最新评论</span></h2>
-    <a href="{% url 'dashboard:comment_list' %}" class="btn btn-outline btn-sm">查看全部</a>
+    <h2><span class="with-ic">{% include 'dashboard/_icon.html' with name='chat' size=16 %}Recent Comments</span></h2>
+    <a href="{% url 'dashboard:comment_list' %}" class="btn btn-outline btn-sm">View all</a>
   </div>
   <div class="table-wrap">
     <table>
       <thead>
-        <tr><th>用户</th><th>小说</th><th>内容摘要</th><th>评分</th><th>时间</th></tr>
+        <tr><th>User</th><th>Novel</th><th>Summary</th><th>Rating</th><th>Time</th></tr>
       </thead>
       <tbody>
         {% for c in recent_comments %}
@@ -137,7 +137,7 @@
           <td class="td-muted">{{ c.created_at|date:"m-d H:i" }}</td>
         </tr>
         {% empty %}
-        <tr><td colspan="5" class="td-muted" style="text-align:center;padding:20px">暂无评论</td></tr>
+        <tr><td colspan="5" class="td-muted" style="text-align:center;padding:20px">No comments yet</td></tr>
         {% endfor %}
       </tbody>
     </table>

@@ -1,0 +1,1047 @@
+{% verbatim %}
+// ── Format Converter + Notebook → PDF ────────────────────────
+// 所有处理均在浏览器端完成（FFmpeg.wasm + Canvas + Browser Print）
+// 零服务器 CPU 占用，文件不会上传到服务器
+
+// ── FFmpeg CDN ───────────────────────────────────────────────
+const FFMPEG_CDN_URLS = [
+  'https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.js',
+  'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.js',
+];
+const FFMPEG_CORE_URL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.js';
+const FFMPEG_WASM_URL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.wasm';
+
+// ── 支持格式配置 ─────────────────────────────────────────────
+const FORMAT_GROUPS = {
+  audio: {
+    label: '音频', labelEn: 'Audio',
+    exts: ['wav','mp3','flac','ogg','aac','m4a'],
+    targets: {
+      wav:['mp3','ogg','aac','flac'], mp3:['wav','ogg','aac','flac'],
+      flac:['mp3','wav','ogg','aac'], ogg:['mp3','wav','aac'],
+      aac:['mp3','wav','ogg'],        m4a:['mp3','wav','ogg','aac'],
+    },
+    ffmpegArgs: {
+      mp3:['-c:a','libmp3lame','-q:a','2'],
+      ogg:['-c:a','libvorbis','-q:a','4'],
+      wav:['-c:a','pcm_s16le'],
+      aac:['-c:a','aac','-b:a','192k'],
+      flac:['-c:a','flac'],
+    },
+  },
+  video: {
+    label: '视频', labelEn: 'Video',
+    exts: ['mp4','mov','avi','webm','mkv','flv'],
+    targets: {
+      mov:['mp4','webm','avi'], avi:['mp4','webm'],
+      webm:['mp4','avi'],       mkv:['mp4','webm'],
+      flv:['mp4','webm'],       mp4:['webm','avi','mov'],
+    },
+    ffmpegArgs: {
+      mp4:['-c:v','libx264','-crf','23','-preset','medium','-c:a','aac','-b:a','128k'],
+      webm:['-c:v','libvpx-vp9','-crf','30','-b:v','0','-c:a','libvorbis'],
+      avi:['-c:v','mpeg4','-q:v','5','-c:a','mp3'],
+      mov:['-c:v','libx264','-crf','23','-preset','medium','-c:a','aac'],
+    },
+  },
+  image: {
+    label: '图片', labelEn: 'Image',
+    exts: ['png','jpg','jpeg','webp','bmp','gif'],
+    targets: {
+      png:['jpg','webp','bmp'], jpg:['png','webp','bmp'],
+      jpeg:['png','webp','bmp'], webp:['png','jpg'],
+      bmp:['png','jpg','webp'], gif:['png','jpg'],
+    },
+  },
+};
+
+const SIZE_LIMITS = { audio:100*1024*1024, video:500*1024*1024, image:50*1024*1024 };
+const SIZE_WARN   = { audio:50*1024*1024,  video:200*1024*1024, image:20*1024*1024 };
+
+function detectType(ext) {
+  const e = (ext||'').toLowerCase().replace('.','');
+  for (const [type,grp] of Object.entries(FORMAT_GROUPS))
+    if (grp.exts.includes(e)) return type;
+  return null;
+}
+function fmtSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024*1024) return (bytes/1024).toFixed(1) + ' KB';
+  return (bytes/1024/1024).toFixed(2) + ' MB';
+}
+async function convertImageCanvas(file, targetFmt) {
+  const mimeMap = {jpg:'image/jpeg',jpeg:'image/jpeg',png:'image/png',webp:'image/webp',bmp:'image/bmp'};
+  const mime = mimeMap[targetFmt] || 'image/png';
+  const q = (targetFmt==='jpg'||targetFmt==='jpeg') ? 0.92 : undefined;
+  return new Promise((res,rej) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const cv = document.createElement('canvas');
+      cv.width = img.naturalWidth; cv.height = img.naturalHeight;
+      cv.getContext('2d').drawImage(img,0,0);
+      cv.toBlob(blob => blob ? res(blob) : rej(new Error('Canvas 转换失败')), mime, q);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('图片解码失败')); };
+    img.src = url;
+  });
+}
+function loadFFmpegScript() {
+  return new Promise((res,rej) => {
+    if (window.FFmpegWASM) { res(); return; }
+    let idx = 0;
+    const tryNext = () => {
+      if (idx >= FFMPEG_CDN_URLS.length) { rej(new Error('FFmpeg.wasm CDN 加载失败')); return; }
+      const s = document.createElement('script');
+      s.src = FFMPEG_CDN_URLS[idx++];
+      s.onload = () => { if (window.FFmpegWASM) res(); else tryNext(); };
+      s.onerror = tryNext;
+      document.head.appendChild(s);
+    };
+    tryNext();
+  });
+}
+
+// ════════════════════════════════════════════════════════════
+// ── Notebook → PDF 工具层 ────────────────────────────────────
+// ════════════════════════════════════════════════════════════
+
+function nbEsc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function nbStripAnsi(s) {
+  return String(s||'').replace(/\x1b\[[0-9;]*[mGKHFJnrsu]/g,'');
+}
+function nbJoin(src) {
+  return Array.isArray(src) ? src.join('') : (src||'');
+}
+function nbB64(raw) {
+  const s = Array.isArray(raw) ? raw.join('') : (raw||'');
+  return s.replace(/\s/g,'');
+}
+
+// 统计一个 code cell 的输出类型数量
+function nbCountOutTypes(outputs) {
+  const r = {plot:0, text:0, html:0, error:0};
+  for (const o of (outputs||[])) {
+    if (o.output_type==='error') { r.error++; continue; }
+    if (o.output_type==='stream') { r.text++; continue; }
+    const d = o.data||{};
+    if (d['image/png']||d['image/jpeg']||d['image/svg+xml']) r.plot++;
+    else if (d['text/html']) r.html++;
+    else if (d['text/plain']) r.text++;
+  }
+  return r;
+}
+
+// 生成单个 output 块的 HTML（用于打印窗口）
+function nbRenderOutputHTML(output, types) {
+  const ot = output.output_type;
+  if (ot==='stream') {
+    if (!types.text) return '';
+    const text = nbJoin(output.text);
+    const cls = output.name==='stderr' ? 'nb-stderr' : 'nb-stdout';
+    return `<div class="${cls}"><pre>${nbEsc(text)}</pre></div>`;
+  }
+  if (ot==='display_data'||ot==='execute_result') {
+    const d = output.data||{};
+    const parts = [];
+    if (types.plot) {
+      if (d['image/png'])
+        parts.push(`<div class="nb-img"><img src="data:image/png;base64,${nbB64(d['image/png'])}" /></div>`);
+      else if (d['image/jpeg'])
+        parts.push(`<div class="nb-img"><img src="data:image/jpeg;base64,${nbB64(d['image/jpeg'])}" /></div>`);
+      else if (d['image/svg+xml'])
+        parts.push(`<div class="nb-img nb-svg">${nbJoin(d['image/svg+xml'])}</div>`);
+    }
+    if (types.html && d['text/html'] && !d['image/png'] && !d['image/jpeg'] && !d['image/svg+xml'])
+      parts.push(`<div class="nb-html">${nbJoin(d['text/html'])}</div>`);
+    if (types.text && d['text/plain'] && !d['image/png'] && !d['image/jpeg'] && !d['image/svg+xml'] && !d['text/html']) {
+      const lbl = ot==='execute_result'
+        ? `<div class="nb-prompt nb-out-prompt">Out&nbsp;[${output.execution_count??'&nbsp;'}]:</div>` : '';
+      parts.push(`${lbl}<pre class="nb-text-out">${nbEsc(nbJoin(d['text/plain']))}</pre>`);
+    }
+    return parts.join('');
+  }
+  if (ot==='error') {
+    if (!types.error) return '';
+    const clean = nbStripAnsi((output.traceback||[]).join('\n'));
+    return `<div class="nb-error"><pre>${nbEsc(clean)}</pre></div>`;
+  }
+  return '';
+}
+
+// 生成完整的打印 HTML 文档
+function nbGeneratePrintHTML(cells, fileName, metadata) {
+  const kernel = metadata?.kernelspec?.display_name || 'Python 3';
+  const dateStr = new Date().toLocaleDateString(undefined,{year:'numeric',month:'long',day:'numeric'});
+  const baseName = fileName.replace(/\.ipynb$/i,'');
+
+  const cellsHTML = cells.filter(c => c._include!==false).map(cell => {
+    const src = nbJoin(cell.source);
+    if (cell.cell_type==='markdown') {
+      const rendered = (window.marked && src) ? window.marked.parse(src) : `<pre>${nbEsc(src)}</pre>`;
+      return `<div class="nb-cell nb-md">${rendered}</div>`;
+    }
+    if (cell.cell_type==='code') {
+      const ec = cell.execution_count;
+      const promptIn = `<div class="nb-prompt nb-in-prompt">In&nbsp;[${ec==null?'&nbsp;':ec}]:</div>`;
+      const codeBlock = src
+        ? `<div class="nb-code-area">${promptIn}<pre class="nb-code language-python"><code class="language-python">${nbEsc(src)}</code></pre></div>`
+        : '';
+      let outHTML = '';
+      if (cell._includeOutput!==false && (cell.outputs||[]).length>0) {
+        const types = cell._types || {plot:true,text:true,html:true,error:true};
+        const rendered = cell.outputs.map(o=>nbRenderOutputHTML(o,types)).filter(Boolean).join('');
+        if (rendered)
+          outHTML = `<div class="nb-out-area"><div class="nb-out-row">`
+            + `<div class="nb-prompt nb-out-prompt" style="padding-top:10px">Out&nbsp;[${ec==null?'&nbsp;':ec}]:</div>`
+            + `<div class="nb-out-content">${rendered}</div></div></div>`;
+      }
+      return (codeBlock||outHTML) ? `<div class="nb-cell nb-code-cell">${codeBlock}${outHTML}</div>` : '';
+    }
+    if (cell.cell_type==='raw')
+      return `<div class="nb-cell nb-raw"><pre>${nbEsc(src)}</pre></div>`;
+    return '';
+  }).filter(Boolean).join('\n');
+
+  return `<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>${nbEsc(baseName)}</title>
+<script>
+window.MathJax = {
+  tex: { inlineMath:[['$','$'],['\\\\(','\\\\)']], displayMath:[['$$','$$'],['\\\\[','\\\\]']], processEscapes:true },
+  options: { skipHtmlTags:['script','noscript','style','textarea','pre'] },
+  startup: { typeset:false }
+};
+<\/script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"><\/script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"><\/script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async><\/script>
+<style>
+@page { margin:2cm 2.2cm; size:A4; }
+*,*::before,*::after { box-sizing:border-box; }
+body {
+  font-family:'Segoe UI','Helvetica Neue',Arial,sans-serif;
+  font-size:10.5pt; line-height:1.7; color:#1a1a2e;
+  background:#fff; max-width:860px; margin:0 auto; padding:0 0 40px;
+}
+/* toolbar */
+#nb-toolbar {
+  position:sticky; top:0; z-index:999; background:#f0f4ff;
+  border-bottom:2px solid #c8d8f8; padding:10px 20px;
+  display:flex; align-items:center; gap:12px;
+}
+#nb-toolbar h2 { font-size:13px; font-weight:600; color:#1a1a2e; margin:0; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+#nb-toolbar .prbtn { background:#2c6fe0; color:#fff; border:none; padding:7px 18px; border-radius:6px; font-size:13px; font-weight:600; cursor:pointer; white-space:nowrap; }
+#nb-toolbar .prbtn:hover { background:#1a5ccc; }
+@media print { #nb-toolbar { display:none !important; } }
+/* cover */
+#nb-cover { padding:36px 20px 24px; border-bottom:2px solid #e1e4e8; margin-bottom:28px; }
+#nb-cover h1 { font-size:22pt; font-weight:700; color:#1a1a2e; margin:0 0 10px; }
+#nb-cover .meta { font-size:10pt; color:#6a737d; display:flex; gap:16px; flex-wrap:wrap; }
+/* cells */
+.nb-cell { margin-bottom:14px; }
+/* markdown */
+.nb-md { font-size:10.5pt; line-height:1.8; padding:0 20px; }
+.nb-md h1 { font-size:18pt; font-weight:700; border-bottom:2px solid #e1e4e8; padding-bottom:8px; margin-top:28px; margin-bottom:14px; }
+.nb-md h2 { font-size:14pt; font-weight:700; border-bottom:1px solid #e1e4e8; padding-bottom:6px; margin-top:22px; margin-bottom:12px; }
+.nb-md h3 { font-size:12pt; font-weight:700; margin-top:18px; margin-bottom:10px; }
+.nb-md h4,.nb-md h5,.nb-md h6 { font-size:10.5pt; font-weight:700; margin-top:14px; margin-bottom:8px; }
+.nb-md p { margin:8px 0; }
+.nb-md ul,.nb-md ol { padding-left:22px; margin:8px 0; }
+.nb-md li { margin-bottom:4px; }
+.nb-md blockquote { margin:12px 0; padding:8px 16px; border-left:4px solid #c8d8f8; color:#4a5568; background:#f8f9ff; border-radius:0 4px 4px 0; }
+.nb-md table { border-collapse:collapse; width:100%; margin:12px 0; font-size:10pt; page-break-inside:avoid; }
+.nb-md th { background:#f6f8fa; border:1px solid #d0d7de; padding:6px 12px; text-align:left; font-weight:600; }
+.nb-md td { border:1px solid #d0d7de; padding:6px 12px; }
+.nb-md tr:nth-child(even) td { background:#f9f9f9; }
+.nb-md code { font-family:'JetBrains Mono','Cascadia Code','Fira Code','Courier New',monospace; font-size:9pt; background:#f0f3ff; padding:2px 5px; border-radius:3px; border:1px solid #d0d7de; color:#d63384; }
+.nb-md pre { background:#f6f8fa; border:1px solid #e1e4e8; border-radius:6px; padding:12px 16px; overflow:visible; white-space:pre-wrap; word-break:break-word; margin:10px 0; }
+.nb-md pre code { background:none; border:none; padding:0; color:inherit; }
+.nb-md img { max-width:100%; page-break-inside:avoid; display:block; margin:10px auto; }
+.nb-md a { color:#0969da; text-decoration:none; }
+.nb-md hr { border:none; border-top:1px solid #e1e4e8; margin:20px 0; }
+@media print { .nb-md h1,.nb-md h2,.nb-md h3 { page-break-after:avoid; break-after:avoid; } }
+/* code cell */
+.nb-code-cell { border:1px solid #e1e4e8; border-radius:6px; overflow:hidden; page-break-inside:auto; margin-bottom:14px; }
+.nb-code-area { display:flex; align-items:stretch; background:#fafbff; border-bottom:1px solid #e1e4e8; }
+.nb-prompt { font-family:'JetBrains Mono','Cascadia Code','Fira Code','Courier New',monospace; font-size:8pt; color:#9ba1b4; min-width:88px; padding:10px 8px 10px 4px; text-align:right; flex-shrink:0; line-height:1.55; user-select:none; border-right:1px solid #e8ecf8; }
+.nb-in-prompt { color:#3c78d8; }
+.nb-out-prompt { color:#c45a00; min-width:88px; }
+.nb-code { flex:1; margin:0; padding:10px 14px; font-family:'JetBrains Mono','Cascadia Code','Fira Code','Courier New',monospace; font-size:9.5pt; line-height:1.55; background:none; border:none; border-radius:0; white-space:pre-wrap; word-break:break-word; overflow:visible; }
+/* output area */
+.nb-out-area { background:#fff; }
+.nb-out-row { display:flex; align-items:flex-start; }
+.nb-out-content { flex:1; min-width:0; }
+/* plots — NEVER cut across pages */
+.nb-img { text-align:center; padding:10px 14px; page-break-inside:avoid !important; break-inside:avoid !important; }
+.nb-img img { max-width:100%; height:auto; display:block; margin:0 auto; }
+.nb-svg { padding:10px 14px; page-break-inside:avoid !important; break-inside:avoid !important; overflow:hidden; }
+.nb-svg svg { max-width:100%; height:auto; display:block; margin:0 auto; }
+/* text outputs */
+.nb-stdout pre,.nb-stderr pre,.nb-text-out { font-family:'JetBrains Mono','Cascadia Code','Fira Code','Courier New',monospace; font-size:9pt; line-height:1.5; margin:0; padding:8px 14px; white-space:pre-wrap; word-break:break-word; background:#fff; color:#24292e; }
+.nb-stderr pre { color:#b31d28; background:#fff5f5; border-left:3px solid #cf222e; }
+.nb-text-out { padding:8px 14px; }
+/* HTML/table outputs */
+.nb-html { padding:8px 14px; overflow:auto; page-break-inside:avoid; }
+.nb-html table { border-collapse:collapse; font-size:9.5pt; width:100%; }
+.nb-html th { background:#f6f8fa; border:1px solid #d0d7de; padding:5px 10px; font-weight:600; }
+.nb-html td { border:1px solid #d0d7de; padding:5px 10px; }
+.nb-html tr:nth-child(even) td { background:#f9f9f9; }
+/* error outputs */
+.nb-error { page-break-inside:avoid; }
+.nb-error pre { font-family:'JetBrains Mono','Cascadia Code',monospace; font-size:9pt; line-height:1.5; color:#cf222e; background:#fff5f5; margin:0; padding:10px 14px; white-space:pre-wrap; word-break:break-word; border-left:3px solid #cf222e; }
+/* raw cells */
+.nb-raw { background:#fffdf0; border:1px solid #f0d88a; border-radius:4px; margin-bottom:10px; }
+.nb-raw pre { font-family:monospace; font-size:9pt; margin:0; padding:8px 12px; white-space:pre-wrap; }
+/* ── Python 语法高亮主题（GitHub Light 风格，适合打印） ── */
+code[class*="language-"],pre[class*="language-"] { color:#24292e; background:none; text-align:left; white-space:pre-wrap; word-break:break-word; line-height:1.55; tab-size:4; hyphens:none; }
+.token.comment,.token.prolog,.token.doctype,.token.cdata { color:#6a737d; font-style:italic; }
+.token.punctuation { color:#24292e; }
+.token.boolean,.token.number,.token.constant,.token.symbol,.token.deleted { color:#005cc5; }
+.token.string,.token.char,.token.inserted { color:#032f62; }
+.token.operator,.token.entity { color:#d73a49; }
+.token.keyword { color:#d73a49; font-weight:700; }
+.token.function { color:#6f42c1; }
+.token.class-name { color:#6f42c1; font-weight:700; }
+.token.builtin { color:#005cc5; }
+.token.regex,.token.important,.token.variable { color:#e36209; }
+.token.decorator { color:#e36209; font-style:italic; }
+.token.attr-name,.token.selector { color:#6f42c1; }
+/* Python 专属覆盖 */
+.language-python .token.keyword { color:#d73a49; font-weight:700; }
+.language-python .token.builtin { color:#005cc5; }
+.language-python .token.string { color:#032f62; }
+.language-python .token.comment { color:#6a737d; font-style:italic; }
+.language-python .token.number { color:#005cc5; }
+.language-python .token.function { color:#6f42c1; }
+.language-python .token.class-name { color:#6f42c1; font-weight:700; }
+/* 打印规则 */
+@media print {
+  body { -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }
+  .nb-code-cell { page-break-inside:auto; break-inside:auto; }
+  .nb-code-area { page-break-inside:avoid; break-inside:avoid; }
+  .nb-img { page-break-inside:avoid !important; break-inside:avoid !important; }
+  .nb-svg { page-break-inside:avoid !important; break-inside:avoid !important; }
+  .nb-html { page-break-inside:avoid; break-inside:avoid; }
+  .nb-error { page-break-inside:avoid; break-inside:avoid; }
+  .nb-md img { page-break-inside:avoid !important; break-inside:avoid !important; }
+  .nb-md h1,.nb-md h2,.nb-md h3 { page-break-after:avoid; break-after:avoid; }
+}
+</style>
+</head>
+<body>
+<div id="nb-toolbar">
+  <h2>📓 ${nbEsc(fileName)}</h2>
+  <span style="font-size:11px;color:#6a737d;white-space:nowrap">${nbEsc(kernel)}</span>
+  <button class="prbtn" onclick="window.print()">🖨 打印 / 保存为 PDF</button>
+</div>
+<div style="padding:0 20px">
+  <div id="nb-cover">
+    <h1>${nbEsc(baseName)}</h1>
+    <div class="meta">
+      <span>📓 Jupyter Notebook</span>
+      <span>⚙ ${nbEsc(kernel)}</span>
+      <span>📅 ${dateStr}</span>
+    </div>
+  </div>
+  ${cellsHTML}
+</div>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  if (window.Prism) Prism.highlightAll();
+  if (window.MathJax && MathJax.typesetPromise)
+    MathJax.typesetPromise([document.body]).catch(function(e){console.error(e);});
+});
+<\/script>
+</body>
+</html>`;
+}
+
+// ════════════════════════════════════════════════════════════
+// ── NotebookToPDF 组件 ────────────────────────────────────────
+// ════════════════════════════════════════════════════════════
+
+function NotebookToPDF({ nb, fileName, lang, onBack }) {
+  const [cells, setCells] = useState([]);
+  const [exporting, setExporting] = useState(false);
+
+  const T = {
+    zh: {
+      back:'返回', exportPdf:'预览 / 导出 PDF',
+      cells:'个单元格', mdLabel:'文本', codeLabel:'代码', rawLabel:'原始',
+      withOutput:'有输出', batch:'批量操作',
+      allCells:'全选单元格', showAllOut:'显示所有输出', hideAllOut:'隐藏所有输出',
+      showPlots:'显示图表', hidePlots:'隐藏图表',
+      hideErrors:'隐藏错误', hideTextOut:'隐藏文本输出',
+      includeCell:'含此单元格', includeOutput:'含输出',
+      plots:'图表', textOut:'文本', tables:'表格', errors:'错误',
+      emptyCell:'空单元格', exporting:'生成中…',
+      hint:'将在新标签页中打开预览，使用浏览器打印（Ctrl+P）保存为 PDF',
+    },
+    en: {
+      back:'Back', exportPdf:'Preview / Export PDF',
+      cells:' cells', mdLabel:'MD', codeLabel:'Code', rawLabel:'Raw',
+      withOutput:'with output', batch:'Batch',
+      allCells:'Select all', showAllOut:'Show all outputs', hideAllOut:'Hide all outputs',
+      showPlots:'Show plots', hidePlots:'Hide plots',
+      hideErrors:'Hide errors', hideTextOut:'Hide text output',
+      includeCell:'Include', includeOutput:'Include output',
+      plots:'Plots', textOut:'Text', tables:'Tables', errors:'Errors',
+      emptyCell:'(empty cell)', exporting:'Generating…',
+      hint:'Opens a print preview in a new tab. Use browser print (Ctrl+P) to save as PDF.',
+    },
+  };
+  const t = T[lang] || T.zh;
+
+  useEffect(() => {
+    if (!nb) return;
+    setCells((nb.cells||[]).map((cell,idx) => {
+      const ot = nbCountOutTypes(cell.outputs);
+      return {
+        ...cell, _id:idx,
+        _include: true,
+        _includeOutput: true,
+        _types: { plot: ot.plot>0, text: ot.text>0, html: ot.html>0, error: ot.error>0 },
+        _ot: ot,
+      };
+    }));
+  }, [nb]);
+
+  const upd   = (idx, patch)       => setCells(p => p.map((c,i) => i===idx ? {...c,...patch} : c));
+  const updT  = (idx, type, val)   => setCells(p => p.map((c,i) => i===idx ? {...c,_types:{...c._types,[type]:val}} : c));
+  const updAll = (patch)           => setCells(p => p.map(c => ({...c,...patch})));
+  const updAllT = (type, val)      => setCells(p => p.map(c => ({...c,_types:{...c._types,[type]:val}})));
+
+  const codeCells  = cells.filter(c => c.cell_type==='code');
+  const mdCells    = cells.filter(c => c.cell_type==='markdown');
+  const withOut    = codeCells.filter(c => (c.outputs||[]).length>0);
+  const allOut     = withOut.every(c => c._includeOutput);
+  const hasPlots   = cells.some(c => (c._ot?.plot||0)>0);
+
+  const handleExport = () => {
+    setExporting(true);
+    setTimeout(() => {
+      try {
+        const html = nbGeneratePrintHTML(cells, fileName, nb.metadata);
+        const win = window.open('','_blank');
+        if (!win) { alert('请允许弹出窗口再试 / Please allow popups'); setExporting(false); return; }
+        win.document.write(html);
+        win.document.close();
+      } catch(e) { console.error(e); }
+      setExporting(false);
+    }, 50);
+  };
+
+  const BtnSm = ({onClick, children}) => (
+    <button className="btn btn-s" onClick={onClick}
+      style={{fontSize:11,padding:'3px 10px',whiteSpace:'nowrap'}}>{children}</button>
+  );
+
+  return (
+    <div style={{flex:1,overflow:'auto',padding:'1.25rem'}}>
+      {/* 顶栏 */}
+      <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:'1rem',flexWrap:'wrap'}}>
+        <button className="btn btn-s" onClick={onBack}
+          style={{display:'flex',alignItems:'center',gap:5,fontSize:12,whiteSpace:'nowrap'}}>
+          <Icon name="chevron-down" size={12} style={{transform:'rotate(90deg)'}}/> {t.back}
+        </button>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontSize:13,fontWeight:500,color:'var(--fg)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{fileName}</div>
+          <div style={{fontSize:11,color:'var(--fg3)'}}>
+            {cells.length}{lang==='zh'?t.cells:' '+t.cells} · {mdCells.length} {t.mdLabel} · {codeCells.length} {t.codeLabel} · {withOut.length} {t.withOutput}
+          </div>
+        </div>
+        <button className="btn btn-p" onClick={handleExport} disabled={exporting}
+          style={{display:'flex',alignItems:'center',gap:6,fontSize:13,padding:'8px 18px',whiteSpace:'nowrap'}}>
+          <Icon name="download" size={14}/> {exporting ? t.exporting : t.exportPdf}
+        </button>
+      </div>
+
+      {/* 批量控制 */}
+      <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:8,
+        padding:'10px 14px',marginBottom:'1rem',display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
+        <span style={{fontSize:11,color:'var(--gold)',fontWeight:500,whiteSpace:'nowrap'}}>{t.batch}：</span>
+        <BtnSm onClick={()=>updAll({_include:true})}>{t.allCells}</BtnSm>
+        <BtnSm onClick={()=>updAll({_include:false})}>{lang==='zh'?'取消全选':'Deselect all'}</BtnSm>
+        <BtnSm onClick={()=>setCells(p=>p.map(c=>c.cell_type==='code'?{...c,_includeOutput:!allOut}:c))}>
+          {allOut ? t.hideAllOut : t.showAllOut}
+        </BtnSm>
+        {hasPlots && <>
+          <BtnSm onClick={()=>updAllT('plot',true)}>{t.showPlots}</BtnSm>
+          <BtnSm onClick={()=>updAllT('plot',false)}>{t.hidePlots}</BtnSm>
+        </>}
+        <BtnSm onClick={()=>updAllT('error',false)}>{t.hideErrors}</BtnSm>
+        <BtnSm onClick={()=>updAllT('text',false)}>{t.hideTextOut}</BtnSm>
+      </div>
+
+      {/* 单元格列表 */}
+      <div style={{display:'flex',flexDirection:'column',gap:5}}>
+        {cells.map((cell,idx) => {
+          const isCode = cell.cell_type==='code';
+          const isMd   = cell.cell_type==='markdown';
+          const src    = nbJoin(cell.source);
+          const preview = src.split('\n').slice(0,3).join('\n').slice(0,200);
+          const hasOut = isCode && (cell.outputs||[]).length>0;
+          const ot = cell._ot||{};
+          const TypeBadge = ({count, type, color, label}) => count>0 ? (
+            <span style={{fontSize:10,padding:'1px 5px',borderRadius:3,cursor:'pointer',userSelect:'none',
+              background:`${color}22`,border:`1px solid ${color}55`,
+              color: cell._includeOutput && cell._types[type] ? color : 'var(--fg3)',
+              textDecoration: cell._includeOutput && cell._types[type] ? 'none' : 'line-through',
+              transition:'all .15s'}} onClick={()=>updT(idx,type,!cell._types[type])}>
+              {label}×{count}
+            </span>
+          ) : null;
+
+          return (
+            <div key={idx}
+              style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:6,
+                padding:'9px 12px',opacity:cell._include?1:0.4,transition:'opacity .2s'}}>
+
+              {/* 行头：checkbox + 类型 + 代码预览 + 输出徽标 */}
+              <div style={{display:'flex',alignItems:'flex-start',gap:8}}>
+                <input type="checkbox" checked={cell._include}
+                  onChange={e=>upd(idx,{_include:e.target.checked})}
+                  style={{marginTop:3,accentColor:'var(--gold)',cursor:'pointer',
+                    width:14,height:14,flexShrink:0}}/>
+
+                <span style={{fontSize:10,padding:'2px 6px',borderRadius:3,flexShrink:0,fontWeight:600,
+                  background: isCode?'rgba(90,138,196,.18)':isMd?'rgba(94,184,122,.18)':'rgba(201,168,108,.18)',
+                  color: isCode?'var(--blue)':isMd?'var(--green)':'var(--gold)',
+                  fontFamily:'var(--mono)',whiteSpace:'nowrap'}}>
+                  {isCode?`In[${cell.execution_count??''}]`:isMd?t.mdLabel:t.rawLabel}
+                </span>
+
+                <div style={{flex:1,minWidth:0,fontFamily:'var(--mono)',fontSize:11,
+                  color:'var(--fg2)',lineHeight:1.5,whiteSpace:'pre-wrap',
+                  wordBreak:'break-all',maxHeight:52,overflow:'hidden'}}>
+                  {preview || <span style={{color:'var(--fg3)',fontStyle:'italic',fontFamily:'var(--sans)'}}>{t.emptyCell}</span>}
+                </div>
+
+                {/* 输出类型点击徽标 */}
+                {hasOut && cell._include && (
+                  <div style={{display:'flex',gap:3,flexShrink:0,flexWrap:'wrap',justifyContent:'flex-end',maxWidth:140}}>
+                    <TypeBadge count={ot.plot}  type="plot"  color="#d49a5a" label="📊"/>
+                    <TypeBadge count={ot.text}  type="text"  color="#5ac4b4" label="📝"/>
+                    <TypeBadge count={ot.html}  type="html"  color="#9a6ac4" label="🏗"/>
+                    <TypeBadge count={ot.error} type="error" color="#c45a5a" label="⚠"/>
+                  </div>
+                )}
+              </div>
+
+              {/* 输出细粒度开关（仅代码单元有输出时） */}
+              {hasOut && cell._include && (
+                <div style={{marginTop:7,paddingTop:7,borderTop:'1px solid var(--border)',
+                  display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+                  <label style={{display:'flex',alignItems:'center',gap:4,cursor:'pointer',
+                    fontSize:11,color:'var(--fg2)',userSelect:'none'}}>
+                    <input type="checkbox" checked={cell._includeOutput}
+                      onChange={e=>upd(idx,{_includeOutput:e.target.checked})}
+                      style={{accentColor:'var(--gold)',width:13,height:13}}/>
+                    {t.includeOutput}
+                  </label>
+
+                  {cell._includeOutput && (<>
+                    {ot.plot>0 && (
+                      <label style={{display:'flex',alignItems:'center',gap:4,cursor:'pointer',
+                        fontSize:11,color:'var(--orange)',userSelect:'none'}}>
+                        <input type="checkbox" checked={cell._types.plot}
+                          onChange={e=>updT(idx,'plot',e.target.checked)}
+                          style={{accentColor:'var(--gold)',width:13,height:13}}/>
+                        {t.plots}
+                      </label>
+                    )}
+                    {ot.text>0 && (
+                      <label style={{display:'flex',alignItems:'center',gap:4,cursor:'pointer',
+                        fontSize:11,color:'var(--cyan)',userSelect:'none'}}>
+                        <input type="checkbox" checked={cell._types.text}
+                          onChange={e=>updT(idx,'text',e.target.checked)}
+                          style={{accentColor:'var(--gold)',width:13,height:13}}/>
+                        {t.textOut}
+                      </label>
+                    )}
+                    {ot.html>0 && (
+                      <label style={{display:'flex',alignItems:'center',gap:4,cursor:'pointer',
+                        fontSize:11,color:'var(--purple)',userSelect:'none'}}>
+                        <input type="checkbox" checked={cell._types.html}
+                          onChange={e=>updT(idx,'html',e.target.checked)}
+                          style={{accentColor:'var(--gold)',width:13,height:13}}/>
+                        {t.tables}
+                      </label>
+                    )}
+                    {ot.error>0 && (
+                      <label style={{display:'flex',alignItems:'center',gap:4,cursor:'pointer',
+                        fontSize:11,color:'var(--red)',userSelect:'none'}}>
+                        <input type="checkbox" checked={cell._types.error}
+                          onChange={e=>updT(idx,'error',e.target.checked)}
+                          style={{accentColor:'var(--gold)',width:13,height:13}}/>
+                        {t.errors}
+                      </label>
+                    )}
+                  </>)}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* 底部导出 */}
+      <div style={{marginTop:'1.5rem',textAlign:'center'}}>
+        <button className="btn btn-p" onClick={handleExport} disabled={exporting}
+          style={{fontSize:14,padding:'10px 36px',display:'inline-flex',alignItems:'center',gap:8}}>
+          <Icon name="download" size={15}/> {exporting ? t.exporting : t.exportPdf}
+        </button>
+        <div style={{fontSize:11,color:'var(--fg3)',marginTop:8}}>{t.hint}</div>
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════
+// ── FormatConverterApp 主组件 ─────────────────────────────────
+// ════════════════════════════════════════════════════════════
+
+function FormatConverterApp({ user, onLogout, onUpdateUser }) {
+  const lang = getLang();
+  const T = {
+    zh: {
+      title:'格式转换', serverFree:'浏览器端处理 · 零服务器占用',
+      workspace:'WORKSPACE', newConvert:'新建转换', addFiles:'继续添加文件',
+      history:'转换历史', fmtList:'支持格式',
+      drop:'点击选择文件 / 拖拽到此处',
+      dropSub:'音频 · 视频 · 图片 · Jupyter Notebook',
+      dropHint:'WAV MP3 FLAC OGG AAC M4A  ·  MP4 MOV AVI WEBM MKV FLV  ·  PNG JPG WEBP BMP  ·  .ipynb → PDF',
+      targetFmt:'转换为', convert:'开始转换', converting:'转换中…',
+      loadingFFmpeg:'正在加载 FFmpeg.wasm（首次约 30MB）…',
+      done:'完成', download:'下载', downloadAll:'全部下载',
+      srcSize:'原始', dstSize:'转换后',
+      error:'转换失败', sizeWarn:'文件较大，转换可能需要较长时间',
+      sizeErr:'文件超过限制，无法处理',
+      footerNote:'所有处理运行在浏览器\n不会上传到服务器',
+      clear:'清空', nbSection:'NOTEBOOK',
+    },
+    en: {
+      title:'Format Converter', serverFree:'Browser-side · Zero server CPU',
+      workspace:'WORKSPACE', newConvert:'New Conversion', addFiles:'Add more files',
+      history:'History', fmtList:'Supported Formats',
+      drop:'Click to select or drag files here',
+      dropSub:'Audio · Video · Image · Jupyter Notebook',
+      dropHint:'WAV MP3 FLAC OGG AAC M4A  ·  MP4 MOV AVI WEBM MKV FLV  ·  PNG JPG WEBP BMP  ·  .ipynb → PDF',
+      targetFmt:'Convert to', convert:'Convert', converting:'Converting…',
+      loadingFFmpeg:'Loading FFmpeg.wasm (first time ~30MB)…',
+      done:'Done', download:'Download', downloadAll:'Download All',
+      srcSize:'Original', dstSize:'Output',
+      error:'Conversion failed', sizeWarn:'Large file, may take a while',
+      sizeErr:'File exceeds size limit',
+      footerNote:'All processing runs in your browser\nFiles are never uploaded',
+      clear:'Clear', nbSection:'NOTEBOOK',
+    },
+  };
+  const t = T[lang]||T.zh;
+
+  const [view, setView]         = useState('home'); // 'home'|'jobs'|'notebook'
+  const [jobs, setJobs]         = useState([]);
+  const [notebook, setNotebook] = useState(null);   // {nb, fileName}
+  const [history, setHistory]   = useState([]);
+  const [ffLoading, setFfLoading] = useState(false);
+  const [ffLoaded, setFfLoaded]   = useState(false);
+  const [ffError, setFfError]     = useState('');
+  const [processing, setProcessing] = useState(false);
+  const [sbOpen, setSbOpen]     = useState(false);
+  const dropRef = useRef(null);
+  const fileRef = useRef(null);
+  const ffRef   = useRef(null);
+
+  // ── FFmpeg ──────────────────────────────────────────────────
+  const ensureFFmpeg = async (onPct) => {
+    if (ffRef.current) return ffRef.current;
+    setFfLoading(true); setFfError('');
+    try {
+      await loadFFmpegScript();
+      const {FFmpeg} = window.FFmpegWASM;
+      const ff = new FFmpeg();
+      if (onPct) ff.on('progress', ({progress}) => onPct(Math.round(progress*100)));
+      await ff.load({coreURL:FFMPEG_CORE_URL, wasmURL:FFMPEG_WASM_URL});
+      ffRef.current = ff; setFfLoaded(true);
+    } catch(e) { setFfError('FFmpeg.wasm 加载失败：'+e.message); throw e; }
+    finally { setFfLoading(false); }
+    return ffRef.current;
+  };
+
+  const updateJob = (id, patch) => setJobs(prev => prev.map(j => j.id===id ? {...j,...patch} : j));
+
+  const runJob = async (job) => {
+    const {id, file, srcExt, targetFmt} = job;
+    const grp = detectType(srcExt);
+    updateJob(id, {status:'converting', progress:0, progressMsg:t.converting});
+    try {
+      let resultBlob;
+      if (grp==='image' && ['png','jpg','jpeg','webp','bmp'].includes(targetFmt)) {
+        updateJob(id, {progress:30, progressMsg:lang==='en'?'Processing…':'处理中…'});
+        resultBlob = await convertImageCanvas(file, targetFmt);
+        updateJob(id, {progress:100});
+      } else {
+        updateJob(id, {progressMsg:t.loadingFFmpeg, progress:0});
+        const ff = await ensureFFmpeg(pct => updateJob(id, {progress:pct, progressMsg:`${t.converting} ${pct}%`}));
+        ff.off('progress');
+        ff.on('progress', ({progress:pct}) => updateJob(id, {progress:Math.round(pct*100), progressMsg:`${t.converting} ${Math.round(pct*100)}%`}));
+        const inName='input.'+srcExt, outName='output.'+targetFmt;
+        const fmtArgs = FORMAT_GROUPS[grp]?.ffmpegArgs?.[targetFmt]||[];
+        updateJob(id, {progressMsg:lang==='en'?'Writing…':'写入文件…', progress:5});
+        await ff.writeFile(inName, new Uint8Array(await file.arrayBuffer()));
+        updateJob(id, {progressMsg:t.converting, progress:10});
+        await ff.exec(['-i', inName, ...fmtArgs, outName]);
+        updateJob(id, {progressMsg:lang==='en'?'Reading output…':'读取结果…', progress:95});
+        const data = await ff.readFile(outName);
+        resultBlob = new Blob([data.buffer], {type:'application/octet-stream'});
+        try { await ff.deleteFile(inName); } catch(_){}
+        try { await ff.deleteFile(outName); } catch(_){}
+      }
+      const blobUrl = URL.createObjectURL(resultBlob);
+      const outName = file.name.replace(/\.[^.]+$/,'') + '.' + targetFmt;
+      updateJob(id, {status:'done', progress:100, resultBlob, resultSize:resultBlob.size, progressMsg:t.done, blobUrl, outName});
+      setHistory(prev => [{id:Date.now()+Math.random(), name:outName, srcSize:file.size, dstSize:resultBlob.size, blobUrl}, ...prev.slice(0,19)]);
+    } catch(e) { updateJob(id, {status:'error', progressMsg:'', error:e.message}); }
+  };
+
+  const runAllJobs = async (jobList) => {
+    if (processing) return;
+    setProcessing(true);
+    for (const job of jobList) {
+      if (job.status!=='pending') continue;
+      await runJob(job);
+    }
+    setProcessing(false);
+  };
+
+  // ── 添加文件（含 .ipynb 检测） ──────────────────────────────
+  const addFiles = async (files) => {
+    const arr = Array.from(files);
+    const nbFile = arr.find(f => f.name.toLowerCase().endsWith('.ipynb'));
+    const others = arr.filter(f => !f.name.toLowerCase().endsWith('.ipynb'));
+
+    if (nbFile) {
+      try {
+        const text = await nbFile.text();
+        const nb = JSON.parse(text);
+        setNotebook({nb, fileName:nbFile.name});
+        setView('notebook');
+      } catch(e) { console.error('ipynb 解析失败', e); }
+    }
+
+    if (others.length > 0) {
+      const newJobs = [];
+      for (const file of others) {
+        const ext = file.name.split('.').pop().toLowerCase();
+        const grp = detectType(ext);
+        if (!grp) continue;
+        const targets = FORMAT_GROUPS[grp].targets[ext]||[];
+        if (!targets.length) continue;
+        const limit = SIZE_LIMITS[grp];
+        if (file.size > limit) {
+          newJobs.push({id:Date.now()+Math.random(), file, srcExt:ext, targetFmt:targets[0],
+            status:'error', progress:0, progressMsg:'', error:t.sizeErr+` (${fmtSize(limit)})`,
+            warn:'', resultBlob:null, resultSize:0, blobUrl:'', outName:''});
+          continue;
+        }
+        const warn = file.size > SIZE_WARN[grp] ? t.sizeWarn : '';
+        newJobs.push({id:Date.now()+Math.random(), file, srcExt:ext, targetFmt:targets[0],
+          status:'pending', progress:0, progressMsg:'', error:'', warn,
+          resultBlob:null, resultSize:0, blobUrl:'', outName:''});
+      }
+      if (newJobs.length) {
+        setJobs(prev => [...prev, ...newJobs]);
+        if (!nbFile) setView('jobs');
+      }
+    }
+  };
+
+  const onZoneDragOver  = e => { e.preventDefault(); if(dropRef.current) dropRef.current.style.borderColor='var(--gold)'; };
+  const onZoneDragLeave = ()  => { if(dropRef.current) dropRef.current.style.borderColor='var(--border2)'; };
+  const onZoneDrop      = e  => { e.preventDefault(); if(dropRef.current) dropRef.current.style.borderColor='var(--border2)'; addFiles(e.dataTransfer.files); };
+
+  const downloadAll = () => {
+    jobs.filter(j=>j.status==='done'&&j.blobUrl).forEach((j,i) => {
+      setTimeout(()=>{ const a=document.createElement('a'); a.href=j.blobUrl; a.download=j.outName; a.click(); }, i*150);
+    });
+  };
+
+  const doneCount    = jobs.filter(j=>j.status==='done').length;
+  const pendingCount = jobs.filter(j=>j.status==='pending').length;
+  const errorCount   = jobs.filter(j=>j.status==='error').length;
+
+  const goHome = () => { setView('home'); setJobs([]); setNotebook(null); setSbOpen(false); };
+
+  return (
+    <div className="app">
+      {sbOpen && <div className="sb-ov" onClick={()=>setSbOpen(false)}/>}
+
+      {/* ── 侧边栏 */}
+      <div className={`sb${sbOpen?' open':''}`} style={{width:220}}>
+        <div className="sb-hd">
+          <h1>{t.title}</h1>
+          <p style={{fontSize:10,color:'var(--green)',marginTop:4}}>● {t.serverFree}</p>
+        </div>
+        <div className="sb-nav">
+          <div className="ns">
+            <div className="ns-t">{t.workspace}</div>
+            <div className={`ni${view==='home'?' on':''}`} onClick={goHome} style={{cursor:'pointer'}}>
+              <i><Icon name="refresh" size={12}/></i> {t.newConvert}
+            </div>
+            {view==='jobs' && (
+              <div className="ni" style={{cursor:'pointer'}}
+                onClick={()=>{ if(fileRef.current) fileRef.current.click(); setSbOpen(false); }}>
+                <i><Icon name="upload" size={12}/></i> {t.addFiles}
+              </div>
+            )}
+          </div>
+
+          {/* Notebook 视图信息 */}
+          {view==='notebook' && notebook && (
+            <div className="ns">
+              <div className="ns-t">{t.nbSection}</div>
+              <div style={{padding:'4px 8px 4px 12px',fontSize:11,color:'var(--fg2)',
+                overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                📓 {notebook.fileName}
+              </div>
+              <div style={{padding:'2px 8px 4px 12px',fontSize:10,color:'var(--fg3)'}}>
+                {notebook.nb?.metadata?.kernelspec?.display_name||'Python 3'}
+              </div>
+            </div>
+          )}
+
+          {/* 支持格式 */}
+          <div className="ns">
+            <div className="ns-t">{t.fmtList}</div>
+            {Object.entries(FORMAT_GROUPS).map(([type,grp])=>(
+              <div key={type} style={{padding:'2px 8px 2px 12px',fontSize:10,color:'var(--fg3)',lineHeight:1.8}}>
+                <span style={{color:'var(--gold)',fontWeight:500}}>{lang==='en'?grp.labelEn:grp.label}：</span>
+                {grp.exts.map(e=>e.toUpperCase()).join(' · ')}
+              </div>
+            ))}
+            <div style={{padding:'2px 8px 2px 12px',fontSize:10,color:'var(--fg3)',lineHeight:1.8}}>
+              <span style={{color:'var(--gold)',fontWeight:500}}>Notebook：</span>.ipynb → PDF
+            </div>
+          </div>
+
+          {/* 转换历史 */}
+          {history.length>0 && (
+            <div className="ns">
+              <div className="ns-t">{t.history}</div>
+              <div style={{maxHeight:200,overflowY:'auto'}}>
+                {history.map(h=>(
+                  <div key={h.id} style={{padding:'5px 8px',borderRadius:4,marginBottom:2,
+                    background:'var(--bg3)',border:'1px solid var(--border)'}}>
+                    <div style={{fontSize:11,color:'var(--fg)',overflow:'hidden',
+                      textOverflow:'ellipsis',whiteSpace:'nowrap',marginBottom:2}}>{h.name}</div>
+                    <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:4}}>
+                      <span style={{fontSize:10,color:'var(--fg3)'}}>{fmtSize(h.srcSize)} → {fmtSize(h.dstSize)}</span>
+                      <a href={h.blobUrl} download={h.name}
+                        style={{fontSize:10,color:'var(--gold)',textDecoration:'none',
+                          padding:'1px 6px',border:'1px solid var(--gold-dim)',borderRadius:3}}>
+                        {t.download}
+                      </a>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+        <div style={{padding:'10px 14px',borderTop:'1px solid var(--border)',
+          fontSize:10,color:'var(--fg3)',lineHeight:1.6,whiteSpace:'pre-line'}}>
+          {t.footerNote}
+        </div>
+      </div>
+
+      {/* ── 主区域 */}
+      <div className="main">
+        {/* 顶栏 */}
+        <div className="top">
+          <button onClick={()=>setSbOpen(o=>!o)}
+            style={{background:'none',color:'var(--fg3)',padding:'0 4px',marginRight:4}}>
+            <Icon name="menu" size={18}/>
+          </button>
+          <span className="top-t">{t.title}</span>
+          <div style={{flex:1}}/>
+          {ffLoading && (
+            <span style={{fontSize:11,color:'var(--gold)',display:'flex',alignItems:'center',gap:4}}>
+              <span style={{animation:'spin 1s linear infinite',display:'inline-block'}}>⟳</span>
+              {lang==='en'?'Loading FFmpeg…':'加载中…'}
+            </span>
+          )}
+          {ffLoaded && !ffLoading && <span style={{fontSize:10,color:'var(--green)'}}>● FFmpeg.wasm</span>}
+          {doneCount>1 && (
+            <button className="btn btn-s" onClick={downloadAll}
+              style={{marginLeft:8,display:'flex',alignItems:'center',gap:5,fontSize:12}}>
+              <Icon name="download" size={13}/> {t.downloadAll}
+            </button>
+          )}
+        </div>
+
+        {/* ── Home View */}
+        {view==='home' && (
+          <div style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',
+            justifyContent:'center',padding:'2rem',overflow:'auto'}}>
+            <label ref={dropRef}
+              onDragOver={onZoneDragOver} onDragLeave={onZoneDragLeave} onDrop={onZoneDrop}
+              style={{width:'100%',maxWidth:540,border:'2px dashed var(--border2)',
+                borderRadius:12,minHeight:300,display:'flex',flexDirection:'column',
+                alignItems:'center',justifyContent:'center',gap:14,cursor:'pointer',
+                background:'var(--bg3)',transition:'border-color .2s',
+                padding:'2rem 2.5rem',textAlign:'center'}}>
+              <Icon name="upload" size={48} color="var(--fg3)"/>
+              <div style={{fontSize:16,fontWeight:500,color:'var(--fg2)'}}>{t.drop}</div>
+              <div style={{fontSize:13,color:'var(--fg3)'}}>{t.dropSub}</div>
+              <div style={{fontSize:11,color:'var(--fg3)',lineHeight:1.9,
+                background:'var(--bg4)',borderRadius:6,padding:'10px 16px',
+                fontFamily:'var(--mono)',width:'100%',textAlign:'left'}}>
+                {t.dropHint}
+              </div>
+              <input ref={fileRef} type="file" multiple
+                accept="audio/*,video/*,image/*,.flac,.ogg,.m4a,.aac,.mkv,.flv,.mov,.avi,.bmp,.webp,.gif,.ipynb"
+                style={{display:'none'}} onChange={e=>addFiles(e.target.files)}/>
+            </label>
+          </div>
+        )}
+
+        {/* ── Notebook View */}
+        {view==='notebook' && notebook && (
+          <NotebookToPDF
+            nb={notebook.nb}
+            fileName={notebook.fileName}
+            lang={lang}
+            onBack={goHome}
+          />
+        )}
+
+        {/* ── Jobs View */}
+        {view==='jobs' && (
+          <div style={{flex:1,overflow:'auto',padding:'1.5rem'}}>
+            <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:'1.2rem',flexWrap:'wrap'}}>
+              <div style={{fontSize:13,color:'var(--fg2)'}}>
+                {lang==='en'
+                  ? `${jobs.length} file${jobs.length>1?'s':''} · ${doneCount} done${errorCount?' · '+errorCount+' failed':''}`
+                  : `共 ${jobs.length} 个文件 · ${doneCount} 完成${errorCount?' · '+errorCount+' 失败':''}`}
+              </div>
+              <div style={{flex:1}}/>
+              <label className="btn btn-s"
+                style={{cursor:'pointer',display:'flex',alignItems:'center',gap:5,fontSize:12}}>
+                <Icon name="upload" size={13}/> {t.addFiles}
+                <input type="file" multiple
+                  accept="audio/*,video/*,image/*,.flac,.ogg,.m4a,.aac,.mkv,.flv,.mov,.avi,.bmp,.webp,.gif,.ipynb"
+                  style={{display:'none'}} onChange={e=>addFiles(e.target.files)}/>
+              </label>
+              {pendingCount>0 && !processing && (
+                <button className="btn btn-p"
+                  style={{display:'flex',alignItems:'center',gap:5,fontSize:13}}
+                  onClick={()=>runAllJobs(jobs)}>
+                  <Icon name="refresh" size={13}/> {t.convert}
+                </button>
+              )}
+              <button className="btn btn-s" onClick={()=>{setJobs([]); setView('home');}}
+                style={{fontSize:12,color:'var(--fg3)'}}>{t.clear}</button>
+            </div>
+
+            <div style={{display:'flex',flexDirection:'column',gap:10}}>
+              {jobs.map(job => {
+                const grp = detectType(job.srcExt);
+                const targets = grp ? (FORMAT_GROUPS[grp]?.targets?.[job.srcExt]||[]) : [];
+                const isBusy=job.status==='converting', isDone=job.status==='done',
+                      isErr=job.status==='error', isPend=job.status==='pending';
+                const savings = isDone && job.resultSize<job.file.size
+                  ? Math.round((1-job.resultSize/job.file.size)*100) : null;
+                return (
+                  <div key={job.id}
+                    style={{background:'var(--bg2)',border:'1px solid var(--border)',
+                      borderRadius:8,padding:'14px 16px'}}>
+                    <div style={{display:'flex',alignItems:'flex-start',gap:10,marginBottom:8}}>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:13,fontWeight:500,color:'var(--fg)',
+                          overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                          {job.file.name}
+                        </div>
+                        <div style={{fontSize:11,color:'var(--fg3)',marginTop:2}}>
+                          {fmtSize(job.file.size)}
+                          {grp&&<span style={{marginLeft:8}}>{lang==='en'?FORMAT_GROUPS[grp].labelEn:FORMAT_GROUPS[grp].label}</span>}
+                        </div>
+                        {job.warn&&<div style={{fontSize:11,color:'var(--orange)',marginTop:3}}>⚠ {job.warn}</div>}
+                      </div>
+                      {isDone&&<span style={{fontSize:11,color:'var(--green)',fontWeight:500,background:'rgba(94,184,122,.12)',padding:'2px 8px',borderRadius:4,whiteSpace:'nowrap'}}>✓ {t.done}</span>}
+                      {isErr&&<span style={{fontSize:11,color:'var(--red)',background:'rgba(196,90,90,.12)',padding:'2px 8px',borderRadius:4,whiteSpace:'nowrap'}}>✗ {t.error}</span>}
+                      {isBusy&&<span style={{fontSize:11,color:'var(--gold)',background:'rgba(201,168,108,.12)',padding:'2px 8px',borderRadius:4,display:'flex',alignItems:'center',gap:4,whiteSpace:'nowrap'}}><span style={{animation:'spin 1s linear infinite',display:'inline-block'}}>⟳</span>{t.converting}</span>}
+                      {!isBusy&&<button onClick={()=>setJobs(prev=>prev.filter(j=>j.id!==job.id))} style={{background:'none',color:'var(--fg3)',padding:'2px 4px',flexShrink:0}}><Icon name="x" size={14}/></button>}
+                    </div>
+                    {(isPend||isErr)&&targets.length>0&&(
+                      <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8,flexWrap:'wrap'}}>
+                        <span style={{fontSize:12,color:'var(--fg3)',whiteSpace:'nowrap'}}>{t.targetFmt}：</span>
+                        <div style={{display:'flex',gap:5,flexWrap:'wrap'}}>
+                          {targets.map(fmt=>(
+                            <button key={fmt} onClick={()=>updateJob(job.id,{targetFmt:fmt,status:'pending',error:''})}
+                              style={{fontSize:11,padding:'3px 9px',borderRadius:4,cursor:'pointer',
+                                border:`1px solid ${job.targetFmt===fmt?'var(--gold)':'var(--border2)'}`,
+                                background:job.targetFmt===fmt?'rgba(201,168,108,.15)':'var(--bg4)',
+                                color:job.targetFmt===fmt?'var(--gold)':'var(--fg2)',
+                                fontFamily:'var(--mono)',textTransform:'uppercase',fontWeight:600}}>
+                              {fmt.toUpperCase()}
+                            </button>
+                          ))}
+                        </div>
+                        {isErr&&job.error&&<span style={{fontSize:11,color:'var(--red)',flex:1}}>{job.error}</span>}
+                      </div>
+                    )}
+                    {isBusy&&(
+                      <div style={{marginBottom:8}}>
+                        <div style={{height:4,background:'var(--bg4)',borderRadius:2,overflow:'hidden',marginBottom:5}}>
+                          <div style={{height:'100%',background:'var(--gold)',borderRadius:2,width:`${job.progress}%`,transition:'width .3s',boxShadow:'0 0 6px var(--gold)'}}/>
+                        </div>
+                        <div style={{fontSize:11,color:'var(--fg3)'}}>{job.progressMsg}</div>
+                      </div>
+                    )}
+                    {isDone&&(
+                      <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
+                        <div style={{fontSize:11,color:'var(--fg3)'}}>
+                          <span style={{color:'var(--fg2)',fontFamily:'var(--mono)',fontSize:12}}>{job.outName}</span>
+                          <span style={{margin:'0 6px'}}>·</span>
+                          {t.srcSize}: {fmtSize(job.file.size)} → {t.dstSize}: {fmtSize(job.resultSize)}
+                          {savings!==null&&savings>0&&<span style={{marginLeft:6,color:'var(--green)'}}>(−{savings}%)</span>}
+                          {savings!==null&&savings<0&&<span style={{marginLeft:6,color:'var(--orange)'}}>(+{Math.abs(savings)}%)</span>}
+                        </div>
+                        <a href={job.blobUrl} download={job.outName} className="btn btn-p"
+                          style={{fontSize:12,padding:'5px 14px',display:'flex',alignItems:'center',gap:5,textDecoration:'none'}}>
+                          <Icon name="download" size={13}/> {t.download}
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {pendingCount>0&&!processing&&(
+              <div style={{marginTop:'1.5rem',textAlign:'center'}}>
+                <button className="btn btn-p"
+                  style={{fontSize:14,padding:'10px 36px',display:'inline-flex',alignItems:'center',gap:8}}
+                  onClick={()=>runAllJobs(jobs)}>
+                  <Icon name="refresh" size={15}/> {t.convert} ({pendingCount})
+                </button>
+              </div>
+            )}
+            {ffLoading&&<div style={{marginTop:'1rem',textAlign:'center',fontSize:12,color:'var(--gold)'}}>{t.loadingFFmpeg}</div>}
+            {ffError&&<div style={{marginTop:'1rem',padding:'10px 14px',background:'rgba(196,90,90,.1)',border:'1px solid var(--red)',borderRadius:6,fontSize:12,color:'var(--red)'}}>{ffError}</div>}
+          </div>
+        )}
+      </div>
+
+      <style>{`@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
+    </div>
+  );
+}
+
+{% endverbatim %}

@@ -1,9 +1,10 @@
 {% verbatim %}
-// ── OCR Studio 应用组件 ────────────────────────────────────────
-// v2: 直连 API 模式 + Worker 中继模式（复刻 MixTeX 旧项目完整功能）
+  // ── OCR 工作室主组件 ────────────────────────────
+// v2: 直连 API 模式 + Worker 中继模式
 
 function OCRStudioApp({user, onLogout, onUpdateUser}) {
-  const [v, setV] = React.useState('relay');  // 默认进入中继模式
+  const lang = localStorage.getItem('mf_lang') === 'en' ? 'en' : 'zh';
+  const [v, setV] = React.useState('relay');  // default to relay mode
   const [pages, setPages] = React.useState([]);
   const [apiKey, setApiKey] = React.useState('');
   const [ocrPrompt, setOcrPrompt] = React.useState('');
@@ -30,22 +31,22 @@ function OCRStudioApp({user, onLogout, onUpdateUser}) {
   const goTo = (view) => { setV(view); setSbOpen(false); };
 
   const navItems = [
-    { id:'relay', label:'MixTeX', icon:'zap', hint:'图像公式识别' },
-    { id:'history', label:'历史记录', icon:'clock', hint:'查看过往识别' },
-    { id:'upload', label:'API 识别', icon:'upload', hint:'PDF/图片批量模式' },
+    { id:'relay', label:lang === 'en' ? 'MixTeX' : 'MixTeX', icon:'zap', hint:lang === 'en' ? 'Image formula recognition' : '图片公式识别' },
+    { id:'history', label:lang === 'en' ? 'History' : '历史记录', icon:'clock', hint:lang === 'en' ? 'View past recognitions' : '查看历史识别' },
+    { id:'upload', label:lang === 'en' ? 'API OCR' : 'API OCR', icon:'upload', hint:lang === 'en' ? 'Batch PDF/image mode' : '批量 PDF/图片模式' },
   ];
 
   return (
     <div className="app">
       <div className={`sb${sbOpen?' open':''}`}>
-        <div className="sb-back" onClick={() => { window.location.hash = '#/'; }}>← 返回 MineAI</div>
+        <div className="sb-back" onClick={() => { window.location.hash = '#/'; }}>{lang === 'en' ? '← Back to MineAI' : '← 返回 MineAI'}</div>
         <div className="sb-hd">
-          <h1>OCR 工作室</h1>
-          <p>文档识别 · 文字提取</p>
+          <h1>{lang === 'en' ? 'OCR Studio' : 'OCR 工作室'}</h1>
+          <p>{lang === 'en' ? 'Document recognition · text extraction' : '文档识别 · 文字提取'}</p>
         </div>
         <div className="sb-nav">
           <div className="ns">
-            <div className="ns-t">识别模式</div>
+            <div className="ns-t">{lang === 'en' ? 'Recognition modes' : '识别模式'}</div>
             {navItems.map(item => (
               <div key={item.id} className={`ni${v===item.id?' on':''}`} onClick={() => goTo(item.id)}>
                 <i><Icon name={item.icon} size={14} /></i>
@@ -56,14 +57,14 @@ function OCRStudioApp({user, onLogout, onUpdateUser}) {
           </div>
           {pages.length > 0 && (
             <div className="ns">
-              <div className="ns-t">API 工作台</div>
+              <div className="ns-t">{lang === 'en' ? 'API workspace' : 'API 工作台'}</div>
               <div className={`ni${v==='work'?' on':''}`} onClick={() => goTo('work')}>
-                <i><Icon name="file" size={14} /></i>识别工作台
-                <span style={{marginLeft:'auto',fontSize:11,color:'var(--fg3)'}}>{pages.length}页</span>
+                <i><Icon name="file" size={14} /></i>{lang === 'en' ? 'OCR workspace' : 'OCR 工作台'}
+                <span style={{marginLeft:'auto',fontSize:11,color:'var(--fg3)'}}>{pages.length} {lang === 'en' ? 'pages' : '页'}</span>
               </div>
               {pages.some(p => p.status === 'done') && (
                 <div className={`ni${v==='result'?' on':''}`} onClick={() => goTo('result')}>
-                  <i><Icon name="check" size={14} /></i>查看结果
+                  <i><Icon name="check" size={14} /></i>{lang === 'en' ? 'View results' : '查看结果'}
                 </div>
               )}
             </div>
@@ -75,7 +76,7 @@ function OCRStudioApp({user, onLogout, onUpdateUser}) {
         <div className="top">
           <button className="menu-btn" onClick={() => setSbOpen(!sbOpen)}><Icon name="menu" size={18} /></button>
           <span className="top-t">
-            {v==='relay'?'MixTeX 识别':v==='history'?'历史记录':v==='upload'?'导入文件':v==='work'?'识别工作台':'识别结果'}
+            {v==='relay'?(lang==='en'?'MixTeX OCR':'MixTeX OCR'):v==='history'?(lang==='en'?'History':'历史记录'):v==='upload'?(lang==='en'?'Import file':'导入文件'):v==='work'?(lang==='en'?'OCR workspace':'OCR 工作台'):(lang==='en'?'OCR results':'OCR 结果')}
           </span>
           <div className="top-b">{user && (user.username || user.email)}</div>
         </div>
@@ -121,6 +122,7 @@ function OCRStudioApp({user, onLogout, onUpdateUser}) {
 // 中继识别模式（Worker 模式，复刻 MixTeX 旧项目完整功能）
 // ─────────────────────────────────────────────────────────────
 function OCRRelayMode({user, token}) {
+  const lang = localStorage.getItem('mf_lang') === 'en' ? 'en' : 'zh';
   const [modelType, setModelType] = React.useState('xuan'); // 'qing' | 'xuan'
   const [imgDataUrl, setImgDataUrl] = React.useState(null);  // 本地预览用
   const [processedImgUrl, setProcessedImgUrl] = React.useState(null);  // 服务器处理后的图片URL
@@ -146,7 +148,7 @@ function OCRRelayMode({user, token}) {
   const fileInputRef = React.useRef(null);
   const isMountedRef = React.useRef(true);
 
-  // ── 组件卸载时清理 ──
+  // cleanup on unmount
   React.useEffect(() => {
     return () => {
       isMountedRef.current = false;
@@ -154,7 +156,7 @@ function OCRRelayMode({user, token}) {
     };
   }, []);
 
-  // ── 加载 MathJax ──
+  // 加载 MathJax
   React.useEffect(() => {
     if (window.MathJax && window.MathJax.typesetPromise) { setMathJaxReady(true); return; }
     window.MathJax = {
@@ -172,7 +174,7 @@ function OCRRelayMode({user, token}) {
     document.head.appendChild(s);
   }, []);
 
-  // ── 加载 OpenCV.js（按需）──
+  // 按需加载 OpenCV.js
   const loadOpenCV = React.useCallback(() => {
     if (window.cv && window.cv.Mat) { setCvReady(true); return; }
     const s = document.createElement('script');
@@ -187,7 +189,7 @@ function OCRRelayMode({user, token}) {
     document.head.appendChild(s);
   }, []);
 
-  // ── 加载配额 ──
+  // 加载额度
   const loadQuota = React.useCallback(() => {
     if (!user || user.is_guest) return;
     F('/api/ocr/quota/').then(d => setQuota(d)).catch(() => {});
@@ -195,7 +197,7 @@ function OCRRelayMode({user, token}) {
 
   React.useEffect(() => { loadQuota(); }, [loadQuota]);
 
-  // ── 全局粘贴图片支持（Ctrl+V）──
+  // 全局粘贴支持（Ctrl+V）
   React.useEffect(() => {
     const handler = (e) => {
       if (!e.clipboardData) return;
@@ -210,7 +212,7 @@ function OCRRelayMode({user, token}) {
     return () => document.removeEventListener('paste', handler);
   }, [isBinary, cvReady]);
 
-  // ── MathJax 渲染（editText 变化时触发）──
+  // editText 变化时渲染 MathJax
   React.useEffect(() => {
     if (!mathJaxReady || !resultPreviewRef.current) return;
     if (!editText) { resultPreviewRef.current.innerHTML = ''; return; }
@@ -218,7 +220,7 @@ function OCRRelayMode({user, token}) {
     window.MathJax.typesetPromise([resultPreviewRef.current]).catch(() => {});
   }, [editText, mathJaxReady]);
 
-  // ── 进度条动画 ──
+  // 进度动画
   React.useEffect(() => {
     if (!polling) return;
     const interval = setInterval(() => {
@@ -227,7 +229,7 @@ function OCRRelayMode({user, token}) {
     return () => clearInterval(interval);
   }, [polling]);
 
-  // ── 图片二值化（OpenCV.js）──
+  // 图片二值化（OpenCV.js）
   const binarizeAndSet = (file) => {
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -254,7 +256,7 @@ function OCRRelayMode({user, token}) {
           });
           src.delete(); dst.delete(); tmp.delete();
         } catch(err) {
-          // 二值化失败降级为原图
+          // 二值化失败时回退到原图
           const reader2 = new FileReader();
           reader2.onload = ev => { setImgDataUrl(ev.target.result); setImgFile(file); };
           reader2.readAsDataURL(file);
@@ -291,12 +293,12 @@ function OCRRelayMode({user, token}) {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  // ── 上传并开始轮询 ──
+  // 上传并开始轮询
   const startUpload = async () => {
     if (!imgFile) return;
-    if (!user) { showAlert('请先登录后使用 MixTeX 识别', '提示'); window.location.hash = '#/login'; return; }
+    if (!user) { showAlert(lang === 'en' ? 'Please log in to use MixTeX OCR' : '请先登录后使用 MixTeX OCR', lang === 'en' ? 'Tip' : '提示'); window.location.hash = '#/login'; return; }
     if (quota && quota.left_count <= 0) {
-      setError('今日识别次数已用完，点赞/点踩/提交修改可增加次数'); return;
+      setError(lang === 'en' ? 'You have used all OCR credits for today; likes, dislikes, or edits can add more.' : '你今天的 OCR 次数已用完；点赞、点踩或编辑可额外增加次数。'); return;
     }
     setUploading(true); setError(''); clearResult();
     const formData = new FormData();
@@ -328,17 +330,17 @@ function OCRRelayMode({user, token}) {
 
   const pollForResult = (pid) => {
     pollRef.current = setTimeout(async () => {
-      if (!isMountedRef.current) return;  // 组件已卸载，停止轮询
+      if (!isMountedRef.current) return;  // stop polling if unmounted
       pollCountRef.current++;
       setPollCount(pollCountRef.current);
       if (pollCountRef.current > 40) {
         setPolling(false);
-        setError('等待超时（~200s），OCR Worker 可能未运行。\n请确认后台 ocr_worker.py 已启动。');
+      setError(lang === 'en' ? 'Timed out (~200s). The OCR worker may not be running.\nPlease make sure ocr_worker.py is started.' : '超时（约 200 秒）。OCR Worker 可能未运行。\n请确认 ocr_worker.py 已启动。');
         return;
       }
       try {
         const data = await F(`/api/ocr/pages/${pid}/`);
-        if (!isMountedRef.current) return;  // 再次检查，防止异步操作后组件已卸载
+        if (!isMountedRef.current) return;  // re-check after async work
         if (data.ocr_status === 'done') {
           setResult(data.ocr_result);
           setEditText(data.ocr_result);
@@ -347,20 +349,20 @@ function OCRRelayMode({user, token}) {
           loadQuota();
         } else if (data.ocr_status === 'error') {
           setPolling(false);
-          setError(data.error_msg || 'OCR 处理失败');
+          setError(data.error_msg || (lang === 'en' ? 'OCR processing failed' : 'OCR 处理失败'));
         } else {
           pollForResult(pid);
         }
       } catch(e) {
-        if (isMountedRef.current) pollForResult(pid);  // 只在组件仍挂载时继续轮询
+        if (isMountedRef.current) pollForResult(pid);  // 仅在挂载状态继续
       }
     }, 5000);
   };
 
-  // ── 反馈 ──
+  // feedback
   const sendFeedback = async (type, customText) => {
     if (!pageId) return;
-    if (feedbackCount >= 5) { setError('反馈次数已达上限（5次）'); return; }
+    if (feedbackCount >= 5) { setError(lang === 'en' ? 'Feedback limit reached (5 times)' : '反馈次数已达上限（5 次）'); return; }
     try {
       await P(`/api/ocr/pages/${pageId}/feedback/`, { type, text: customText || '' });
       setFeedback(type);
@@ -371,7 +373,7 @@ function OCRRelayMode({user, token}) {
 
   const thumbsUp = () => {
     if (!result) return;
-    if (editText !== result) { setError('点赞时请勿修改文本内容'); return; }
+    if (editText !== result) { setError(lang === 'en' ? 'Do not modify the text when submitting a like' : '点赞时请勿修改文本'); return; }
     sendFeedback('like');
     copyLatex();
   };
@@ -383,12 +385,12 @@ function OCRRelayMode({user, token}) {
 
   const submitEdit = () => {
     if (!result) return;
-    if (editText === result) { setError('文本未经修改，请先编辑后再提交'); return; }
+    if (editText === result) { setError(lang === 'en' ? 'The text has not been edited; please change it before submitting' : '文本尚未修改，请先编辑后再提交'); return; }
     sendFeedback('edit', editText);
     copyLatex();
   };
 
-  // ── 复制 ──
+  // copy helpers
   function dejax(text) {
     if (!text) return '';
     return text.replace(/\\\[/g, '$$\\begin{align*}').replace(/\\\]/g, '\\end{align*}$$');
@@ -404,50 +406,52 @@ function OCRRelayMode({user, token}) {
   };
 
   const copyMathML = () => {
-    if (!mathJaxReady || !window.MathJax) { setError('MathJax 尚未加载完成'); return; }
+    if (!mathJaxReady || !window.MathJax) { setError(lang === 'en' ? 'MathJax is not ready yet' : 'MathJax 尚未准备好'); return; }
     try {
       const mathml = MathJax.tex2mml(editText || result);
       navigator.clipboard.writeText(mathml).catch(() => {});
-    } catch(e) { setError('MathML 转换失败，请检查 LaTeX 语法'); }
+    } catch(e) { setError(lang === 'en' ? 'MathML conversion failed; please check the LaTeX syntax' : 'MathML 转换失败，请检查 LaTeX 语法'); }
   };
 
   const hasResult = !!result;
 
   return (
     <div className="fade-in" style={{maxWidth:860,margin:'0 auto'}}>
-      {/* 页头 */}
+      {/* header */}
       <div style={{marginBottom:20}}>
         <h1 style={{fontFamily:'var(--serif)',fontSize:26,color:'var(--gold2)',marginBottom:4}}>
-          MixTeX 识别
+          {lang === 'en' ? 'MixTeX OCR' : 'MixTeX OCR'}
         </h1>
         <p style={{color:'var(--fg2)',fontSize:13}}>
-          图片上传至服务器自动缩放压缩，由后台 OCR Worker 处理 · 支持手写中英文混合公式与复杂排版
+          {lang === 'en'
+            ? 'Images are auto-resized and compressed on upload, then processed by the backend OCR worker. Supports handwritten mixed-language formulas and complex layouts.'
+            : '图片在上传时会自动缩放和压缩，然后由后端 OCR Worker 处理。支持手写、混合语言公式和复杂版面。'}
         </p>
       </div>
 
-      {/* ── 模型选择器：青 / 玄 ── */}
+      {/* model selector */}
       <div style={{marginBottom:20}}>
         <div style={{fontSize:11,color:'var(--fg3)',marginBottom:8,fontWeight:500,letterSpacing:.5}}>
-          选择识别模型
+          {lang === 'en' ? 'Choose a recognition model' : '选择识别模型'}
         </div>
         <div style={{display:'flex',gap:10}}>
           {[
             {
               id:'qing',
-              name:'青',
-              sub:'小模型',
-              desc:'速度快',
-              detail:'手写公式专用，百毫秒级响应',
+              name:lang === 'en' ? 'Qing' : '青',
+              sub:lang === 'en' ? 'Small model' : '小模型',
+              desc:lang === 'en' ? 'Fast' : '快速',
+              detail:lang === 'en' ? 'Best for handwritten formulas, with sub-second responses' : '适合手写公式，响应速度更快',
               color:'#5ac4b4',
               bg:'rgba(90,196,180,.08)',
               border:'rgba(90,196,180,.4)',
             },
             {
               id:'xuan',
-              name:'玄',
-              sub:'大模型',
-              desc:'精准强',
-              detail:'复杂公式/表格/混排，效果最优',
+              name:lang === 'en' ? 'Xuan' : '玄',
+              sub:lang === 'en' ? 'Large model' : '大模型',
+              desc:lang === 'en' ? 'Most accurate' : '更准确',
+              detail:lang === 'en' ? 'Best for complex formulas, tables, and mixed layouts' : '适合复杂公式、表格和混排版面',
               color:'var(--gold)',
               bg:'rgba(201,168,108,.08)',
               border:'rgba(201,168,108,.4)',
@@ -462,7 +466,7 @@ function OCRRelayMode({user, token}) {
                   background: active ? m.bg : 'var(--bg3)',
                   transition:'all .18s', position:'relative',
                 }}>
-                {/* 选中标记 */}
+                {/* selected marker */}
                 {active && (
                   <div style={{
                     position:'absolute',top:10,right:10,
@@ -472,7 +476,7 @@ function OCRRelayMode({user, token}) {
                     <Icon name="check" size={11} style={{color:'#000'}} />
                   </div>
                 )}
-                {/* 模型名 */}
+                {/* model name */}
                 <div style={{display:'flex',alignItems:'baseline',gap:6,marginBottom:4}}>
                   <span style={{
                     fontSize:28, fontWeight:700, fontFamily:'var(--serif)',
@@ -493,15 +497,15 @@ function OCRRelayMode({user, token}) {
         </div>
       </div>
 
-      {/* 配额栏 */}
+      {/* quota bar */}
       {quota && (
         <div style={{display:'flex',gap:8,marginBottom:20,flexWrap:'wrap',alignItems:'center'}}>
           {[
-            {label:'今日剩余', val: Math.max(0, Math.floor(quota.left_count * 10) / 10), color:'#5eb87a'},
-            {label:'已识别', val: quota.upload_count, color:'var(--fg2)'},
-            {label:'点赞', val: quota.like_count, color:'var(--gold)'},
-            {label:'点踩', val: quota.dislike_count||0, color:'var(--fg3)'},
-            {label:'提交修改', val: quota.edit_count||0, color:'#5a8ac4'},
+            {label:lang === 'en' ? 'Remaining today' : '今日剩余', val: Math.max(0, Math.floor(quota.left_count * 10) / 10), color:'#5eb87a'},
+            {label:lang === 'en' ? 'Recognized' : '已识别', val: quota.upload_count, color:'var(--fg2)'},
+            {label:lang === 'en' ? 'Likes' : '点赞', val: quota.like_count, color:'var(--gold)'},
+            {label:lang === 'en' ? 'Dislikes' : '点踩', val: quota.dislike_count||0, color:'var(--fg3)'},
+            {label:lang === 'en' ? 'Edits submitted' : '提交编辑', val: quota.edit_count||0, color:'#5a8ac4'},
           ].map(({label,val,color}) => (
             <div key={label} style={{padding:'5px 12px',background:'var(--bg3)',borderRadius:6,
               border:'1px solid var(--border2)',display:'flex',gap:6,alignItems:'center'}}>
@@ -509,14 +513,14 @@ function OCRRelayMode({user, token}) {
               <span style={{fontSize:15,fontWeight:700,color}}>{val}</span>
             </div>
           ))}
-          <div style={{fontSize:11,color:'var(--fg3)',marginLeft:'auto'}}>每日 50 次基础额度</div>
+          <div style={{fontSize:11,color:'var(--fg3)',marginLeft:'auto'}}>{lang === 'en' ? '50 free uses per day' : '每天 50 次免费额度'}</div>
         </div>
       )}
 
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:20}}>
-        {/* ── 左列：上传区 ── */}
+        {/* left column: upload area */}
         <div>
-          {/* 二值化控制 */}
+          {/* binarization toggle */}
           <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10}}>
             <label style={{fontSize:12,color:'var(--fg2)',display:'flex',alignItems:'center',gap:6,cursor:'pointer'}}>
               <input type="checkbox" checked={isBinary} onChange={e => {
@@ -524,18 +528,18 @@ function OCRRelayMode({user, token}) {
                 setIsBinary(v);
                 if (v && !cvReady) loadOpenCV();
               }} />
-              <span style={{fontWeight:500}}>二值化预处理</span>
+              <span style={{fontWeight:500}}>{lang === 'en' ? 'Binarization preprocessing' : '二值化预处理'}</span>
             </label>
             {isBinary && !cvReady && (
-              <span style={{fontSize:11,color:'var(--gold)'}}>OpenCV 加载中...</span>
+              <span style={{fontSize:11,color:'var(--gold)'}}>{lang === 'en' ? 'Loading OpenCV...' : 'OpenCV 加载中...'}</span>
             )}
             {isBinary && cvReady && (
               <span style={{fontSize:11,color:'#5eb87a'}}>OpenCV ✓</span>
             )}
-            <span style={{fontSize:11,color:'var(--fg3)',marginLeft:'auto'}}>适合手写公式</span>
+            <span style={{fontSize:11,color:'var(--fg3)',marginLeft:'auto'}}>{lang === 'en' ? 'Great for handwritten formulas' : '适合手写公式'}</span>
           </div>
 
-          {/* 拖放/上传区 */}
+          {/* drag and drop upload area */}
           <div
             style={{
               border:`2px dashed ${dragging?'var(--gold)':'var(--border2)'}`,
@@ -570,26 +574,26 @@ function OCRRelayMode({user, token}) {
                 <div style={{color:'var(--gold)',marginBottom:10}}>
                   <Icon name="image" size={36} stroke={1.4} />
                 </div>
-                <div style={{fontWeight:500,fontSize:14,marginBottom:6}}>拖拽 / 点击 / Ctrl+V 粘贴图片</div>
-                <div style={{fontSize:12,color:'var(--fg3)'}}>截图可直接粘贴 · 自动缩放压缩</div>
+                <div style={{fontWeight:500,fontSize:14,marginBottom:6}}>{lang === 'en' ? 'Drag / click / Ctrl+V to paste an image' : '拖拽 / 点击 / Ctrl+V 粘贴图片'}</div>
+                <div style={{fontSize:12,color:'var(--fg3)'}}>{lang === 'en' ? 'Screenshots can be pasted directly · auto resize and compression' : '截图可直接粘贴 · 自动缩放与压缩'}</div>
               </div>
             )}
           </div>
 
-          {/* 操作按钮 */}
+          {/* action buttons */}
           <div style={{display:'flex',gap:8,marginTop:10,flexWrap:'wrap'}}>
             {imgDataUrl ? (
               <>
                 <button className="btn btn-sm btn-p" onClick={startUpload}
                   disabled={uploading||polling} style={{flex:1,minWidth:100}}>
                   {uploading ? (
-                    <span className="with-ic"><div className="load" style={{width:12,height:12}} />上传中</span>
+                    <span className="with-ic"><div className="load" style={{width:12,height:12}} />{lang === 'en' ? 'Uploading' : '上传中'}</span>
                   ) : (
-                    <span className="with-ic"><Icon name="zap" size={13} />开始识别</span>
+                    <span className="with-ic"><Icon name="zap" size={13} />{lang === 'en' ? 'Start OCR' : '开始识别'}</span>
                   )}
                 </button>
                 <button className="btn btn-sm btn-s" onClick={()=>fileInputRef.current?.click()}
-                  disabled={uploading||polling}>换图</button>
+                  disabled={uploading||polling}>{lang === 'en' ? 'Change image' : '更换图片'}</button>
                 <button className="btn btn-sm btn-d" onClick={clearAll}
                   disabled={uploading||polling}>
                   <Icon name="trash" size={13} />
@@ -598,12 +602,12 @@ function OCRRelayMode({user, token}) {
             ) : (
               <button className="btn btn-sm btn-s" style={{width:'100%'}}
                 onClick={()=>fileInputRef.current?.click()}>
-                <span className="with-ic"><Icon name="upload" size={13} />选择图片文件</span>
+                <span className="with-ic"><Icon name="upload" size={13} />{lang === 'en' ? 'Choose image file' : '选择图片文件'}</span>
               </button>
             )}
           </div>
 
-          {/* 进度条 */}
+          {/* progress bar */}
           {(uploading || polling) && (
             <div style={{marginTop:12}}>
               <div style={{height:5,background:'var(--bg4)',borderRadius:3,overflow:'hidden'}}>
@@ -615,12 +619,12 @@ function OCRRelayMode({user, token}) {
                 }}/>
               </div>
               <div style={{fontSize:11,color:'var(--gold)',marginTop:5,textAlign:'center'}}>
-                {uploading ? '上传图片...' : `等待 OCR Worker 处理... (${pollCount * 5}s)`}
+                {uploading ? (lang === 'en' ? 'Uploading image...' : '正在上传图片...') : (lang === 'en' ? `Waiting for OCR worker... (${pollCount * 5}s)` : `等待 OCR Worker...（${pollCount * 5} 秒）`)}
               </div>
             </div>
           )}
 
-          {/* 错误提示 */}
+          {/* error message */}
           {error && (
             <div style={{marginTop:10,padding:'8px 12px',
               background:'rgba(200,60,60,.1)',border:'1px solid rgba(200,60,60,.3)',
@@ -630,15 +634,15 @@ function OCRRelayMode({user, token}) {
           )}
         </div>
 
-        {/* ── 右列：结果区 ── */}
+        {/* right column: results */}
         <div style={{display:'flex',flexDirection:'column',gap:10}}>
-          {/* MathJax 预览 */}
+          {/* MathJax preview */}
           <div>
             <div style={{fontSize:11,color:'var(--fg3)',marginBottom:5,display:'flex',
               justifyContent:'space-between',alignItems:'center'}}>
-              <span>LaTeX 预览</span>
+              <span>{lang === 'en' ? 'LaTeX preview' : 'LaTeX 预览'}</span>
               <span style={{color: mathJaxReady ? '#5eb87a' : 'var(--fg3)'}}>
-                {mathJaxReady ? 'MathJax ✓' : 'MathJax 加载中...'}
+                {mathJaxReady ? 'MathJax ✓' : (lang === 'en' ? 'Loading MathJax...' : 'MathJax 加载中...')}
               </span>
             </div>
             <div
@@ -651,23 +655,23 @@ function OCRRelayMode({user, token}) {
               }}
             >
               {!hasResult && !polling && (
-                <span style={{fontSize:12}}>识别结果将在此渲染 LaTeX 公式...</span>
+                <span style={{fontSize:12}}>{lang === 'en' ? 'Recognized output will render LaTeX formulas here...' : '识别结果会在这里渲染 LaTeX 公式...'}</span>
               )}
               {polling && (
                 <div style={{display:'flex',alignItems:'center',gap:8,color:'var(--gold)'}}>
                   <div className="load" style={{width:14,height:14}} />
-                  <span style={{fontSize:13}}>等待 OCR Worker 处理...</span>
+                  <span style={{fontSize:13}}>{lang === 'en' ? 'Waiting for OCR worker...' : '等待 OCR Worker...'}</span>
                 </div>
               )}
-              {/* MathJax 专用容器：React 不向此节点渲染子元素，避免 innerHTML 操作与 vDOM 冲突 */}
+              {/* Dedicated MathJax container: avoid vDOM/innerHTML conflicts */}
               <div ref={resultPreviewRef} />
             </div>
           </div>
 
-          {/* 可编辑文本框 */}
+          {/* editable source box */}
           <div>
             <div style={{fontSize:11,color:'var(--fg3)',marginBottom:5}}>
-              LaTeX 原文（可编辑后提交修改反馈）
+              {lang === 'en' ? 'LaTeX source text (edit before submitting feedback)' : 'LaTeX 源文本（提交反馈前可编辑）'}
             </div>
             <textarea
               style={{
@@ -677,26 +681,26 @@ function OCRRelayMode({user, token}) {
                 fontSize:12, resize:'vertical', lineHeight:1.6,
                 boxSizing:'border-box',
               }}
-              placeholder="识别结果将显示在此，支持手动编辑..."
+              placeholder={lang === 'en' ? 'Recognized output will appear here; you can edit it manually...' : '识别结果会显示在这里；你可以手动编辑...'}
               value={editText}
               onChange={e => setEditText(e.target.value)}
             />
           </div>
 
-          {/* 复制和反馈按钮（有结果时显示） */}
+          {/* copy and feedback buttons (shown when there is a result) */}
           {hasResult && (
             <>
               <div style={{display:'flex',gap:6}}>
                 <button className="btn btn-sm btn-s" onClick={copyLatex} style={{flex:1}}>
-                  <span className="with-ic"><Icon name="copy" size={12} />复制 LaTeX</span>
+                  <span className="with-ic"><Icon name="copy" size={12} />{lang === 'en' ? 'Copy LaTeX' : '复制 LaTeX'}</span>
                 </button>
                 <button className="btn btn-sm btn-s" onClick={copyMathML}
                   disabled={!mathJaxReady} style={{flex:1}}>
-                  <span className="with-ic"><Icon name="copy" size={12} />复制 MathML</span>
+                  <span className="with-ic"><Icon name="copy" size={12} />{lang === 'en' ? 'Copy MathML' : '复制 MathML'}</span>
                 </button>
               </div>
 
-              {/* 反馈按钮行 */}
+              {/* feedback buttons */}
               <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',
                 padding:'8px 12px',background:'var(--bg3)',borderRadius:8,
                 border:'1px solid var(--border2)'}}>
@@ -720,7 +724,9 @@ function OCRRelayMode({user, token}) {
                   ))}
                 </div>
                 <div style={{fontSize:11,color:'var(--fg3)'}}>
-                  {feedbackCount > 0 ? `已反馈 ${feedbackCount} 次` : '反馈可增加今日次数'}
+                  {feedbackCount > 0
+                    ? (lang === 'en' ? `Feedback submitted ${feedbackCount} times` : `已提交反馈 ${feedbackCount} 次`)
+                    : (lang === 'en' ? 'Feedback can add more attempts today' : '反馈可增加今天的次数')}
                 </div>
               </div>
             </>
@@ -728,21 +734,22 @@ function OCRRelayMode({user, token}) {
         </div>
       </div>
 
-      {/* 说明卡片 */}
+      {/* info card */}
       <div className="card" style={{marginTop:24,padding:'14px 18px',fontSize:12,color:'var(--fg2)',lineHeight:1.7}}>
-        <strong style={{color:'var(--gold2)'}}>关于 MixTeX 识别</strong>
+        <strong style={{color:'var(--gold2)'}}>{lang === 'en' ? 'About MixTeX OCR' : '关于 MixTeX OCR'}</strong>
         <div style={{marginTop:6}}>
-          上传图片自动缩放至最大边 512px 并压缩，由后台 <strong>OCR Worker</strong> 处理。
-          青·小模型适合手写公式，玄·大模型适合复杂公式/表格混排。每位用户每日 50 次基础额度。
+          {lang === 'en'
+            ? <>Uploaded images are resized so the longest edge is 512px and compressed, then handled by the backend <strong>OCR Worker</strong>. Qing is the small model for handwritten formulas; Xuan is the large model for complex formulas, tables, and mixed layouts. Each user gets 50 free uses per day.</>
+            : <>上传的图片会先缩放到最长边 512px 并压缩，再由后端 <strong>OCR Worker</strong> 处理。Qing 是适合手写公式的小模型；Xuan 是适合复杂公式、表格和混排版面的大模型。每位用户每天有 50 次免费额度。</>}
           <br/>
           <span style={{display:'inline-flex',alignItems:'center',gap:4}}>
-            <strong style={{color:'#5eb87a',display:'inline-flex',alignItems:'center',gap:3}}><Icon name="thumb-up" size={11}/>点赞 +0.5次</strong>
+            <strong style={{color:'#5eb87a',display:'inline-flex',alignItems:'center',gap:3}}><Icon name="thumb-up" size={11}/>{lang === 'en' ? 'Like +0.5' : '点赞 +0.5'}</strong>
             {' · '}
-            <strong style={{color:'var(--fg3)',display:'inline-flex',alignItems:'center',gap:3}}><Icon name="thumb-down" size={11}/>点踩 +0.5次</strong>
+            <strong style={{color:'var(--fg3)',display:'inline-flex',alignItems:'center',gap:3}}><Icon name="thumb-down" size={11}/>{lang === 'en' ? 'Dislike +0.5' : '点踩 +0.5'}</strong>
             {' · '}
-            <strong style={{color:'#5a8ac4',display:'inline-flex',alignItems:'center',gap:3}}><Icon name="pen" size={11}/>提交修改 +2次</strong>
+            <strong style={{color:'#5a8ac4',display:'inline-flex',alignItems:'center',gap:3}}><Icon name="pen" size={11}/>{lang === 'en' ? 'Submit edit +2' : '提交编辑 +2'}</strong>
           </span>
-          <br/>历史识别记录可在左侧「历史记录」标签查看。
+          <br/>{lang === 'en' ? 'Past OCR records are available in the “History” tab on the left.' : '过去的 OCR 记录可在左侧“历史记录”标签查看。'}
         </div>
       </div>
     </div>
@@ -751,9 +758,10 @@ function OCRRelayMode({user, token}) {
 
 
 // ─────────────────────────────────────────────────────────────
-// 历史记录
+// History
 // ─────────────────────────────────────────────────────────────
 function OCRHistory({user, token}) {
+  const lang = localStorage.getItem('mf_lang') === 'en' ? 'en' : 'zh';
   const [records, setRecords] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
   const [selected, setSelected] = React.useState(null);
@@ -776,7 +784,7 @@ function OCRHistory({user, token}) {
 
   const feedbackColor = {like:'#5eb87a', dislike:'var(--red)', edit:'#5a8ac4'};
   const feedbackIcon = {like:'thumb-up', dislike:'thumb-down', edit:'pen'};
-  const modelLabel = {qing:'青', xuan:'玄'};
+  const modelLabel = {qing:'Qing', xuan:'Xuan'};
 
   const copyText = (text) => {
     navigator.clipboard.writeText(text || '').catch(() => {
@@ -787,24 +795,24 @@ function OCRHistory({user, token}) {
   };
 
   if (!user) return (
-    <div style={{padding:40,textAlign:'center',color:'var(--fg3)'}}>请先登录</div>
+    <div style={{padding:40,textAlign:'center',color:'var(--fg3)'}}>{lang === 'en' ? 'Please log in first' : '请先登录'}</div>
   );
 
   return (
     <div className="fade-in" style={{maxWidth:900,margin:'0 auto'}}>
       <div style={{marginBottom:20}}>
-        <h1 style={{fontFamily:'var(--serif)',fontSize:24,color:'var(--gold2)',marginBottom:4}}>历史记录</h1>
-        <p style={{color:'var(--fg2)',fontSize:13}}>最近 100 条 MixTeX 识别记录</p>
+          <h1 style={{fontFamily:'var(--serif)',fontSize:24,color:'var(--gold2)',marginBottom:4}}>{lang === 'en' ? 'History' : '历史记录'}</h1>
+        <p style={{color:'var(--fg2)',fontSize:13}}>{lang === 'en' ? 'Latest 100 MixTeX recognition records' : '最近 100 条 MixTeX 识别记录'}</p>
       </div>
 
       {loading && (
         <div style={{display:'flex',alignItems:'center',gap:10,color:'var(--fg3)',padding:32}}>
-          <div className="load" style={{width:14,height:14}} />加载中...
+          <div className="load" style={{width:14,height:14}} />{lang === 'en' ? 'Loading...' : '加载中...'}
         </div>
       )}
 
       {!loading && records.length === 0 && (
-        <div style={{padding:48,textAlign:'center',color:'var(--fg3)'}}>暂无识别记录</div>
+        <div style={{padding:48,textAlign:'center',color:'var(--fg3)'}}>{lang === 'en' ? 'No recognition records yet' : '暂无识别记录'}</div>
       )}
 
       {!loading && records.length > 0 && (
@@ -851,7 +859,7 @@ function OCRHistory({user, token}) {
                     display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',
                     lineHeight:1.5,
                   }}>
-                    {r.ocr_result || '(无结果)'}
+                    {r.ocr_result || (lang === 'en' ? '(No result)' : '（无结果）')}
                   </div>
                 </div>
               </div>
@@ -863,10 +871,10 @@ function OCRHistory({user, token}) {
             <div style={{position:'sticky',top:0,alignSelf:'start'}}>
               <div className="card" style={{padding:'16px 18px'}}>
                 <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}}>
-                  <span style={{fontSize:13,fontWeight:600,color:'var(--gold2)'}}>识别详情</span>
+                  <span style={{fontSize:13,fontWeight:600,color:'var(--gold2)'}}>{lang === 'en' ? 'Recognition details' : '识别详情'}</span>
                   <div style={{display:'flex',gap:6}}>
                     <button className="btn btn-sm btn-s" onClick={() => copyText(selected.ocr_result)}>
-                      <span className="with-ic"><Icon name="copy" size={12} />复制</span>
+                      <span className="with-ic"><Icon name="copy" size={12} />{lang === 'en' ? 'Copy' : '复制'}</span>
                     </button>
                     <button className="btn btn-sm btn-s" onClick={() => setSelected(null)}>✕</button>
                   </div>
@@ -876,12 +884,12 @@ function OCRHistory({user, token}) {
                     style={{width:'100%',maxHeight:200,objectFit:'contain',borderRadius:6,
                       background:'var(--bg4)',marginBottom:12}} />
                 )}
-                <div style={{fontSize:11,color:'var(--fg3)',marginBottom:8}}>LaTeX 预览</div>
+                <div style={{fontSize:11,color:'var(--fg3)',marginBottom:8}}>{lang === 'en' ? 'LaTeX preview' : 'LaTeX 预览'}</div>
                 <div style={{minHeight:80,padding:'10px 12px',background:'var(--bg4)',
                   borderRadius:6,fontSize:14,lineHeight:1.9,marginBottom:10}}>
                   <div ref={mathJaxRef} />
                 </div>
-                <div style={{fontSize:11,color:'var(--fg3)',marginBottom:4}}>原文</div>
+                <div style={{fontSize:11,color:'var(--fg3)',marginBottom:4}}>{lang === 'en' ? 'Original text' : '原文'}</div>
                 <pre style={{
                   margin:0,padding:'10px 12px',background:'var(--bg4)',borderRadius:6,
                   fontSize:12,color:'var(--fg)',fontFamily:'monospace',lineHeight:1.6,
@@ -892,7 +900,7 @@ function OCRHistory({user, token}) {
                 {selected.feedback_text && (
                   <div style={{marginTop:10,padding:'8px 12px',background:'var(--bg4)',
                     borderRadius:6,fontSize:12,color:'var(--fg2)'}}>
-                    <span style={{color:'#5a8ac4',fontWeight:600}}>修改反馈：</span>{selected.feedback_text}
+                    <span style={{color:'#5a8ac4',fontWeight:600}}>{lang === 'en' ? 'Edit feedback:' : '编辑反馈：'}</span>{selected.feedback_text}
                   </div>
                 )}
               </div>
@@ -906,9 +914,10 @@ function OCRHistory({user, token}) {
 
 
 // ─────────────────────────────────────────────────────────────
-// API 直连模式（PDF/图片批量）
+// API direct mode (batch PDF/image)
 // ─────────────────────────────────────────────────────────────
 function OCRUpload({pdfJs, pdfLoaded, apiKey, setApiKey, keyMode, setKeyMode, ocrPrompt, setOcrPrompt, onPagesReady, user}) {
+  const lang = localStorage.getItem('mf_lang') === 'en' ? 'en' : 'zh';
   const [loading, setLoading] = React.useState(false);
   const [progress, setProgress] = React.useState('');
   const [dragging, setDragging] = React.useState(false);
@@ -916,30 +925,30 @@ function OCRUpload({pdfJs, pdfLoaded, apiKey, setApiKey, keyMode, setKeyMode, oc
 
   const processFile = async (file) => {
     if (!file) return;
-    if (!user) { showAlert('请先登录', '提示'); window.location.hash = '#/login'; return; }
+    if (!user) { showAlert(lang === 'en' ? 'Please log in first' : '请先登录', lang === 'en' ? 'Tip' : '提示'); window.location.hash = '#/login'; return; }
     const ext = file.name.toLowerCase().split('.').pop();
     if (!['pdf','png','jpg','jpeg','gif','bmp','tiff','webp'].includes(ext)) {
-      showAlert('请选择 PDF 或图片文件', '提示'); return;
+      showAlert(lang === 'en' ? 'Please choose a PDF or image file' : '请选择 PDF 或图片文件', lang === 'en' ? 'Tip' : '提示'); return;
     }
-    if (!pdfLoaded && ext === 'pdf') { showAlert('PDF.js 尚未加载，请稍后再试', '提示'); return; }
+    if (!pdfLoaded && ext === 'pdf') { showAlert(lang === 'en' ? 'PDF.js has not loaded yet. Please try again later.' : 'PDF.js 尚未加载，请稍后重试。', lang === 'en' ? 'Tip' : '提示'); return; }
     setLoading(true);
     try {
       let ps = [];
       if (ext === 'pdf') {
         const buf = await file.arrayBuffer();
-        setProgress('加载 PDF...');
+        setProgress(lang === 'en' ? 'Loading PDF...' : 'PDF 加载中...');
         const pdf = await pdfJs.current.getDocument({data: buf}).promise;
         for (let i = 1; i <= pdf.numPages; i++) {
-          setProgress(`渲染第 ${i} / ${pdf.numPages} 页...`);
+          setProgress(lang === 'en' ? `Rendering page ${i} of ${pdf.numPages}...` : `正在渲染第 ${i}/${pdf.numPages} 页...`);
           const page = await pdf.getPage(i);
           const vp = page.getViewport({scale: 1.5});
           const canvas = document.createElement('canvas');
           canvas.width = vp.width; canvas.height = vp.height;
           await page.render({canvasContext: canvas.getContext('2d'), viewport: vp}).promise;
-          ps.push({id:`p${i}`, name:`第 ${i} 页`, dataUrl: canvas.toDataURL('image/png'), status:'idle', result:'', error:''});
+          ps.push({id:`p${i}`, name:`Page ${i}`, dataUrl: canvas.toDataURL('image/png'), status:'idle', result:'', error:''});
         }
       } else {
-        setProgress('读取图片...');
+        setProgress(lang === 'en' ? 'Reading image...' : '读取图片中...');
         const dataUrl = await new Promise((res, rej) => {
           const r = new FileReader(); r.onload = e => res(e.target.result); r.onerror = rej; r.readAsDataURL(file);
         });
@@ -951,7 +960,7 @@ function OCRUpload({pdfJs, pdfLoaded, apiKey, setApiKey, keyMode, setKeyMode, oc
       }
       onPagesReady(ps);
     } catch(e) {
-      showAlert('文件处理失败: ' + e.message, '错误');
+      showAlert((lang === 'en' ? 'File processing failed: ' : '文件处理失败：') + e.message, lang === 'en' ? 'Error' : '错误');
     }
     setLoading(false); setProgress('');
   };
@@ -959,20 +968,20 @@ function OCRUpload({pdfJs, pdfLoaded, apiKey, setApiKey, keyMode, setKeyMode, oc
   return (
     <div className="fade-in">
       <div style={{marginBottom:28}}>
-        <h1 style={{fontFamily:'var(--serif)',fontSize:26,color:'var(--gold2)',marginBottom:6}}>API 识别模式</h1>
-        <p style={{color:'var(--fg2)',fontSize:13}}>PDF/图片在浏览器本地渲染，OCR 请求经后端代理，文件不上传服务器</p>
+        <h1 style={{fontFamily:'var(--serif)',fontSize:26,color:'var(--gold2)',marginBottom:6}}>{lang === 'en' ? 'API OCR mode' : 'API OCR 模式'}</h1>
+        <p style={{color:'var(--fg2)',fontSize:13}}>{lang === 'en' ? 'PDFs and images are rendered locally in the browser. OCR requests go through the backend proxy, so files are not uploaded to the server.' : 'PDF 和图片会在浏览器本地渲染。OCR 请求通过后端代理转发，因此文件不会上传到服务器。'}</p>
       </div>
 
       <div style={{display:'grid',gap:16,marginBottom:24}}>
         <div>
           <label style={{display:'block',fontSize:11,color:'var(--fg2)',marginBottom:6}}>
-            OCR API 密钥 <span style={{color:'var(--red)'}}>*</span>
+            {lang === 'en' ? 'OCR API key' : 'OCR API 密钥'} <span style={{color:'var(--red)'}}>*</span>
           </label>
           {user && !user.is_guest ? (
             <div style={{display:'flex',gap:8,marginBottom:keyMode==='own'?10:0}}>
               {[
-                {v:'platform', label:'使用平台密钥', hint:'由平台提供，无需填写'},
-                {v:'own',      label:'使用自己的密钥', hint:'填写您的 GLM API Key'},
+                {v:'platform', label:lang === 'en' ? 'Use platform key' : '使用平台密钥', hint:lang === 'en' ? 'Provided by the platform' : '由平台提供'},
+                {v:'own',      label:lang === 'en' ? 'Use my own key' : '使用我的密钥', hint:lang === 'en' ? 'Enter your GLM API key' : '输入你的 GLM API 密钥'},
               ].map(opt => (
                 <div key={opt.v} onClick={() => setKeyMode(opt.v)}
                   style={{flex:1,cursor:'pointer',padding:'10px 14px',borderRadius:6,
@@ -992,16 +1001,16 @@ function OCRUpload({pdfJs, pdfLoaded, apiKey, setApiKey, keyMode, setKeyMode, oc
           {(keyMode === 'own' || !user || user.is_guest) && (
             <input type="password"
               style={{width:'100%',padding:10,background:'var(--bg3)',border:'1px solid var(--border2)',borderRadius:6,color:'var(--fg)'}}
-              placeholder="输入您的 GLM / OCR API 密钥..."
+              placeholder={lang === 'en' ? 'Enter your GLM / OCR API key...' : '输入你的 GLM / OCR API 密钥...'}
               value={apiKey} onChange={e => setApiKey(e.target.value)}
             />
           )}
         </div>
         <div>
-          <label style={{display:'block',fontSize:11,color:'var(--fg2)',marginBottom:4}}>提示词（可选）</label>
+          <label style={{display:'block',fontSize:11,color:'var(--fg2)',marginBottom:4}}>{lang === 'en' ? 'Prompt (optional)' : '提示词（可选）'}</label>
           <textarea
             style={{width:'100%',minHeight:72,padding:10,background:'var(--bg3)',border:'1px solid var(--border2)',borderRadius:6,color:'var(--fg)',fontFamily:'inherit',resize:'vertical'}}
-            placeholder="例如：以 Markdown 格式提取文本，保留表格和公式..."
+            placeholder={lang === 'en' ? 'For example: extract text in Markdown and preserve tables and formulas...' : '例如：以 Markdown 提取文本并保留表格和公式...'}
             value={ocrPrompt} onChange={e => setOcrPrompt(e.target.value)}
           />
         </div>
@@ -1030,12 +1039,10 @@ function OCRUpload({pdfJs, pdfLoaded, apiKey, setApiKey, keyMode, setKeyMode, oc
               <Icon name="upload" size={32} stroke={1.6} />
             </div>
             <div>
-              <span style={{color:'var(--fg)',fontWeight:500}}>拖拽 PDF 或图片到这里</span>
-              <span style={{color:'var(--fg3)'}}> 或点击选择文件</span>
+              <span style={{color:'var(--fg)',fontWeight:500}}>{lang === 'en' ? 'Drag a PDF or image here' : '拖拽 PDF 或图片到这里'}</span>
+              <span style={{color:'var(--fg3)'}}>{lang === 'en' ? ' or click to choose a file' : ' 或点击选择文件'}</span>
             </div>
-            <div style={{fontSize:12,color:'var(--fg3)',marginTop:8}}>
-              支持 PDF、PNG、JPG、WebP 等 · 本地渲染
-            </div>
+            <div style={{fontSize:12,color:'var(--fg3)',marginTop:8}}>{lang === 'en' ? 'Supports PDF, PNG, JPG, WebP, and more · local rendering' : '支持 PDF、PNG、JPG、WebP 等 · 本地渲染'}</div>
           </>
         )}
       </div>
@@ -1048,6 +1055,7 @@ function OCRUpload({pdfJs, pdfLoaded, apiKey, setApiKey, keyMode, setKeyMode, oc
 // API 识别工作台
 // ─────────────────────────────────────────────────────────────
 function OCRWork({pages, setPages, apiKey, keyMode, ocrPrompt, activePageIdx, setActivePageIdx, setV, onReset, user}) {
+  const lang = localStorage.getItem('mf_lang') === 'en' ? 'en' : 'zh';
   const [selected, setSelected] = React.useState(() => new Set(pages.map(p => p.id)));
   const [running, setRunning] = React.useState(false);
   const abortRef = React.useRef(false);
@@ -1072,10 +1080,10 @@ function OCRWork({pages, setPages, apiKey, keyMode, ocrPrompt, activePageIdx, se
   };
 
   const runOCR = async () => {
-    if (!user) { showAlert('请先登录', '提示'); window.location.hash='#/login'; return; }
-    if (keyMode === 'own' && !apiKey.trim()) { showAlert('请先填写 OCR API 密钥', '提示'); return; }
+    if (!user) { showAlert(lang === 'en' ? 'Please log in first' : '请先登录', lang === 'en' ? 'Tip' : '提示'); window.location.hash='#/login'; return; }
+    if (keyMode === 'own' && !apiKey.trim()) { showAlert(lang === 'en' ? 'Please enter an OCR API key first' : '请先输入 OCR API 密钥', lang === 'en' ? 'Tip' : '提示'); return; }
     const targets = pages.filter(p => selected.has(p.id) && p.status !== 'done');
-    if (!targets.length) { showAlert('没有待处理页面', '提示'); return; }
+    if (!targets.length) { showAlert(lang === 'en' ? 'No pages to process' : '没有可处理的页面', lang === 'en' ? 'Tip' : '提示'); return; }
     setRunning(true); abortRef.current = false;
     for (const page of targets) {
       if (abortRef.current || !isMountedRef.current) break;
@@ -1089,10 +1097,10 @@ function OCRWork({pages, setPages, apiKey, keyMode, ocrPrompt, activePageIdx, se
         });
         const data = await resp.json();
         if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
-        if (!isMountedRef.current) break;  // 组件已卸载，停止处理
+        if (!isMountedRef.current) break;  // stop if unmounted
         setPages(prev => prev.map(p => p.id===page.id ? {...p, status:'done', result:data.text, error:''} : p));
       } catch(e) {
-        if (!isMountedRef.current) break;  // 组件已卸载，停止处理
+        if (!isMountedRef.current) break;  // stop if unmounted
         setPages(prev => prev.map(p => p.id===page.id ? {...p, status:'error', error:e.message} : p));
       }
     }
@@ -1122,7 +1130,7 @@ function OCRWork({pages, setPages, apiKey, keyMode, ocrPrompt, activePageIdx, se
 
   const downloadMD = () => {
     const done = pages.filter(p => p.status==='done');
-    if (!done.length) { showAlert('还没有已完成的结果', '提示'); return; }
+    if (!done.length) { showAlert(lang === 'en' ? 'No completed results yet' : '还没有完成的结果', lang === 'en' ? 'Tip' : '提示'); return; }
     const content = done.map((p,i) => `+-${i+1}-+\n\n${p.result}`).join('\n\n');
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([content],{type:'text/markdown'}));
@@ -1133,40 +1141,40 @@ function OCRWork({pages, setPages, apiKey, keyMode, ocrPrompt, activePageIdx, se
     <div className="fade-in">
       <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',marginBottom:20,flexWrap:'wrap',gap:12}}>
         <div>
-          <h1 style={{fontFamily:'var(--serif)',fontSize:22,marginBottom:4}}>识别工作台</h1>
+          <h1 style={{fontFamily:'var(--serif)',fontSize:22,marginBottom:4}}>{lang === 'en' ? 'Recognition workspace' : '识别工作台'}</h1>
           <p style={{color:'var(--fg2)',fontSize:13}}>
-            {pages.length} 页 · 已完成 {doneCount}
-            {errorCount>0 && <span style={{color:'var(--red)'}}> · 失败 {errorCount}</span>}
-            {processingCount>0 && <span style={{color:'var(--gold)'}}> · 处理中 {processingCount}</span>}
+            {lang === 'en'
+              ? `${pages.length} pages · ${doneCount} done${errorCount>0 ? ` · ${errorCount} failed` : ''}${processingCount>0 ? ` · ${processingCount} processing` : ''}`
+              : `${pages.length} 页 · 已完成 ${doneCount}${errorCount>0 ? ` · 失败 ${errorCount}` : ''}${processingCount>0 ? ` · 处理中 ${processingCount}` : ''}`}
           </p>
         </div>
         <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
           {doneCount>0 && <>
             <button className="btn btn-sm btn-s" onClick={()=>setV('result')}>
-              <span className="with-ic"><Icon name="file" size={14} />查看结果</span>
+              <span className="with-ic"><Icon name="file" size={14} />{lang === 'en' ? 'View results' : '查看结果'}</span>
             </button>
             <button className="btn btn-sm btn-s" onClick={downloadMD}>
-              <span className="with-ic"><Icon name="download" size={14} />下载 MD</span>
+              <span className="with-ic"><Icon name="download" size={14} />{lang === 'en' ? 'Download MD' : '下载 MD'}</span>
             </button>
           </>}
-          <button className="btn btn-sm btn-s" onClick={onReset}>+ 新文件</button>
+          <button className="btn btn-sm btn-s" onClick={onReset}>{lang === 'en' ? '+ New file' : '+ 新建文件'}</button>
         </div>
       </div>
 
       <div style={{display:'flex',gap:8,marginBottom:16,flexWrap:'wrap'}}>
-        <button className="btn btn-sm btn-s" onClick={()=>setSelected(new Set(pages.map(p=>p.id)))}>全选</button>
-        <button className="btn btn-sm btn-s" onClick={()=>setSelected(new Set())}>取消</button>
-        <button className="btn btn-sm btn-s" onClick={()=>setSelected(new Set(pages.filter(p=>p.status!=='done').map(p=>p.id)))}>选待处理</button>
+        <button className="btn btn-sm btn-s" onClick={()=>setSelected(new Set(pages.map(p=>p.id)))}>{lang === 'en' ? 'Select all' : '全选'}</button>
+        <button className="btn btn-sm btn-s" onClick={()=>setSelected(new Set())}>{lang === 'en' ? 'Clear' : '清空'}</button>
+        <button className="btn btn-sm btn-s" onClick={()=>setSelected(new Set(pages.filter(p=>p.status!=='done').map(p=>p.id)))}>{lang === 'en' ? 'Select pending' : '选择待处理'}</button>
         {!running
           ? <button className="btn btn-sm btn-p" onClick={runOCR} disabled={pendingSelected===0}>
-              <span className="with-ic"><Icon name="search" size={14} />开始识别 ({pendingSelected})</span>
+              <span className="with-ic"><Icon name="search" size={14} />{lang === 'en' ? `Start OCR (${pendingSelected})` : `开始识别（${pendingSelected}）`}</span>
             </button>
-          : <button className="btn btn-sm btn-d" onClick={()=>{abortRef.current=true;}}>停止</button>
+          : <button className="btn btn-sm btn-d" onClick={()=>{abortRef.current=true;}}>{lang === 'en' ? 'Stop' : '停止'}</button>
         }
       </div>
 
       <div style={{display:'flex',gap:8,marginBottom:16,fontSize:11,color:'var(--fg3)',flexWrap:'wrap'}}>
-        {[['idle','待处理'],['processing','处理中'],['done','已完成'],['error','错误']].map(([st,lb])=>(
+        {[[ 'idle', lang === 'en' ? 'Pending' : '待处理' ],[ 'processing', lang === 'en' ? 'Processing' : '处理中' ],[ 'done', lang === 'en' ? 'Done' : '完成' ],[ 'error', lang === 'en' ? 'Error' : '错误' ]].map(([st,lb])=>(
           <span key={st} style={{display:'flex',alignItems:'center',gap:4}}>
             <span style={{width:8,height:8,borderRadius:'50%',background:statusColor[st],
               animation:st==='processing'?'pulse 1.5s infinite':'none'}} />{lb}
@@ -1197,9 +1205,9 @@ function OCRWork({pages, setPages, apiKey, keyMode, ocrPrompt, activePageIdx, se
               <div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column',alignItems:'center',
                 justifyContent:'center',background:'rgba(0,0,0,.65)',gap:8,padding:8}}
                 onClick={e=>{e.stopPropagation();retryPage(p.id);}}>
-                <div style={{color:'var(--red)',fontSize:10}}>识别失败</div>
+                <div style={{color:'var(--red)',fontSize:10}}>{lang === 'en' ? 'OCR failed' : '识别失败'}</div>
                 <button className="btn btn-sm" style={{background:'var(--red)',color:'#fff',fontSize:11}}>
-                  <span className="with-ic"><Icon name="refresh" size={11} />重试</span>
+                  <span className="with-ic"><Icon name="refresh" size={11} />{lang === 'en' ? 'Retry' : '重试'}</span>
                 </button>
               </div>
             )}
@@ -1213,8 +1221,8 @@ function OCRWork({pages, setPages, apiKey, keyMode, ocrPrompt, activePageIdx, se
           padding:'12px 20px',display:'flex',alignItems:'center',gap:12,
           boxShadow:'0 8px 32px rgba(0,0,0,.4)',zIndex:200}}>
           <div className="load" />
-          <span style={{fontSize:13,color:'var(--fg2)'}}>识别中 · 已完成 {doneCount}/{pages.length}</span>
-          <button className="btn btn-sm btn-d" onClick={()=>{abortRef.current=true;}}>停止</button>
+          <span style={{fontSize:13,color:'var(--fg2)'}}>{lang === 'en' ? `Processing · Completed ${doneCount}/${pages.length}` : `处理中 · 已完成 ${doneCount}/${pages.length}`}</span>
+          <button className="btn btn-sm btn-d" onClick={()=>{abortRef.current=true;}}>{lang === 'en' ? 'Stop' : '停止'}</button>
         </div>
       )}
     </div>
@@ -1226,6 +1234,7 @@ function OCRWork({pages, setPages, apiKey, keyMode, ocrPrompt, activePageIdx, se
 // 识别结果视图
 // ─────────────────────────────────────────────────────────────
 function OCRResult({pages, initialIdx, goBack}) {
+  const lang = localStorage.getItem('mf_lang') === 'en' ? 'en' : 'zh';
   const done = React.useMemo(() => pages.filter(p => p.status==='done'), [pages]);
   const [idx, setIdx] = React.useState(() => {
     const p = pages[initialIdx];
@@ -1243,8 +1252,8 @@ function OCRResult({pages, initialIdx, goBack}) {
 
   if (!current) return (
     <div className="fade-in" style={{padding:32,textAlign:'center',color:'var(--fg3)'}}>
-      暂无识别结果<br />
-      <button className="btn btn-sm btn-s" style={{marginTop:16}} onClick={goBack}>← 返回</button>
+      {lang === 'en' ? 'No recognition results yet' : '暂无识别结果'}<br />
+      <button className="btn btn-sm btn-s" style={{marginTop:16}} onClick={goBack}>{lang === 'en' ? '← Back' : '← 返回'}</button>
     </div>
   );
 
@@ -1252,16 +1261,16 @@ function OCRResult({pages, initialIdx, goBack}) {
     <div className="fade-in">
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:24,flexWrap:'wrap',gap:12}}>
         <div style={{display:'flex',alignItems:'center',gap:12}}>
-          <button className="btn btn-sm btn-s" onClick={goBack}>← 返回</button>
-          <h2 style={{fontSize:18,fontWeight:600}}>识别结果</h2>
+          <button className="btn btn-sm btn-s" onClick={goBack}>{lang === 'en' ? '← Back' : '← 返回'}</button>
+          <h2 style={{fontSize:18,fontWeight:600}}>{lang === 'en' ? 'Recognition results' : '识别结果'}</h2>
         </div>
         <button className="btn btn-sm btn-s" onClick={downloadMD}>
-          <span className="with-ic"><Icon name="download" size={14} />下载全部 MD</span>
+        <span className="with-ic"><Icon name="download" size={14} />{lang === 'en' ? 'Download all MD' : '下载全部 MD'}</span>
         </button>
       </div>
 
       <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:12,marginBottom:20,flexWrap:'wrap'}}>
-        <button className="btn btn-sm btn-s" disabled={idx<=0} onClick={()=>setIdx(i=>i-1)}>← 上一页</button>
+        <button className="btn btn-sm btn-s" disabled={idx<=0} onClick={()=>setIdx(i=>i-1)}>{lang === 'en' ? '← Previous' : '← 上一页'}</button>
         <div style={{display:'flex',gap:4,flexWrap:'wrap',justifyContent:'center'}}>
           {done.map((p,i)=>(
             <button key={p.id} onClick={()=>setIdx(i)} style={{
@@ -1272,7 +1281,7 @@ function OCRResult({pages, initialIdx, goBack}) {
             }}>{pages.indexOf(p)+1}</button>
           ))}
         </div>
-        <button className="btn btn-sm btn-s" disabled={idx>=done.length-1} onClick={()=>setIdx(i=>i+1)}>下一页 →</button>
+        <button className="btn btn-sm btn-s" disabled={idx>=done.length-1} onClick={()=>setIdx(i=>i+1)}>{lang === 'en' ? 'Next →' : '下一页 →'}</button>
       </div>
 
       <div className="card" style={{padding:32,minHeight:400}}>

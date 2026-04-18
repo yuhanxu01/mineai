@@ -1,31 +1,32 @@
 {% verbatim %}
 // ---- DiffBlock: single diff with accept/reject ----
 function DiffBlock({diff, index, onAccept, onReject, accepted, rejected}) {
+  const lang = getLang();
   const st = accepted ? 'accepted' : rejected ? 'rejected' : 'pending';
   return (
     <div style={{marginBottom:10, border:`1px solid ${st==='accepted'?'var(--green)':st==='rejected'?'var(--red)':'var(--border2)'}`, borderRadius:6, overflow:'hidden', fontSize:12}}>
       <div style={{display:'flex',alignItems:'center',padding:'4px 8px',background:'var(--bg4)',gap:8}}>
-        <span style={{fontFamily:'var(--mono)',fontSize:11,color:'var(--fg3)'}}>变更 #{index+1}</span>
+        <span style={{fontFamily:'var(--mono)',fontSize:11,color:'var(--fg3)'}}>{lang === 'en' ? 'Change #' : '修改 #' }{index+1}</span>
         <span style={{marginLeft:'auto',display:'flex',gap:6}}>
           {st==='pending' && <>
             <button className="btn btn-sm" style={{background:'var(--green)',color:'#000',padding:'2px 8px',display:'inline-flex',alignItems:'center',gap:6}} onClick={()=>onAccept(index)}>
-              <Icon name="check" size={11} /> 接受
+              <Icon name="check" size={11} /> {lang === 'en' ? 'Accept' : '接受'}
             </button>
             <button className="btn btn-sm" style={{background:'var(--red)',color:'#fff',padding:'2px 8px',display:'inline-flex',alignItems:'center',gap:6}} onClick={()=>onReject(index)}>
-              <Icon name="x" size={11} /> 拒绝
+              <Icon name="x" size={11} /> {lang === 'en' ? 'Reject' : '拒绝'}
             </button>
           </>}
-          {st==='accepted' && <span style={{color:'var(--green)',fontSize:11,display:'inline-flex',alignItems:'center',gap:4}}><Icon name="check" size={11} /> 已接受</span>}
-          {st==='rejected' && <span style={{color:'var(--red)',fontSize:11,display:'inline-flex',alignItems:'center',gap:4}}><Icon name="x" size={11} /> 已拒绝</span>}
+          {st==='accepted' && <span style={{color:'var(--green)',fontSize:11,display:'inline-flex',alignItems:'center',gap:4}}><Icon name="check" size={11} /> {lang === 'en' ? 'Accepted' : '已接受'}</span>}
+          {st==='rejected' && <span style={{color:'var(--red)',fontSize:11,display:'inline-flex',alignItems:'center',gap:4}}><Icon name="x" size={11} /> {lang === 'en' ? 'Rejected' : '已拒绝'}</span>}
         </span>
       </div>
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr'}}>
         <div style={{padding:'6px 8px',background:'rgba(196,90,90,.08)',borderRight:'1px solid var(--border)'}}>
-          <div style={{fontSize:10,color:'var(--red)',marginBottom:3}}>原始</div>
+          <div style={{fontSize:10,color:'var(--red)',marginBottom:3}}>{lang === 'en' ? 'Original' : '原文'}</div>
           <pre style={{margin:0,fontFamily:'var(--mono)',whiteSpace:'pre-wrap',wordBreak:'break-word',color:'var(--fg2)',fontSize:11,lineHeight:1.5}}>{diff.original}</pre>
         </div>
         <div style={{padding:'6px 8px',background:'rgba(94,184,122,.08)'}}>
-          <div style={{fontSize:10,color:'var(--green)',marginBottom:3}}>修改后</div>
+          <div style={{fontSize:10,color:'var(--green)',marginBottom:3}}>{lang === 'en' ? 'Revised' : '修订'}</div>
           <pre style={{margin:0,fontFamily:'var(--mono)',whiteSpace:'pre-wrap',wordBreak:'break-word',color:'var(--fg)',fontSize:11,lineHeight:1.5}}>{diff.replacement}</pre>
         </div>
       </div>
@@ -67,16 +68,16 @@ function FileTree({files, selectedId, onSelect, onDelete}) {
                   {f.language ? f.language[0].toUpperCase() : '?'}
                 </span>
                 <span style={{flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{name}</span>
-                {f.modified && <span style={{color:'var(--orange)',fontSize:10,flexShrink:0}} title="已修改未保存">●</span>}
+                {f.modified && <span style={{color:'var(--orange)',fontSize:10,flexShrink:0}} title={lang === 'en' ? 'Modified, not saved' : '已修改，未保存'}>●</span>}
                 <span style={{fontSize:10,color:'var(--fg3)'}}>{f.size>1024?`${(f.size/1024).toFixed(1)}k`:`${f.size}b`}</span>
                 {onDelete && <button onClick={e=>{e.stopPropagation();onDelete(f.id);}}
-                  style={{background:'none',color:'var(--fg3)',fontSize:11,padding:'0 3px',lineHeight:1}} title="删除"><Icon name="x" size={11} /></button>}
+                  style={{background:'none',color:'var(--fg3)',fontSize:11,padding:'0 3px',lineHeight:1}} title={lang === 'en' ? 'Delete' : '删除'}><Icon name="x" size={11} /></button>}
               </div>
             );
           })}
         </div>
       ))}
-      {files.length === 0 && <div style={{padding:'20px 10px',color:'var(--fg3)',textAlign:'center',fontSize:12}}>暂无文件<br/>上传代码文件开始</div>}
+      {files.length === 0 && <div style={{padding:'20px 10px',color:'var(--fg3)',textAlign:'center',fontSize:12}}>{lang === 'en' ? 'No files yet<br/>Upload code files to get started' : '暂无文件<br/>上传代码文件即可开始'}</div>}
     </div>
   );
 }
@@ -101,6 +102,7 @@ const SKIP_DIRS = new Set(['.git','node_modules','__pycache__','dist','build',
 
 // ---- Main CodeAgentApp ----
 function CodeAgentApp({user, onLogout, onUpdateUser}) {
+  const lang = getLang();
   const [v, setV] = useState('home');
   const [projects, setProjects] = useState([]);
   const [proj, setProj] = useState(null);
@@ -160,7 +162,7 @@ function CodeAgentApp({user, onLogout, onUpdateUser}) {
       setFiles(detail.files || []);
       setProj(detail);
       if (uploadMode === 'server') {
-        const ss = await P(`${API}/code/projects/${p.id}/sessions/`, {title:'主对话'});
+        const ss = await P(`${API}/code/projects/${p.id}/sessions/`, {title:'Main chat'});
         setSession(ss);
         const sDetail = await F(`${API}/code/sessions/${ss.id}/`);
         setMessages(sDetail.messages || []);
@@ -194,9 +196,9 @@ function CodeAgentApp({user, onLogout, onUpdateUser}) {
     if (uploadMode === 'server') {
       if (!selFile) return;
       try {
-        await U(`${API}/code/files/${selFile.id}/`, {content:fileContent, change_summary:'手动编辑'});
+        await U(`${API}/code/files/${selFile.id}/`, {content:fileContent, change_summary:'Manual edit'});
         setFiles(files.map(ff => ff.id === selFile.id ? {...ff, size:fileContent.length} : ff));
-      } catch(e) { showAlert('保存失败: ' + e.message, '错误'); }
+      } catch(e) { showAlert((lang === 'en' ? 'Save failed: ' : '保存失败: ') + e.message, lang === 'en' ? 'Error' : '错误'); }
     } else {
       // 本地模式：更新内存 state，并写回磁盘（如果有 FSA 句柄）
       if (!selLocalPath) return;
@@ -208,7 +210,7 @@ function CodeAgentApp({user, onLogout, onUpdateUser}) {
           const writable = await entry.handle.createWritable();
           await writable.write(fileContent);
           await writable.close();
-        } catch(e) { showAlert('写入磁盘失败: ' + e.message, '错误'); }
+        } catch(e) { showAlert((lang === 'en' ? 'Failed to write to disk: ' : '写入磁盘失败: ') + e.message, lang === 'en' ? 'Error' : '错误'); }
       }
     }
   };
@@ -266,7 +268,7 @@ function CodeAgentApp({user, onLogout, onUpdateUser}) {
     } catch(e) {
       setScanning(false);
       setScanProgress(null);
-      if (e.name !== 'AbortError') showAlert('打开目录失败: ' + e.message, '错误');
+      if (e.name !== 'AbortError') showAlert((lang === 'en' ? 'Failed to open directory: ' : '打开目录失败: ') + e.message, lang === 'en' ? 'Error' : '错误');
     }
   };
 
@@ -315,17 +317,19 @@ function CodeAgentApp({user, onLogout, onUpdateUser}) {
         const res = await P(`${API}/code/projects/${proj.id}/files/batch/`, {files: resolved});
         if (res.rejected?.length) {
           const rejMsg = res.rejected.slice(0, 5).map(r => `${r.path}: ${r.reason}`).join('\n');
-          showAlert(`${res.saved} 个文件已上传，${res.rejected.length} 个被拒绝：\n${rejMsg}`, '上传结果');
+          showAlert(lang === 'en'
+            ? `${res.saved} files uploaded, ${res.rejected.length} rejected:\n${rejMsg}`
+            : `${res.saved} 个文件已上传，${res.rejected.length} 个被拒绝：\n${rejMsg}`, lang === 'en' ? 'Upload result' : '上传结果');
         }
         const detail = await F(`${API}/code/projects/${proj.id}/`);
         setFiles(detail.files || []);
         loadMemStats();
-      } catch(e) { showAlert('上传失败: ' + e.message, '错误'); }
+      } catch(e) { showAlert((lang === 'en' ? 'Upload failed: ' : '上传失败: ') + e.message, lang === 'en' ? 'Error' : '错误'); }
     }
   };
 
   const deleteFile = async (fileId) => {
-    const confirmed = await showConfirm('确认删除此文件？');
+    const confirmed = await showConfirm(lang === 'en' ? 'Delete this file?' : '删除此文件？');
     if (!confirmed) return;
     try {
       await F(`${API}/code/files/${fileId}/`, {method:'DELETE', headers:{'Authorization':`Token ${token}`}});
@@ -350,7 +354,7 @@ function CodeAgentApp({user, onLogout, onUpdateUser}) {
 
   const rollback = async (version) => {
     if (!selFile) return;
-    const confirmed = await showConfirm(`回滚到版本 v${version}？`);
+    const confirmed = await showConfirm(lang === 'en' ? `Rollback to version v${version}?` : `回滚到版本 v${version}？`);
     if (!confirmed) return;
     try {
       const res = await P(`${API}/code/files/${selFile.id}/rollback/`, {version});
@@ -358,8 +362,8 @@ function CodeAgentApp({user, onLogout, onUpdateUser}) {
       setFileContent(detail.content);
       setSelFile(detail);
       setFiles(files.map(f => f.id === selFile.id ? {...f, current_version: detail.current_version} : f));
-      showAlert(`已回滚到 v${version}`, '成功');
-    } catch(e) { showAlert('回滚失败: ' + e.message, '错误'); }
+      showAlert(lang === 'en' ? `Rolled back to v${version}` : `已回滚到 v${version}`, lang === 'en' ? 'Success' : '成功');
+    } catch(e) { showAlert((lang === 'en' ? 'Rollback failed: ' : '回滚失败: ') + e.message, lang === 'en' ? 'Error' : '错误'); }
   };
 
   // --- AI 对话（流式）---
@@ -402,7 +406,7 @@ function CodeAgentApp({user, onLogout, onUpdateUser}) {
       }
       setMessages(prev => [...prev, {id:Date.now()+1, role:'assistant', content:full}]);
     } catch(e) {
-      setMessages(prev => [...prev, {id:Date.now()+1, role:'assistant', content:`错误: ${e.message}`}]);
+      setMessages(prev => [...prev, {id:Date.now()+1, role:'assistant', content:`Error: ${e.message}`}]);
     } finally { setGenerating(false); setStreaming(''); }
   };
 
@@ -440,14 +444,14 @@ function CodeAgentApp({user, onLogout, onUpdateUser}) {
         }
       }
     } catch(e) {
-      setMessages(prev => [...prev, {role:'assistant', content:`编辑建议失败: ${e.message}`}]);
+      setMessages(prev => [...prev, {role:'assistant', content:`Edit suggestion failed: ${e.message}`}]);
     } finally { setGenerating(false); setStreaming(''); }
   };
 
   // --- 应用选中的 Diff ---
   const applyDiffs = async () => {
     const accepted = diffs.filter((_, i) => diffStates[i] === 'accepted');
-    if (!accepted.length) return showAlert('请先选择要接受的修改', '提示');
+    if (!accepted.length) return showAlert(lang === 'en' ? 'Please select the changes you want to accept first' : '请先选择要接受的修改', lang === 'en' ? 'Tip' : '提示');
 
     if (uploadMode === 'local') {
       // 本地模式：在浏览器内直接 apply，不调用服务器
@@ -459,18 +463,20 @@ function CodeAgentApp({user, onLogout, onUpdateUser}) {
       }
       setDiffs([]); setDiffStates({}); setEditInstruction(''); setRightPanel('chat');
       setMessages(prev => [...prev, {id:Date.now(), role:'assistant',
-        content:`已应用 ${applied} 处修改（本地预览，点击"写入磁盘"或"下载"保存）`}]);
+        content: lang === 'en'
+          ? `Applied ${applied} changes (local preview; click "Write" or "Download" to save)`
+          : `已应用 ${applied} 处修改（本地预览；点击“写入”或“下载”保存）` }]);
     } else {
       try {
         const res = await P(`${API}/code/files/${selFile.id}/apply_diffs/`, {
-          diffs: accepted, change_summary: editInstruction || 'AI建议'
+          diffs: accepted, change_summary: editInstruction || 'AI suggestion'
         });
         setFileContent(res.new_content);
         setSelFile(prev => ({...prev, current_version: res.current_version}));
         setDiffs([]); setDiffStates({}); setEditInstruction(''); setRightPanel('chat');
         setMessages(prev => [...prev, {id:Date.now(), role:'assistant',
-          content:`已应用 ${res.applied_count} 处修改，当前版本 v${res.current_version}`}]);
-      } catch(e) { showAlert('应用失败: ' + e.message, '错误'); }
+          content:`Applied ${res.applied_count} changes, current version v${res.current_version}`}]);
+      } catch(e) { showAlert((lang === 'en' ? 'Apply failed: ' : '应用失败: ') + e.message, lang === 'en' ? 'Error' : '错误'); }
     }
   };
 
@@ -482,11 +488,11 @@ function CodeAgentApp({user, onLogout, onUpdateUser}) {
       setShowNewProj(false);
       setNewProjData({name:'',description:'',language:''});
       openProject(p);
-    } catch(e) { showAlert('创建失败: ' + e.message, '错误'); }
+    } catch(e) { showAlert((lang === 'en' ? 'Create failed: ' : '创建失败: ') + e.message, lang === 'en' ? 'Error' : '错误'); }
   };
 
   const deleteProject = async (id) => {
-    const confirmed = await showConfirm('确认删除整个项目？');
+    const confirmed = await showConfirm(lang === 'en' ? 'Delete the entire project?' : '删除整个项目？');
     if (!confirmed) return;
     try {
       await F(`${API}/code/projects/${id}/`, {method:'DELETE', headers:{'Authorization':`Token ${token}`}});
@@ -501,11 +507,11 @@ function CodeAgentApp({user, onLogout, onUpdateUser}) {
       <div className="app">
         <div className={`sb ${sbOpen?'open':''}`}>
           <div className="sb-hd">
-            <h1>代码助手</h1>
-            <p>AI · 记忆 · Diff</p>
+            <h1>{lang === 'en' ? 'Code Assistant' : '代码助手'}</h1>
+            <p>{lang === 'en' ? 'AI · Memory · Diff' : 'AI · 记忆 · Diff'}</p>
           </div>
           <div className="sb-nav">
-            <div className="ns"><div className="ns-t">项目</div>
+            <div className="ns"><div className="ns-t">{lang === 'en' ? 'Projects' : '项目'}</div>
               {projects.map(p => (
                 <div key={p.id} className="ni" onClick={()=>openProject(p)}>
                   <i>{'</>'}</i>{p.name}
@@ -514,19 +520,19 @@ function CodeAgentApp({user, onLogout, onUpdateUser}) {
             </div>
           </div>
           <div style={{padding:'10px 8px',borderTop:'1px solid var(--border)'}}>
-            <button className="btn btn-s" style={{width:'100%',fontSize:12}} onClick={()=>window.location.hash='#/'}>← 返回 MineAI</button>
+            <button className="btn btn-s" style={{width:'100%',fontSize:12}} onClick={()=>window.location.hash='#/'}>{lang === 'en' ? '← Back to MineAI' : '← 返回 MineAI'}</button>
           </div>
         </div>
         <div className="main">
           <div className="top">
             <button className="menu-btn" onClick={()=>setSbOpen(!sbOpen)}><Icon name="menu" size={18} /></button>
-            <span className="top-t">代码助手</span>
-            <button className="btn btn-p btn-sm" onClick={()=>setShowNewProj(true)}>+ 新建项目</button>
+            <span className="top-t">{lang === 'en' ? 'Code Assistant' : '代码助手'}</span>
+            <button className="btn btn-p btn-sm" onClick={()=>setShowNewProj(true)}>{lang === 'en' ? '+ New Project' : '+ 新建项目'}</button>
           </div>
           <div className="ct">
             {projects.length === 0
-              ? <div className="empty"><h3>代码助手</h3><p>上传代码项目，AI 帮你理解、重构、生成代码</p><br/>
-                  <button className="btn btn-p" onClick={()=>setShowNewProj(true)}>新建项目</button></div>
+              ? <div className="empty"><h3>{lang === 'en' ? 'Code Assistant' : '代码助手'}</h3><p>{lang === 'en' ? 'Upload a code project and let AI help you understand, refactor, and generate code.' : '上传一个代码项目，让 AI 帮你理解、重构和生成代码。'}</p><br/>
+                  <button className="btn btn-p" onClick={()=>setShowNewProj(true)}>{lang === 'en' ? 'New Project' : '新建项目'}</button></div>
               : <div className="g3">
                   {projects.map(p => (
                     <div key={p.id} className="card" style={{cursor:'pointer'}} onClick={()=>openProject(p)}>
@@ -534,13 +540,13 @@ function CodeAgentApp({user, onLogout, onUpdateUser}) {
                         <span style={{fontFamily:'var(--mono)',fontSize:18,color:'var(--blue)'}}>{'</>'}</span>
                         <div>
                           <div style={{fontFamily:'var(--serif)',fontSize:16,color:'var(--fg)'}}>{p.name}</div>
-                          <div style={{fontSize:11,color:'var(--fg3)'}}>{p.language || '未设定语言'} · {p.file_count} 文件</div>
+                          <div style={{fontSize:11,color:'var(--fg3)'}}>{p.language || (lang === 'en' ? 'Language not set' : '未设置语言')} · {p.file_count} {lang === 'en' ? 'files' : '个文件'}</div>
                         </div>
                       </div>
-                      <div style={{fontSize:12,color:'var(--fg2)',marginTop:4}}>{p.description||'暂无描述'}</div>
+                      <div style={{fontSize:12,color:'var(--fg2)',marginTop:4}}>{p.description||(lang === 'en' ? 'No description' : '暂无描述')}</div>
                       <div style={{display:'flex',justifyContent:'flex-end',marginTop:8}}>
                         <button className="btn btn-sm" style={{background:'var(--red)',color:'#fff',fontSize:11}}
-                          onClick={e=>{e.stopPropagation();deleteProject(p.id);}}>删除</button>
+                          onClick={e=>{e.stopPropagation();deleteProject(p.id);}}>{lang === 'en' ? 'Delete' : '删除'}</button>
                       </div>
                     </div>
                   ))}
@@ -551,13 +557,13 @@ function CodeAgentApp({user, onLogout, onUpdateUser}) {
         {showNewProj && (
           <div className="modal-ov" onClick={e=>e.target===e.currentTarget&&setShowNewProj(false)}>
             <div className="modal">
-              <h2>新建代码项目</h2>
-              <div className="fg"><label>项目名称</label><input value={newProjData.name} onChange={e=>setNewProjData(p=>({...p,name:e.target.value}))} placeholder="我的项目"/></div>
-              <div className="fg"><label>描述</label><textarea value={newProjData.description} onChange={e=>setNewProjData(p=>({...p,description:e.target.value}))} placeholder="项目简介..." style={{minHeight:60}}/></div>
-              <div className="fg"><label>主要语言</label><input value={newProjData.language} onChange={e=>setNewProjData(p=>({...p,language:e.target.value}))} placeholder="python / javascript / go..."/></div>
+              <h2>{lang === 'en' ? 'New Code Project' : '新建代码项目'}</h2>
+              <div className="fg"><label>{lang === 'en' ? 'Project name' : '项目名称'}</label><input value={newProjData.name} onChange={e=>setNewProjData(p=>({...p,name:e.target.value}))} placeholder={lang === 'en' ? 'My project' : '我的项目'}/></div>
+              <div className="fg"><label>{lang === 'en' ? 'Description' : '描述'}</label><textarea value={newProjData.description} onChange={e=>setNewProjData(p=>({...p,description:e.target.value}))} placeholder={lang === 'en' ? 'Project summary...' : '项目简介...'} style={{minHeight:60}}/></div>
+              <div className="fg"><label>{lang === 'en' ? 'Main language' : '主要语言'}</label><input value={newProjData.language} onChange={e=>setNewProjData(p=>({...p,language:e.target.value}))} placeholder={lang === 'en' ? 'python / javascript / go...' : 'python / javascript / go...'}/></div>
               <div style={{display:'flex',gap:8,justifyContent:'flex-end',marginTop:16}}>
-                <button className="btn btn-s" onClick={()=>setShowNewProj(false)}>取消</button>
-                <button className="btn btn-p" onClick={createProject}>创建</button>
+                <button className="btn btn-s" onClick={()=>setShowNewProj(false)}>{lang === 'en' ? 'Cancel' : '取消'}</button>
+                <button className="btn btn-p" onClick={createProject}>{lang === 'en' ? 'Create' : '创建'}</button>
               </div>
             </div>
           </div>
@@ -591,7 +597,7 @@ function CodeAgentApp({user, onLogout, onUpdateUser}) {
       {/* ─ 侧边栏：文件树 ─ */}
       <div className={`sb ${sbOpen?'open':''}`} style={{width:230}}>
         <div className="sb-hd">
-          <h1 style={{fontSize:15,cursor:'pointer'}} onClick={()=>{setV('home');setProj(null);setSbOpen(false);}}>← {proj?.name||'代码助手'}</h1>
+          <h1 style={{fontSize:15,cursor:'pointer'}} onClick={()=>{setV('home');setProj(null);setSbOpen(false);}}>← {proj?.name||'Code Assistant'}</h1>
           <p style={{fontSize:10,color:'var(--blue)'}}>{proj?.language||''}</p>
         </div>
 
@@ -599,10 +605,10 @@ function CodeAgentApp({user, onLogout, onUpdateUser}) {
         <div style={{padding:'6px 10px',borderBottom:'1px solid var(--border)',display:'flex',gap:4}}>
           <button className={`btn btn-sm${uploadMode==='local'?' btn-p':' btn-s'}`}
             style={{flex:1,fontSize:11}}
-            onClick={()=>setUploadMode('local')}>本地模式</button>
+            onClick={()=>setUploadMode('local')}>{lang === 'en' ? 'Local' : '本地'}</button>
           <button className={`btn btn-sm${uploadMode==='server'?' btn-p':' btn-s'}`}
             style={{flex:1,fontSize:11}}
-            onClick={()=>setUploadMode('server')}>服务端</button>
+            onClick={()=>setUploadMode('server')}>{lang === 'en' ? 'Server' : '服务器'}</button>
         </div>
 
         {/* 上传/打开文件夹 */}
@@ -613,18 +619,18 @@ function CodeAgentApp({user, onLogout, onUpdateUser}) {
                 <button className="btn btn-s" style={{width:'100%',fontSize:11,marginBottom:4,
                   background:'var(--bg4)',border:'1px dashed var(--border2)',borderRadius:6}}
                   onClick={openDirectory} disabled={scanning}>
-                  {scanning ? '扫描中…' : '打开本地文件夹'}
+                  {scanning ? (lang === 'en' ? 'Scanning...' : '扫描中...') : (lang === 'en' ? 'Open local folder' : '打开本地文件夹')}
                 </button>
               )}
               <label style={{display:'block',background:'var(--bg4)',border:'1px dashed var(--border2)',
                 borderRadius:6,padding:'5px',textAlign:'center',cursor:'pointer',fontSize:11,color:'var(--fg2)'}}>
-                {fsaSupported ? '或 上传文件夹' : '选择文件夹'}
+                {fsaSupported ? (lang === 'en' ? 'Or upload a folder' : '或者上传文件夹') : (lang === 'en' ? 'Choose a folder' : '选择文件夹')}
                 <input type="file" multiple webkitdirectory="" style={{display:'none'}}
                   onChange={e=>uploadFiles(e.target.files)} disabled={scanning}/>
               </label>
               <label style={{display:'block',background:'var(--bg4)',border:'1px dashed var(--border2)',
                 borderRadius:6,padding:'5px',textAlign:'center',cursor:'pointer',fontSize:11,color:'var(--fg2)',marginTop:4}}>
-                上传文件
+                {lang === 'en' ? 'Upload files' : '上传文件'}
                 <input type="file" multiple style={{display:'none'}}
                   onChange={e=>uploadFiles(e.target.files)} disabled={scanning}/>
               </label>
@@ -632,17 +638,17 @@ function CodeAgentApp({user, onLogout, onUpdateUser}) {
           ) : (
             <>
               <div style={{fontSize:10,color:'var(--fg3)',marginBottom:4}}>
-                限制：≤{serverLimits.max_files} 文件 · ≤{serverLimits.max_total_mb}MB
+                {lang === 'en' ? 'Limit' : '限制'}: ≤{serverLimits.max_files} {lang === 'en' ? 'files' : '个文件'} · ≤{serverLimits.max_total_mb}MB
               </div>
               <label style={{display:'block',background:'var(--bg4)',border:'1px dashed var(--border2)',
                 borderRadius:6,padding:'5px',textAlign:'center',cursor:'pointer',fontSize:11,color:'var(--fg2)'}}>
-                上传文件夹到服务器
+                {lang === 'en' ? 'Upload folder to server' : '上传文件夹到服务器'}
                 <input type="file" multiple webkitdirectory="" style={{display:'none'}}
                   onChange={e=>uploadFiles(e.target.files)}/>
               </label>
               <label style={{display:'block',background:'var(--bg4)',border:'1px dashed var(--border2)',
                 borderRadius:6,padding:'5px',textAlign:'center',cursor:'pointer',fontSize:11,color:'var(--fg2)',marginTop:4}}>
-                上传文件
+                {lang === 'en' ? 'Upload files' : '上传文件'}
                 <input type="file" multiple style={{display:'none'}}
                   onChange={e=>uploadFiles(e.target.files)}/>
               </label>
@@ -653,15 +659,15 @@ function CodeAgentApp({user, onLogout, onUpdateUser}) {
         {/* 扫描进度 */}
         {scanning && scanProgress && (
           <div style={{padding:'10px',background:'var(--bg3)',borderBottom:'1px solid var(--border)'}}>
-            <div style={{fontSize:11,color:'var(--gold)',marginBottom:4}}>
-              正在扫描… 已发现 {scanProgress.scanned} 个文件
+              <div style={{fontSize:11,color:'var(--gold)',marginBottom:4}}>
+              {lang === 'en' ? 'Scanning...' : '扫描中...'} {scanProgress.scanned} {lang === 'en' ? 'files found' : '个文件'}
             </div>
             <div style={{fontSize:10,color:'var(--fg3)',overflow:'hidden',textOverflow:'ellipsis',
               whiteSpace:'nowrap',maxWidth:180}} title={scanProgress.currentFile}>
               {scanProgress.currentFile}
             </div>
             <button className="btn btn-sm btn-s" style={{marginTop:6,fontSize:10}}
-              onClick={()=>{scanAbortRef.current=true;setScanning(false);setScanProgress(null);}}>取消</button>
+              onClick={()=>{scanAbortRef.current=true;setScanning(false);setScanProgress(null);}}>{lang === 'en' ? 'Cancel' : '取消'}</button>
           </div>
         )}
 
@@ -682,12 +688,12 @@ function CodeAgentApp({user, onLogout, onUpdateUser}) {
         {uploadMode === 'server' && (
           <div style={{padding:'8px 10px',borderTop:'1px solid var(--border)',fontSize:11}}>
             <div style={{color:'var(--fg3)',marginBottom:4,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-              <span>记忆金字塔</span>
-              <button style={{background:'none',color:'var(--gold)',fontSize:10}} onClick={loadMemStats}>刷新</button>
+              <span>{lang === 'en' ? 'Memory pyramid' : '记忆金字塔'}</span>
+              <button style={{background:'none',color:'var(--gold)',fontSize:10}} onClick={loadMemStats}>{lang === 'en' ? 'Refresh' : '刷新'}</button>
             </div>
             {memStats
-              ? <div style={{color:'var(--gold)',fontFamily:'var(--mono)'}}>{memStats.total_nodes} 节点 · {memStats.total_content_chars?.toLocaleString()||0} 字符</div>
-              : <div style={{color:'var(--fg3)'}}>点击刷新查看</div>
+              ? <div style={{color:'var(--gold)',fontFamily:'var(--mono)'}}>{memStats.total_nodes} nodes · {memStats.total_content_chars?.toLocaleString()||0} chars</div>
+              : <div style={{color:'var(--fg3)'}}>{lang === 'en' ? 'Click refresh to view' : '点击刷新查看'}</div>
             }
           </div>
         )}
@@ -695,15 +701,15 @@ function CodeAgentApp({user, onLogout, onUpdateUser}) {
         {/* 本地模式：文件统计 */}
         {uploadMode === 'local' && localFileList.length > 0 && (
           <div style={{padding:'8px 10px',borderTop:'1px solid var(--border)',fontSize:11,color:'var(--fg3)'}}>
-            {localFileList.length} 个文件
+            {localFileList.length} {lang === 'en' ? 'files' : '个文件'}
             {dirHandle && <span style={{color:'var(--gold)',marginLeft:6}}>· {dirHandle.name}</span>}
-            <span style={{display:'block',fontSize:10,marginTop:2,color:'var(--gold)'}}>代码不上传服务器</span>
+            <span style={{display:'block',fontSize:10,marginTop:2,color:'var(--gold)'}}>{lang === 'en' ? 'Code is not uploaded to the server' : '代码不会上传到服务器'}</span>
           </div>
         )}
 
         <div style={{padding:'8px 10px',borderTop:'1px solid var(--border)'}}>
           <button className="btn btn-s" style={{width:'100%',fontSize:11}}
-            onClick={()=>window.location.hash='#/'}>← 返回 MineAI</button>
+            onClick={()=>window.location.hash='#/'}>{lang === 'en' ? '← Back to MineAI' : '← 返回 MineAI'}</button>
         </div>
       </div>
       <div className="sb-ov" onClick={()=>setSbOpen(false)} style={{display:sbOpen?'block':'none'}}/>
@@ -716,26 +722,26 @@ function CodeAgentApp({user, onLogout, onUpdateUser}) {
           <div className="top" style={{justifyContent:'space-between'}}>
             <button className="menu-btn" onClick={()=>setSbOpen(!sbOpen)}><Icon name="menu" size={18} /></button>
             <span style={{fontFamily:'var(--mono)',fontSize:12,color:hasActiveFile?'var(--fg)':'var(--fg3)',flex:1,marginLeft:8,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
-              {hasActiveFile ? activeFilePath : '← 选择文件'}
+              {hasActiveFile ? activeFilePath : (lang === 'en' ? '← Choose a file' : '← 选择文件')}
               {selFile && uploadMode==='server' && <span style={{fontSize:10,color:'var(--fg3)',marginLeft:8}}>v{selFile.current_version}</span>}
             </span>
             {/* 模式标识 chip */}
             <span style={{fontSize:10,padding:'2px 7px',borderRadius:10,marginRight:6,
               background: uploadMode==='local' ? 'rgba(212,175,55,.15)' : 'rgba(255,255,255,.06)',
               color: uploadMode==='local' ? 'var(--gold)' : 'var(--fg3)'}}>
-              {uploadMode==='local' ? '本地 · 不上传' : '服务端'}
+              {uploadMode==='local' ? (lang === 'en' ? 'Local · no upload' : '本地 · 不上传') : (lang === 'en' ? 'Server' : '服务器')}
             </span>
             {hasActiveFile && <>
-              <button className="btn btn-sm btn-s" onClick={saveFile} title="保存 (Ctrl+S)">保存</button>
+              <button className="btn btn-sm btn-s" onClick={saveFile} title={lang === 'en' ? 'Save (Ctrl+S)' : '保存（Ctrl+S）'}>{lang === 'en' ? 'Save' : '保存'}</button>
               {uploadMode === 'local' && (
                 <>
                   {dirHandle && localFiles[selLocalPath]?.handle &&
-                    <button className="btn btn-sm btn-s" onClick={saveFile} title="写入磁盘" style={{color:'var(--gold)'}}>写盘</button>
+                    <button className="btn btn-sm btn-s" onClick={saveFile} title={lang === 'en' ? 'Write to disk' : '写入磁盘'} style={{color:'var(--gold)'}}>{lang === 'en' ? 'Write' : '写入'}</button>
                   }
-                  <button className="btn btn-sm btn-s" onClick={downloadLocalFile} title="下载文件">下载</button>
+                  <button className="btn btn-sm btn-s" onClick={downloadLocalFile} title={lang === 'en' ? 'Download file' : '下载文件'}>{lang === 'en' ? 'Download' : '下载'}</button>
                 </>
               )}
-              {uploadMode === 'server' && <button className="btn btn-sm btn-s" onClick={loadVersions}>历史</button>}
+              {uploadMode === 'server' && <button className="btn btn-sm btn-s" onClick={loadVersions}>{lang === 'en' ? 'History' : '历史'}</button>}
             </>}
           </div>
 
@@ -743,17 +749,17 @@ function CodeAgentApp({user, onLogout, onUpdateUser}) {
           {hasActiveFile && (
             <div style={{padding:'6px 12px',borderBottom:'1px solid var(--border)',display:'flex',gap:6,background:'var(--bg2)'}}>
               <input value={editInstruction} onChange={e=>setEditInstruction(e.target.value)}
-                placeholder="输入修改指令，如：提取公共函数、添加错误处理、重命名变量…"
+                placeholder={lang === 'en' ? 'Enter an edit instruction, e.g. extract common functions, add error handling, rename variables...' : '输入编辑指令，例如提取公共函数、补充错误处理、重命名变量...'}
                 style={{flex:1,fontSize:12}}
                 onKeyDown={e=>e.key==='Enter'&&!e.shiftKey&&suggestEdits()}/>
               <button className={`btn btn-sm btn-ai${generating?' generating':''}`} onClick={suggestEdits} disabled={generating}
                 style={{display:'inline-flex',alignItems:'center',gap:6}}>
                 <Icon name="spark" size={12} />
-                {generating?'生成中…':'AI建议'}
+                {generating ? (lang === 'en' ? 'Generating...' : '生成中...') : (lang === 'en' ? 'AI Suggest' : 'AI 建议')}
               </button>
               <button className="btn btn-sm btn-s" onClick={()=>{setRightPanel('chat');setChatInput(editInstruction);}}
                 style={{display:'inline-flex',alignItems:'center',gap:6}}>
-                <Icon name="chat" size={12} /> 询问
+                <Icon name="chat" size={12} /> {lang === 'en' ? 'Ask' : '提问'}
               </button>
             </div>
           )}
@@ -762,12 +768,12 @@ function CodeAgentApp({user, onLogout, onUpdateUser}) {
           {uploadMode === 'local' && pendingDiskSave && selLocalPath && (
             <div style={{padding:'4px 12px',background:'rgba(212,175,55,.1)',borderBottom:'1px solid var(--border)',
               display:'flex',alignItems:'center',gap:8,fontSize:11}}>
-              <span style={{color:'var(--gold)'}}>● 已修改，尚未写入磁盘</span>
+              <span style={{color:'var(--gold)'}}>{lang === 'en' ? '● Modified, not yet written to disk' : '● 已修改，尚未写入磁盘'}</span>
               {dirHandle && localFiles[selLocalPath]?.handle && (
                 <button className="btn btn-sm" style={{background:'var(--gold)',color:'#000',padding:'2px 8px'}}
-                  onClick={saveFile}>写入磁盘</button>
+                  onClick={saveFile}>{lang === 'en' ? 'Write' : '写入'}</button>
               )}
-              <button className="btn btn-sm btn-s" style={{padding:'2px 8px'}} onClick={downloadLocalFile}>下载</button>
+              <button className="btn btn-sm btn-s" style={{padding:'2px 8px'}} onClick={downloadLocalFile}>{lang === 'en' ? 'Download' : '下载'}</button>
             </div>
           )}
 
@@ -777,7 +783,7 @@ function CodeAgentApp({user, onLogout, onUpdateUser}) {
                 {streaming && rightPanel==='diffs' && (
                   <div style={{position:'absolute',top:0,right:0,background:'var(--bg3)',border:'1px solid var(--border)',
                     borderRadius:6,padding:'6px 10px',zIndex:10,fontSize:11,color:'var(--fg3)',maxWidth:320,maxHeight:80,overflow:'hidden',margin:8}}>
-                    <span style={{color:'var(--gold)'}}>AI分析中…</span> {streaming.slice(-80)}
+                    <span style={{color:'var(--gold)'}}>{lang === 'en' ? 'AI analyzing...' : 'AI 分析中...'}</span> {streaming.slice(-80)}
                   </div>
                 )}
                 <textarea value={fileContent} onChange={e=>{
@@ -798,8 +804,8 @@ function CodeAgentApp({user, onLogout, onUpdateUser}) {
                 <h3 style={{fontSize:20}}>{'</>'}</h3>
                 <p>
                   {uploadMode === 'local'
-                    ? (fsaSupported ? '点击"打开本地文件夹"' : '点击"选择文件夹"') + '开始'
-                    : '从左侧文件树选择文件或上传代码文件夹'}
+                    ? (fsaSupported ? (lang === 'en' ? 'Click "Open local folder"' : '点击“打开本地文件夹”') : (lang === 'en' ? 'Click "Choose folder"' : '点击“选择文件夹”')) + (lang === 'en' ? ' to start' : ' 开始')
+                    : (lang === 'en' ? 'Select a file from the left tree or upload a code folder' : '从左侧选择文件，或上传一个代码文件夹')}
                 </p>
               </div>
           }
@@ -808,12 +814,12 @@ function CodeAgentApp({user, onLogout, onUpdateUser}) {
         {/* ─ 右侧面板 ─ */}
         <div style={{width:360,display:'flex',flexDirection:'column',overflow:'hidden',background:'var(--bg2)',flexShrink:0}}>
           <div className="tabs" style={{padding:'0 8px',marginBottom:0}}>
-            <div className={`tab${rightPanel==='chat'?' on':''}`} onClick={()=>setRightPanel('chat')}>对话</div>
+            <div className={`tab${rightPanel==='chat'?' on':''}`} onClick={()=>setRightPanel('chat')}>{lang === 'en' ? 'Chat' : '对话'}</div>
             <div className={`tab${rightPanel==='diffs'?' on':''}`} onClick={()=>setRightPanel('diffs')}>
-              Diff {diffs.length>0&&<span style={{fontSize:10,background:'var(--gold)',color:'#000',borderRadius:10,padding:'0 5px',marginLeft:4}}>{diffs.length}</span>}
+              {lang === 'en' ? 'Diff' : '差异'} {diffs.length>0&&<span style={{fontSize:10,background:'var(--gold)',color:'#000',borderRadius:10,padding:'0 5px',marginLeft:4}}>{diffs.length}</span>}
             </div>
             {uploadMode === 'server' && (
-              <div className={`tab${rightPanel==='versions'?' on':''}`} onClick={()=>{setRightPanel('versions');if(!versions.length&&selFile)loadVersions();}}>版本</div>
+              <div className={`tab${rightPanel==='versions'?' on':''}`} onClick={()=>{setRightPanel('versions');if(!versions.length&&selFile)loadVersions();}}>{lang === 'en' ? 'Versions' : '版本'}</div>
             )}
           </div>
 
@@ -824,15 +830,15 @@ function CodeAgentApp({user, onLogout, onUpdateUser}) {
                 {messages.length===0 && (
                   <div style={{textAlign:'center',padding:'30px 10px',color:'var(--fg3)',fontSize:12}}>
                     <div style={{marginBottom:8}}><Icon name="chat" size={28} /></div>
-                    <div>询问代码逻辑、重构建议、bug 排查</div>
+                    <div>{lang === 'en' ? 'Ask about code logic, refactoring ideas, or bug fixes' : '可以询问代码逻辑、重构思路或修复建议'}</div>
                     <div style={{marginTop:4,fontSize:11}}>
-                      {uploadMode==='local' ? '本地模式：代码不会存储到服务器' : 'AI 会结合记忆中的全部代码作答'}
+                      {uploadMode==='local' ? (lang === 'en' ? 'Local mode: code is not stored on the server' : '本地模式：代码不会存储到服务器') : (lang === 'en' ? 'AI answers using all code stored in memory' : 'AI 会使用内存中的全部代码作答')}
                     </div>
                   </div>
                 )}
                 {messages.map((m,i) => (
                   <div key={m.id||i} className={`cht-m ${m.role==='user'?'u':'a'}`}>
-                    <div className="cht-lb">{m.role==='user'?'你':'AI助手'}</div>
+                    <div className="cht-lb">{m.role==='user' ? (lang === 'en' ? 'You' : '你') : (lang === 'en' ? 'AI Assistant' : 'AI 助手')}</div>
                     <div className="cht-bbl" style={{whiteSpace:'pre-wrap',wordBreak:'break-word'}}>
                       {m.content}
                     </div>
@@ -840,7 +846,7 @@ function CodeAgentApp({user, onLogout, onUpdateUser}) {
                 ))}
                 {streaming && rightPanel==='chat' && (
                   <div className="cht-m a">
-                    <div className="cht-lb">AI助手</div>
+                    <div className="cht-lb">{lang === 'en' ? 'AI Assistant' : 'AI 助手'}</div>
                     <div className="cht-bbl" style={{whiteSpace:'pre-wrap',wordBreak:'break-word'}}>{streaming}<span style={{animation:'blink 1s infinite',display:'inline-block',marginLeft:2}}>▌</span></div>
                   </div>
                 )}
@@ -848,9 +854,9 @@ function CodeAgentApp({user, onLogout, onUpdateUser}) {
               </div>
               <div className="cht-in">
                 <input value={chatInput} onChange={e=>setChatInput(e.target.value)}
-                  placeholder="询问代码、请求解释或重构…"
+                  placeholder={lang === 'en' ? 'Ask about code, request explanations, or refactors...' : '询问代码、请求解释或重构建议...'}
                   onKeyDown={e=>e.key==='Enter'&&!e.shiftKey&&sendChat()}/>
-                <button className={`btn btn-p btn-sm${generating?' generating':''}`} onClick={sendChat} disabled={generating}>发送</button>
+                <button className={`btn btn-p btn-sm${generating?' generating':''}`} onClick={sendChat} disabled={generating}>{lang === 'en' ? 'Send' : '发送'}</button>
               </div>
             </div>
           )}
@@ -861,25 +867,25 @@ function CodeAgentApp({user, onLogout, onUpdateUser}) {
               {streaming && !diffs.length && (
                 <div style={{padding:'12px',color:'var(--gold)',fontSize:12,display:'flex',alignItems:'center',gap:8}}>
                   <div className="load" style={{padding:0}}/>
-                  AI 正在分析代码，生成修改建议…
+                  {lang === 'en' ? 'AI is analyzing the code and generating edit suggestions...' : 'AI 正在分析代码并生成编辑建议...'}
                 </div>
               )}
               {diffs.length === 0 && !streaming && (
                 <div className="empty" style={{padding:'30px 10px'}}>
-                  <p>在编辑器上方输入修改指令<br/>点击"AI建议"生成 Diff</p>
+                  <p>{lang === 'en' ? 'Enter an edit instruction above the editor<br/>Click "AI Suggest" to generate diffs' : '在上方输入编辑指令<br/>点击“AI 建议”生成差异'}</p>
                 </div>
               )}
               {diffs.length > 0 && (
                 <>
                   <div style={{padding:'8px 12px',borderBottom:'1px solid var(--border)',display:'flex',alignItems:'center',gap:8}}>
-                    <span style={{fontSize:12,color:'var(--fg2)'}}>{diffs.length} 处建议</span>
+                    <span style={{fontSize:12,color:'var(--fg2)'}}>{diffs.length} {lang === 'en' ? 'suggestions' : '条建议'}</span>
                     <button className="btn btn-sm" style={{background:'var(--green)',color:'#000'}}
-                      onClick={()=>{const s={};diffs.forEach((_,i)=>s[i]='accepted');setDiffStates(s);}}>全部接受</button>
+                      onClick={()=>{const s={};diffs.forEach((_,i)=>s[i]='accepted');setDiffStates(s);}}>{lang === 'en' ? 'Accept all' : '全部接受'}</button>
                     <button className="btn btn-sm btn-s"
-                      onClick={()=>{const s={};diffs.forEach((_,i)=>s[i]='rejected');setDiffStates(s);}}>全部拒绝</button>
+                      onClick={()=>{const s={};diffs.forEach((_,i)=>s[i]='rejected');setDiffStates(s);}}>{lang === 'en' ? 'Reject all' : '全部拒绝'}</button>
                     {acceptedCount > 0 &&
                       <button className="btn btn-sm btn-p" onClick={applyDiffs} style={{marginLeft:'auto'}}>
-                        应用 {acceptedCount} 处
+                        {lang === 'en' ? 'Apply' : '应用'} {acceptedCount}
                       </button>
                     }
                   </div>
@@ -900,18 +906,18 @@ function CodeAgentApp({user, onLogout, onUpdateUser}) {
           {/* 版本历史面板（仅服务端模式）*/}
           {rightPanel==='versions' && uploadMode==='server' && (
             <div style={{flex:1,overflowY:'auto',padding:'10px 12px'}}>
-              {!selFile && <div className="empty"><p>请先选择文件</p></div>}
-              {selFile && versions.length === 0 && <div className="empty"><p>暂无历史版本</p></div>}
+              {!selFile && <div className="empty"><p>{lang === 'en' ? 'Please select a file first' : '请先选择文件'}</p></div>}
+              {selFile && versions.length === 0 && <div className="empty"><p>{lang === 'en' ? 'No version history yet' : '暂无版本历史'}</p></div>}
               {versions.map(v => (
                 <div key={v.version} style={{padding:'10px 12px',border:'1px solid var(--border)',borderRadius:6,marginBottom:8}}>
                   <div style={{display:'flex',alignItems:'center',gap:8}}>
                     <span style={{fontFamily:'var(--mono)',fontSize:12,color:'var(--gold)'}}>v{v.version}</span>
-                    <span style={{fontSize:11,color:'var(--fg2)',flex:1}}>{v.change_summary||'无说明'}</span>
+                    <span style={{fontSize:11,color:'var(--fg2)',flex:1}}>{v.change_summary||(lang === 'en' ? 'No description' : '暂无描述')}</span>
                     <span style={{fontSize:10,color:'var(--fg3)'}}>{v.size} B</span>
                   </div>
                   <div style={{fontSize:10,color:'var(--fg3)',marginTop:3}}>{v.created_at?.slice(0,16)}</div>
                   <button className="btn btn-sm btn-s" style={{marginTop:6,fontSize:11}} onClick={()=>rollback(v.version)}>
-                    回滚到此版本
+                    {lang === 'en' ? 'Roll back to this version' : '回滚到此版本'}
                   </button>
                 </div>
               ))}

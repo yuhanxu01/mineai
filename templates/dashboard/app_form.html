@@ -7,51 +7,51 @@
   <div class="page-header-left">
     <h1>{{ action }}</h1>
   </div>
-  <a href="{% url 'dashboard:app_list' %}" class="btn btn-outline">← 返回列表</a>
+  <a href="{% url 'dashboard:app_list' %}" class="btn btn-outline">← Back to list</a>
 </div>
 
 <div class="card">
-  <div class="card-header"><h2>应用信息</h2></div>
+  <div class="card-header"><h2>App Info</h2></div>
   <div class="card-body">
     <form method="post">
       {% csrf_token %}
       <div class="form-grid">
         <div class="form-group">
-          <label>应用名称</label>
-          <input class="form-control" type="text" name="name" required value="{{ app.name|default:'' }}" placeholder="例如：写作助手">
+          <label>App name</label>
+          <input class="form-control" type="text" name="name" required value="{{ app.name|default:'' }}" placeholder="e.g. Writing Assistant">
         </div>
         <div class="form-group">
-          <label>标识符 (slug)</label>
-          <input class="form-control" type="text" name="slug" required value="{{ app.slug|default:'' }}" placeholder="例如：writer" {% if app %}disabled{% endif %}>
-          {% if app %}<small style="color:var(--text-muted)">标识符创建后不可修改</small>{% endif %}
+          <label>Slug</label>
+          <input class="form-control" type="text" name="slug" required value="{{ app.slug|default:'' }}" placeholder="e.g. writer" {% if app %}disabled{% endif %}>
+          {% if app %}<small style="color:var(--text-muted)">The slug cannot be changed after creation.</small>{% endif %}
         </div>
         <div class="form-group">
-          <label>图标（关键字）</label>
+          <label>Icon keyword</label>
           <input class="form-control" type="text" name="icon" value="{{ app.icon|default:'grid' }}" placeholder="grid / book / pen / layers / scan / share">
-          <small style="color:var(--text-muted)">用于前台显示的扁平化图标关键字</small>
+          <small style="color:var(--text-muted)">Keyword used for the frontend icon</small>
         </div>
         <div class="form-group">
-          <label>主题色</label>
+          <label>Theme color</label>
           <input class="form-control" type="color" name="color" value="{{ app.color|default:'#c9a86c' }}">
         </div>
         <div class="form-group">
-          <label>排序权重（越小越靠前）</label>
+          <label>Sort weight (smaller appears first)</label>
           <input class="form-control" type="number" name="order" value="{{ app.order|default:0 }}">
         </div>
         <div class="form-group" style="grid-column: 1/-1">
-          <label>应用描述</label>
-          <textarea class="form-control" name="description" rows="3" placeholder="简要描述这个应用的功能…">{{ app.description|default:'' }}</textarea>
+          <label>App description</label>
+          <textarea class="form-control" name="description" rows="3" placeholder="Briefly describe what this app does...">{{ app.description|default:'' }}</textarea>
         </div>
       </div>
       <div class="form-check" style="margin-top:12px">
         <input type="checkbox" name="is_active" id="is_active" {% if not app or app.is_active %}checked{% endif %}>
-        <label for="is_active">启用应用（在 Hub 中显示）</label>
+        <label for="is_active">Enable app (show in Hub)</label>
       </div>
       <div class="form-actions">
         <button class="btn btn-primary" type="submit">
-          <span class="with-ic">{% include 'dashboard/_icon.html' with name='save' size=14 %}保存</span>
+          <span class="with-ic">{% include 'dashboard/_icon.html' with name='save' size=14 %}Save</span>
         </button>
-        <a href="{% url 'dashboard:app_list' %}" class="btn btn-outline">取消</a>
+        <a href="{% url 'dashboard:app_list' %}" class="btn btn-outline">Cancel</a>
       </div>
     </form>
   </div>

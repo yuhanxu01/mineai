@@ -155,6 +155,7 @@ function KGCytoGraph({elements, onNodeClick, selectedNodeId}) {
 // ── 图谱项目列表 ──────────────────────────────────────────────────
 
 function KGProjectList({onSelect}) {
+  const lang = getLang();
   const [projects, setProjects] = useState([]);
   const [platformKG, setPlatformKG] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -174,8 +175,8 @@ function KGProjectList({onSelect}) {
       // 构造平台图谱虚拟对象
       setPlatformKG({
         _platform: true,
-        title: '平台功能图谱',
-        description: '了解 MineAI 平台各应用的所有功能，只读',
+        title: lang === 'en' ? 'Platform Feature Graph' : '平台功能图谱',
+        description: lang === 'en' ? 'Explore all MineAI platform app capabilities, read-only' : '了解 MineAI 平台各应用的所有功能，只读',
         node_count: platform.nodes.length,
         edge_count: platform.edges.length,
       });
@@ -216,7 +217,7 @@ function KGProjectList({onSelect}) {
     } catch(e) {}
   };
 
-  if (loading) return <div className="load" style={{padding:40}}>加载中...</div>;
+    if (loading) return <div className="load" style={{padding:40}}>{lang === 'en' ? 'Loading...' : '加载中...'}</div>;
 
   return (
     <div style={{padding:24,maxWidth:700}}>
@@ -224,7 +225,7 @@ function KGProjectList({onSelect}) {
       {platformKG && (
         <div style={{marginBottom:24}}>
           <div style={{fontSize:11,color:'var(--fg3)',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:10}}>
-            平台内置
+            {lang === 'en' ? 'Platform Built-in' : '平台内置'}
           </div>
           <div onClick={() => onSelect(platformKG)}
             style={{background:'var(--bg3)',border:'1px solid rgba(201,168,108,.4)',borderRadius:'var(--r)',
@@ -262,24 +263,24 @@ function KGProjectList({onSelect}) {
 
       {/* 我的图谱 */}
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}}>
-        <div style={{fontSize:11,color:'var(--fg3)',textTransform:'uppercase',letterSpacing:'.06em'}}>我的图谱</div>
-        <button className="btn btn-p" onClick={() => setShowNew(true)}>+ 新建图谱</button>
+        <div style={{fontSize:11,color:'var(--fg3)',textTransform:'uppercase',letterSpacing:'.06em'}}>{lang === 'en' ? 'My Graphs' : '我的图谱'}</div>
+        <button className="btn btn-p" onClick={() => setShowNew(true)}>+ {lang === 'en' ? 'New Graph' : '新建图谱'}</button>
       </div>
 
       {showNew && (
         <div style={{background:'var(--bg3)',border:'1px solid var(--border2)',borderRadius:'var(--r)',padding:16,marginBottom:16}}>
-          <input value={newTitle} onChange={e=>setNewTitle(e.target.value)} placeholder="图谱名称" style={{width:'100%',marginBottom:8}} />
-          <textarea value={newDesc} onChange={e=>setNewDesc(e.target.value)} placeholder="描述（可选）" style={{width:'100%',marginBottom:8,minHeight:60}} />
+          <input value={newTitle} onChange={e=>setNewTitle(e.target.value)} placeholder={lang === 'en' ? 'Graph name' : '图谱名称'} style={{width:'100%',marginBottom:8}} />
+          <textarea value={newDesc} onChange={e=>setNewDesc(e.target.value)} placeholder={lang === 'en' ? 'Description (optional)' : '描述（可选）'} style={{width:'100%',marginBottom:8,minHeight:60}} />
           <div style={{display:'flex',gap:8}}>
-            <button className="btn btn-p" onClick={createProject}>创建</button>
-            <button className="btn" onClick={() => setShowNew(false)}>取消</button>
+            <button className="btn btn-p" onClick={createProject}>{lang === 'en' ? 'Create' : '创建'}</button>
+            <button className="btn" onClick={() => setShowNew(false)}>{lang === 'en' ? 'Cancel' : '取消'}</button>
           </div>
         </div>
       )}
 
       {projects.length === 0 && (
         <div style={{color:'var(--fg3)',textAlign:'center',padding:40,fontSize:13}}>
-          暂无知识图谱，点击"新建图谱"开始构建，或克隆平台图谱进行编辑
+          {lang === 'en' ? 'No knowledge graphs yet. Click "New Graph" to start, or clone the platform graph to edit.' : '暂无知识图谱，点击"新建图谱"开始构建，或克隆平台图谱进行编辑'}
         </div>
       )}
 
@@ -301,12 +302,12 @@ function KGProjectList({onSelect}) {
               <div style={{fontWeight:600,marginBottom:3}}>{p.title}</div>
               <div style={{color:'var(--fg3)',fontSize:12}}>
                 {p.source_app !== 'manual' && <span style={{marginRight:8}}>[{p.source_app}]</span>}
-                {p.node_count} 节点 · {p.edge_count} 边 · {new Date(p.updated_at).toLocaleDateString()}
+                {p.node_count} {lang === 'en' ? 'nodes' : '节点'} · {p.edge_count} {lang === 'en' ? 'edges' : '边'} · {new Date(p.updated_at).toLocaleDateString()}
               </div>
             </div>
             <button onClick={(e) => deleteProject(p.id, e)}
               style={{background:'transparent',color:'var(--fg3)',padding:'4px 8px',fontSize:12}}>
-              删除
+              {lang === 'en' ? 'Delete' : '删除'}
             </button>
           </div>
         ))}
@@ -374,18 +375,18 @@ function KGGraphView({kg}) {
         {loading && (
           <div style={{position:'absolute',top:16,left:'50%',transform:'translateX(-50%)',
             background:'var(--bg3)',padding:'6px 16px',borderRadius:20,zIndex:10,
-            fontSize:12,color:'var(--fg2)'}}>加载中...</div>
+            fontSize:12,color:'var(--fg2)'}}>{lang === 'en' ? 'Loading...' : '加载中...'}</div>
         )}
         <div style={{position:'absolute',top:12,left:12,zIndex:10,display:'flex',gap:8,alignItems:'center'}}>
           <select value={maxNodes} onChange={e=>setMaxNodes(Number(e.target.value))}
             style={{padding:'4px 8px',fontSize:12,background:'var(--bg3)'}}>
-            <option value={50}>50节点</option>
-            <option value={100}>100节点</option>
-            <option value={200}>200节点</option>
+            <option value={50}>50 {lang === 'en' ? 'nodes' : '节点'}</option>
+            <option value={100}>100 {lang === 'en' ? 'nodes' : '节点'}</option>
+            <option value={200}>200 {lang === 'en' ? 'nodes' : '节点'}</option>
           </select>
-          <button className="btn" style={{fontSize:12,padding:'4px 12px'}} onClick={loadGraph}>刷新</button>
+          <button className="btn" style={{fontSize:12,padding:'4px 12px'}} onClick={loadGraph}>{lang === 'en' ? 'Refresh' : '刷新'}</button>
           <span style={{fontSize:11,color:'var(--fg3)',background:'var(--bg3)',padding:'3px 8px',borderRadius:12}}>
-            {stats.nodes} 节点 · {stats.edges} 边
+            {stats.nodes} {lang === 'en' ? 'nodes' : '节点'} · {stats.edges} {lang === 'en' ? 'edges' : '边'}
           </span>
         </div>
 
@@ -406,7 +407,7 @@ function KGGraphView({kg}) {
         ) : (
           !loading && (
             <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100%',color:'var(--fg3)'}}>
-              暂无节点数据，请先提取知识
+              {lang === 'en' ? 'No nodes yet. Please extract knowledge first.' : '暂无节点数据，请先提取知识'}
             </div>
           )
         )}
@@ -427,17 +428,17 @@ function KGGraphView({kg}) {
               color: KG_NODE_COLORS[nodePanel.node_type]}}>
               {KG_NODE_LABELS[nodePanel.node_type]}
             </span>
-            <span style={{fontSize:11,color:'var(--fg3)'}}>重要度 {(nodePanel.importance||0).toFixed(2)}</span>
+            <span style={{fontSize:11,color:'var(--fg3)'}}>{lang === 'en' ? 'Importance' : '重要度'} {(nodePanel.importance||0).toFixed(2)}</span>
           </div>
           {nodePanel.description && (
             <p style={{color:'var(--fg2)',fontSize:12,marginBottom:10,lineHeight:1.6}}>{nodePanel.description}</p>
           )}
           {nodePanel.source_ref && (
-            <div style={{fontSize:11,color:'var(--gold)',marginBottom:10}}>来源: {nodePanel.source_ref}</div>
+            <div style={{fontSize:11,color:'var(--gold)',marginBottom:10}}>{lang === 'en' ? 'Source:' : '来源:'} {nodePanel.source_ref}</div>
           )}
           {nodePanel.keywords && nodePanel.keywords.length > 0 && (
             <div style={{marginBottom:10}}>
-              <div style={{fontSize:11,color:'var(--fg3)',marginBottom:4}}>关键词</div>
+              <div style={{fontSize:11,color:'var(--fg3)',marginBottom:4}}>{lang === 'en' ? 'Keywords' : '关键词'}</div>
               <div style={{display:'flex',flexWrap:'wrap',gap:4}}>
                 {nodePanel.keywords.map((k,i) => (
                   <span key={i} style={{fontSize:11,padding:'2px 6px',background:'var(--bg4)',borderRadius:10}}>{k}</span>
@@ -447,7 +448,7 @@ function KGGraphView({kg}) {
           )}
           {nodePanel.out_edges && nodePanel.out_edges.length > 0 && (
             <div style={{marginBottom:10}}>
-              <div style={{fontSize:11,color:'var(--fg3)',marginBottom:4}}>出边 ({nodePanel.out_edges.length})</div>
+              <div style={{fontSize:11,color:'var(--fg3)',marginBottom:4}}>{lang === 'en' ? 'Outgoing edges' : '出边'} ({nodePanel.out_edges.length})</div>
               {nodePanel.out_edges.map(e => (
                 <div key={e.edge_id} style={{fontSize:11,color:'var(--fg2)',padding:'3px 0',
                   borderBottom:'1px solid var(--border)'}}>
@@ -458,7 +459,7 @@ function KGGraphView({kg}) {
           )}
           {nodePanel.in_edges && nodePanel.in_edges.length > 0 && (
             <div>
-              <div style={{fontSize:11,color:'var(--fg3)',marginBottom:4}}>入边 ({nodePanel.in_edges.length})</div>
+              <div style={{fontSize:11,color:'var(--fg3)',marginBottom:4}}>{lang === 'en' ? 'Incoming edges' : '入边'} ({nodePanel.in_edges.length})</div>
               {nodePanel.in_edges.map(e => (
                 <div key={e.edge_id} style={{fontSize:11,color:'var(--fg2)',padding:'3px 0',
                   borderBottom:'1px solid var(--border)'}}>
@@ -512,11 +513,11 @@ function KGNodeManager({kg}) {
       });
       setAddLabel(''); setAddDesc(''); setShowAdd(false);
       load();
-    } catch(e) { showAlert('添加失败', '错误'); }
+    } catch(e) { showAlert(lang === 'en' ? 'Add failed' : '添加失败', lang === 'en' ? 'Error' : '错误'); }
   };
 
   const deleteNode = async (id) => {
-    const confirmed = await showConfirm('确认删除节点？相关边也会被删除');
+    const confirmed = await showConfirm(lang === 'en' ? 'Delete this node? Related edges will also be removed.' : '确认删除节点？相关边也会被删除');
     if (!confirmed) return;
     try {
       await fetch(`${KG_API}/projects/${kg.id}/nodes/${id}/`, {
@@ -531,24 +532,24 @@ function KGNodeManager({kg}) {
       <div style={{display:'flex',gap:8,marginBottom:16,flexWrap:'wrap',alignItems:'center'}}>
         <input value={search} onChange={e=>setSearch(e.target.value)}
           onKeyDown={e=>e.key==='Enter'&&load()}
-          placeholder="搜索节点..." style={{flex:1,minWidth:160}} />
+          placeholder={lang === 'en' ? 'Search nodes...' : '搜索节点...'} style={{flex:1,minWidth:160}} />
         <select value={filterType} onChange={e=>setFilterType(e.target.value)}
           style={{padding:'8px',background:'var(--bg3)',fontSize:13}}>
-          <option value="">所有类型</option>
+          <option value="">{lang === 'en' ? 'All types' : '所有类型'}</option>
           {Object.entries(KG_NODE_LABELS).map(([k,v]) => (
             <option key={k} value={k}>{v}</option>
           ))}
         </select>
-        <button className="btn" onClick={load} style={{fontSize:12}}>搜索</button>
+        <button className="btn" onClick={load} style={{fontSize:12}}>{lang === 'en' ? 'Search' : '搜索'}</button>
         <button className="btn btn-p" style={{fontSize:12}}
-          onClick={() => setShowAdd(!showAdd)}>+ 添加节点</button>
+          onClick={() => setShowAdd(!showAdd)}>+ {lang === 'en' ? 'Add node' : '添加节点'}</button>
       </div>
 
       {showAdd && (
         <div style={{background:'var(--bg3)',borderRadius:'var(--r)',border:'1px solid var(--border2)',
           padding:14,marginBottom:14}}>
           <div style={{display:'flex',gap:8,marginBottom:8}}>
-            <input value={addLabel} onChange={e=>setAddLabel(e.target.value)} placeholder="节点标签" style={{flex:1}} />
+            <input value={addLabel} onChange={e=>setAddLabel(e.target.value)} placeholder={lang === 'en' ? 'Node label' : '节点标签'} style={{flex:1}} />
             <select value={addType} onChange={e=>setAddType(e.target.value)}
               style={{padding:'8px',background:'var(--bg3)',fontSize:13}}>
               {Object.entries(KG_NODE_LABELS).map(([k,v]) => (
@@ -556,28 +557,28 @@ function KGNodeManager({kg}) {
               ))}
             </select>
           </div>
-          <textarea value={addDesc} onChange={e=>setAddDesc(e.target.value)} placeholder="描述（可选）"
+          <textarea value={addDesc} onChange={e=>setAddDesc(e.target.value)} placeholder={lang === 'en' ? 'Description (optional)' : '描述（可选）'}
             style={{width:'100%',marginBottom:8,minHeight:50}} />
           <div style={{display:'flex',gap:8}}>
-            <button className="btn btn-p" style={{fontSize:12}} onClick={addNode}>添加</button>
-            <button className="btn" style={{fontSize:12}} onClick={() => setShowAdd(false)}>取消</button>
+            <button className="btn btn-p" style={{fontSize:12}} onClick={addNode}>{lang === 'en' ? 'Add' : '添加'}</button>
+            <button className="btn" style={{fontSize:12}} onClick={() => setShowAdd(false)}>{lang === 'en' ? 'Cancel' : '取消'}</button>
           </div>
         </div>
       )}
 
       <div style={{fontSize:12,color:'var(--fg3)',marginBottom:10}}>
-        共 {total} 个节点 {search && `（搜索"${search}"）`}
+        {lang === 'en' ? `Total ${total} nodes` : `共 ${total} 个节点`} {search && (lang === 'en' ? `(search "${search}")` : `（搜索"${search}"）`)}
       </div>
 
       <div style={{flex:1,overflowY:'auto'}}>
-        {loading ? <div className="load" style={{padding:20}}>加载中...</div> : (
+        {loading ? <div className="load" style={{padding:20}}>{lang === 'en' ? 'Loading...' : '加载中...'}</div> : (
           <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
             <thead>
               <tr style={{borderBottom:'1px solid var(--border2)'}}>
-                <th style={{padding:'8px 6px',textAlign:'left',color:'var(--fg3)',fontWeight:400}}>标签</th>
-                <th style={{padding:'8px 6px',textAlign:'left',color:'var(--fg3)',fontWeight:400,width:70}}>类型</th>
-                <th style={{padding:'8px 6px',textAlign:'left',color:'var(--fg3)',fontWeight:400,width:60}}>重要度</th>
-                <th style={{padding:'8px 6px',textAlign:'left',color:'var(--fg3)',fontWeight:400}}>描述</th>
+                <th style={{padding:'8px 6px',textAlign:'left',color:'var(--fg3)',fontWeight:400}}>{lang === 'en' ? 'Label' : '标签'}</th>
+                <th style={{padding:'8px 6px',textAlign:'left',color:'var(--fg3)',fontWeight:400,width:70}}>{lang === 'en' ? 'Type' : '类型'}</th>
+                <th style={{padding:'8px 6px',textAlign:'left',color:'var(--fg3)',fontWeight:400,width:60}}>{lang === 'en' ? 'Importance' : '重要度'}</th>
+                <th style={{padding:'8px 6px',textAlign:'left',color:'var(--fg3)',fontWeight:400}}>{lang === 'en' ? 'Description' : '描述'}</th>
                 <th style={{padding:'8px 6px',width:50}}></th>
               </tr>
             </thead>
@@ -602,7 +603,7 @@ function KGNodeManager({kg}) {
                   <td style={{padding:'8px 6px',textAlign:'right'}}>
                     <button onClick={() => deleteNode(n.id)}
                       style={{background:'transparent',color:'var(--fg3)',fontSize:11,padding:'2px 6px'}}>
-                      删除
+                      {lang === 'en' ? 'Delete' : '删除'}
                     </button>
                   </td>
                 </tr>
@@ -614,12 +615,12 @@ function KGNodeManager({kg}) {
 
       <div style={{display:'flex',gap:8,marginTop:12,justifyContent:'center'}}>
         <button className="btn" disabled={offset===0} onClick={() => setOffset(Math.max(0,offset-LIMIT))}
-          style={{fontSize:12}}>上一页</button>
+          style={{fontSize:12}}>{lang === 'en' ? 'Previous' : '上一页'}</button>
         <span style={{padding:'6px 12px',fontSize:12,color:'var(--fg3)'}}>
           {Math.floor(offset/LIMIT)+1} / {Math.ceil(total/LIMIT)||1}
         </span>
         <button className="btn" disabled={offset+LIMIT>=total} onClick={() => setOffset(offset+LIMIT)}
-          style={{fontSize:12}}>下一页</button>
+          style={{fontSize:12}}>{lang === 'en' ? 'Next' : '下一页'}</button>
       </div>
     </div>
   );
@@ -677,7 +678,7 @@ function KGExplorer({kg}) {
     <div style={{padding:20,height:'100%',display:'flex',flexDirection:'column'}}>
       <div style={{display:'flex',gap:0,marginBottom:16,background:'var(--bg3)',
         borderRadius:'var(--r)',padding:3,alignSelf:'flex-start'}}>
-        {[['search','节点搜索'],['subgraph','子图探索'],['path','路径搜索']].map(([m,l]) => (
+        {[['search', lang === 'en' ? 'Node Search' : '节点搜索'],['subgraph', lang === 'en' ? 'Subgraph Explore' : '子图探索'],['path', lang === 'en' ? 'Path Search' : '路径搜索']].map(([m,l]) => (
           <button key={m} onClick={() => {setMode(m);setResults(null);setSubElements([]);setStats(null);}}
             style={{padding:'6px 16px',borderRadius:'calc(var(--r) - 2px)',fontSize:13,
               background:mode===m?'var(--gold)':'transparent',
@@ -690,28 +691,28 @@ function KGExplorer({kg}) {
       <div style={{display:'flex',gap:8,marginBottom:16,alignItems:'center'}}>
         {mode === 'path' ? (
           <>
-            <input value={source} onChange={e=>setSource(e.target.value)} placeholder="起始概念" style={{flex:1}} />
+            <input value={source} onChange={e=>setSource(e.target.value)} placeholder={lang === 'en' ? 'Start concept' : '起始概念'} style={{flex:1}} />
             <span style={{color:'var(--fg3)',fontSize:16}}>→</span>
-            <input value={target} onChange={e=>setTarget(e.target.value)} placeholder="目标概念" style={{flex:1}} />
+            <input value={target} onChange={e=>setTarget(e.target.value)} placeholder={lang === 'en' ? 'Target concept' : '目标概念'} style={{flex:1}} />
           </>
         ) : (
           <input value={query} onChange={e=>setQuery(e.target.value)}
             onKeyDown={e=>e.key==='Enter'&&(mode==='search'?doSearch():doSubgraph())}
-            placeholder={mode==='subgraph'?'输入种子概念（逗号分隔）':'搜索节点关键词...'}
+            placeholder={mode==='subgraph' ? (lang === 'en' ? 'Enter seed concepts (comma separated)' : '输入种子概念（逗号分隔）') : (lang === 'en' ? 'Search node keywords...' : '搜索节点关键词...')}
             style={{flex:1}} />
         )}
         <button className="btn btn-p" style={{fontSize:13}}
           onClick={mode==='search'?doSearch:mode==='subgraph'?doSubgraph:doPath}
           disabled={loading}>
-          {loading?'...':(mode==='path'?'查找路径':mode==='subgraph'?'展开子图':'搜索')}
+          {loading ? '...' : (mode==='path' ? (lang === 'en' ? 'Find path' : '查找路径') : mode==='subgraph' ? (lang === 'en' ? 'Expand subgraph' : '展开子图') : (lang === 'en' ? 'Search' : '搜索'))}
         </button>
       </div>
 
       {stats && (
         <div style={{fontSize:11,color:'var(--fg3)',marginBottom:10}}>
-          耗时 {stats.duration_ms}ms
-          {stats.nodes !== undefined && ` · ${stats.nodes}节点 · ${stats.edges}边`}
-          {stats.nodes_traversed !== undefined && ` · 遍历${stats.nodes_traversed}节点`}
+          {lang === 'en' ? 'Time' : '耗时'} {stats.duration_ms}ms
+          {stats.nodes !== undefined && (lang === 'en' ? ` · ${stats.nodes} nodes · ${stats.edges} edges` : ` · ${stats.nodes}节点 · ${stats.edges}边`)}
+          {stats.nodes_traversed !== undefined && (lang === 'en' ? ` · traversed ${stats.nodes_traversed} nodes` : ` · 遍历${stats.nodes_traversed}节点`)}
         </div>
       )}
 
@@ -719,7 +720,7 @@ function KGExplorer({kg}) {
       {mode === 'search' && results && (
         <div style={{flex:1,overflowY:'auto'}}>
           {results.length === 0 ? (
-            <div style={{color:'var(--fg3)',padding:20}}>无匹配节点</div>
+            <div style={{color:'var(--fg3)',padding:20}}>{lang === 'en' ? 'No matching nodes' : '无匹配节点'}</div>
           ) : results.map(n => (
             <div key={n.id} style={{padding:'10px 12px',background:'var(--bg3)',
               borderRadius:'var(--r)',marginBottom:6,
@@ -727,7 +728,7 @@ function KGExplorer({kg}) {
               <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:4}}>
                 <span style={{fontWeight:600}}>{n.label}</span>
                 <span style={{fontSize:11,color:KG_NODE_COLORS[n.node_type]}}>{KG_NODE_LABELS[n.node_type]}</span>
-                <span style={{fontSize:11,color:'var(--fg3)',marginLeft:'auto'}}>重要度 {n.importance.toFixed(2)}</span>
+                <span style={{fontSize:11,color:'var(--fg3)',marginLeft:'auto'}}>{lang === 'en' ? 'Importance' : '重要度'} {n.importance.toFixed(2)}</span>
               </div>
               {n.description && <div style={{fontSize:12,color:'var(--fg2)'}}>{n.description}</div>}
               {n.source_ref && <div style={{fontSize:11,color:'var(--gold)',marginTop:3}}>{n.source_ref}</div>}
@@ -740,11 +741,11 @@ function KGExplorer({kg}) {
       {mode === 'path' && results && (
         <div style={{flex:1,overflowY:'auto'}}>
           {!results.found ? (
-            <div style={{color:'var(--fg3)',padding:20}}>未找到路径（可尝试增大max_length）</div>
+            <div style={{color:'var(--fg3)',padding:20}}>{lang === 'en' ? 'No path found (try increasing max_length)' : '未找到路径（可尝试增大max_length）'}</div>
           ) : (
             <div>
               <div style={{color:'var(--green)',marginBottom:12,fontSize:13}}>
-                找到路径，长度 {results.length}
+                {lang === 'en' ? 'Path found, length' : '找到路径，长度'} {results.length}
               </div>
               <div style={{display:'flex',flexWrap:'wrap',alignItems:'center',gap:4}}>
                 {results.path_nodes && results.path_nodes.map((n, i) => (
